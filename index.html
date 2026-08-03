@@ -1,0 +1,2213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>운송내역 관리</title>
+
+    <!-- PDF 저장용 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --sub-text-color: #7b889b;
+            --card-bg: #f8f9fa;
+            --border-color: #e9ecef;
+            --input-bg: #ffffff;
+            --today-bg: #e4e4e4;
+            --today-text: #333333;
+            --saturday-color: #4a90e2;
+            --sunday-color: #d9534f;
+            --hover-bg: #f0f3f7;
+            --primary-color: #3182ce;
+            --icon-color: #555555;
+            --work-badge-bg: #f9a71b;
+            --work-badge-text: #ffffff;
+            --off-badge-bg: #f89898;
+            --off-badge-text: #ffffff;
+            --maint-badge-bg: #e55353;
+            --maint-badge-text: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #121212;
+            --text-color: #e0e0e0;
+            --sub-text-color: #a0aec0;
+            --card-bg: #1e1e1e;
+            --border-color: #2d3748;
+            --input-bg: #2d2d2d;
+            --today-bg: #97abbeeb;
+            --today-text: #333333;
+            --saturday-color: #63b3ed;
+            --sunday-color: #fc8181;
+            --hover-bg: #2a2a2a;
+            --primary-color: #63b3ed;
+            --icon-color: #cccccc;
+            --work-badge-bg: #dfcd96ec;
+            --work-badge-text: #3E2723;
+            --off-badge-bg: #e7a3a3;
+            --off-badge-text: #2A0036;
+            --maint-badge-bg: #e55353;
+            --maint-badge-text: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            position: relative;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            padding: 20px 15px;
+            margin: 0 auto;
+            text-align: center;
+            position: relative;
+        }
+
+        .top-btn-group {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 100;
+            background-color: var(--card-bg);
+            padding: 6px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            color: var(--icon-color);
+            padding: 10px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        .icon-btn:hover {
+            color: var(--text-color);
+            background-color: var(--hover-bg);
+        }
+
+        .icon-btn svg, .arrow-btn svg, .inline-icon {
+            width: 22px;
+            height: 22px;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            vertical-align: middle;
+        }
+
+        .inline-icon.sm {
+            width: 16px;
+            height: 16px;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 52px;
+            right: 0;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            width: 160px;
+            overflow: hidden;
+            z-index: 101;
+        }
+
+        .dropdown-menu.hidden {
+            display: none !important;
+        }
+
+        .dropdown-item {
+            padding: 14px 16px;
+            text-align: left;
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .page {
+            display: block;
+            width: 100%;
+        }
+
+        .page.hidden {
+            display: none !important;
+        }
+
+        .header {
+            margin-top: 50px;
+            margin-bottom: 25px;
+        }
+
+        #currentTime {
+            font-size: 3.5rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 8px;
+            color: var(--text-color);
+        }
+
+        .date-navigator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        #currentDate {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--sub-text-color);
+        }
+
+        .arrow-btn {
+            background: none;
+            border: none;
+            color: var(--sub-text-color);
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        .arrow-btn:hover {
+            color: var(--text-color);
+            background-color: var(--hover-bg);
+        }
+
+        .calendar-grid {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            row-gap: 8px;
+            column-gap: 2px;
+            align-items: center;
+            justify-items: center;
+            margin: 0 auto 25px auto;
+        }
+
+        .day-header {
+            width: 100%;
+            text-align: center;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--sub-text-color);
+            padding-bottom: 6px;
+        }
+
+        .date-cell {
+            width: 100%;
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding-top: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            margin: 0 auto;
+        }
+
+        .date-cell:hover:not(.empty) {
+            background-color: var(--hover-bg);
+        }
+
+        .date-cell.sunday, .day-header.sunday {
+            color: var(--sunday-color);
+        }
+
+        .date-cell.saturday, .day-header.saturday {
+            color: var(--saturday-color);
+        }
+
+        .date-cell.today {
+            background-color: var(--today-bg);
+            color: var(--today-text) !important;
+            font-weight: 700;
+        }
+
+        .work-badge {
+            font-size: 0.65rem;
+            background-color: var(--work-badge-bg);
+            color: var(--work-badge-text);
+            padding: 2px 6px;
+            border-radius: 6px;
+            margin-top: 3px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .off-badge {
+            font-size: 0.65rem;
+            background-color: var(--off-badge-bg);
+            color: var(--off-badge-text);
+            padding: 2px 6px;
+            border-radius: 6px;
+            margin-top: 3px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .maint-badge {
+            font-size: 0.6rem;
+            background-color: var(--maint-badge-bg);
+            color: var(--maint-badge-text);
+            padding: 2px 5px;
+            border-radius: 6px;
+            margin-top: 2px;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .summary-card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            text-align: left;
+            width: 100%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .summary-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--sub-text-color);
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .summary-row.total {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--border-color);
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: var(--primary-color);
+        }
+
+        .summary-row.maint {
+            color: var(--sunday-color);
+            font-weight: 700;
+        }
+
+        .summary-value {
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 15px;
+            margin-bottom: 20px;
+        }
+
+        .settings-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        .setting-section {
+            background-color: var(--card-bg);
+            border-radius: 14px;
+            padding: 16px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 14px;
+            text-align: left;
+        }
+
+        .setting-section h3 {
+            font-size: 0.95rem;
+            margin-bottom: 12px;
+            color: var(--sub-text-color);
+        }
+
+        .setting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            min-height: 36px;
+        }
+
+        .setting-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .setting-item label {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .sub-setting-group {
+            margin-left: 6px;
+            padding-left: 10px;
+            border-left: 2px solid var(--border-color);
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 28px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--sub-text-color);
+        }
+
+        .input-box {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-size: 1rem;
+            outline: none;
+        }
+
+        .input-box:focus {
+            border-color: var(--primary-color);
+        }
+
+        .price-setting {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 6px;
+        }
+
+        .price-setting .input-box {
+            width: 140px;
+            text-align: right;
+        }
+
+        .theme-toggle-btn {
+            padding: 10px 14px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 40px;
+        }
+
+        .save-btn {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary-color);
+            color: #ffffff;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 8px;
+            min-height: 48px;
+        }
+
+        .save-btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .reset-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: transparent;
+            color: var(--sunday-color);
+            border: 1px dashed var(--sunday-color);
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 44px;
+        }
+
+        .reset-btn:hover {
+            background-color: var(--sunday-color);
+            color: #ffffff;
+        }
+
+        .backup-btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .backup-btn {
+            flex: 1;
+            padding: 12px 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            min-height: 44px;
+        }
+
+        .backup-btn:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .report-page {
+            text-align: left;
+            margin-top: 60px;
+            width: 100%;
+            padding-bottom: 20px;
+            background-color: var(--bg-color);
+            box-sizing: border-box;
+        }
+
+        .report-title {
+            font-size: 1.4rem;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 18px;
+            color: var(--text-color);
+        }
+
+        .info-table, .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+            table-layout: fixed;
+        }
+
+        .info-table th, .info-table td,
+        .report-table th, .report-table td {
+            border: 1px solid var(--border-color);
+            padding: 10px 6px;
+            color: var(--text-color);
+            word-break: break-all;
+        }
+
+        .info-table td {
+            white-space: normal;
+        }
+
+        .report-table th, .report-table td {
+            white-space: nowrap;
+        }
+
+        .info-table th {
+            background-color: var(--card-bg);
+            color: var(--sub-text-color);
+            font-weight: 700;
+            width: 75px;
+            text-align: center;
+        }
+
+        .report-table th {
+            background-color: var(--card-bg);
+            color: var(--sub-text-color);
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .report-table td {
+            text-align: center;
+        }
+
+        .report-table td.amount {
+            text-align: right;
+            padding-right: 8px;
+        }
+
+        .report-split-container {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .report-split-column {
+            flex: 1;
+            width: 50%;
+        }
+
+        .report-summary-box {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid var(--border-color);
+            margin-top: 15px;
+            color: var(--text-color);
+        }
+
+        body.pdf-export-mode {
+            --bg-color: #ffffff !important;
+            --text-color: #000000 !important;
+            --sub-text-color: #333333 !important;
+            --card-bg: #f9f9f9 !important;
+            --border-color: #cccccc !important;
+            --input-bg: #ffffff !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+
+        body.pdf-export-mode .container {
+            width: 100% !important;
+            max-width: none !important;
+            padding: 0 !important;
+            margin: 0 auto !important;
+            background-color: #ffffff !important;
+        }
+
+        body.pdf-export-mode .report-page {
+            margin-top: 0 !important;
+            padding: 10px !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+
+        body.pdf-export-mode .report-title {
+            color: #000000 !important;
+        }
+
+        body.pdf-export-mode .info-table th,
+        body.pdf-export-mode .report-table th {
+            background-color: #f2f2f2 !important;
+            color: #333333 !important;
+            border: 1px solid #cccccc !important;
+        }
+
+        body.pdf-export-mode .info-table td,
+        body.pdf-export-mode .report-table td {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            border: 1px solid #cccccc !important;
+        }
+
+        body.pdf-export-mode .report-summary-box {
+            background-color: #f9f9f9 !important;
+            border: 1px solid #cccccc !important;
+            color: #000000 !important;
+        }
+
+        body.pdf-export-mode .summary-row {
+            color: #000000 !important;
+        }
+
+        body.pdf-export-mode .summary-row.total {
+            color: #3182ce !important;
+            border-top: 1px dashed #cccccc !important;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.hidden {
+            display: none !important;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 22px;
+            width: 90%;
+            max-width: 360px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+            text-align: left;
+            border: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .modal-section {
+            border-top: 1px solid var(--border-color);
+            padding-top: 14px;
+            margin-top: 14px;
+        }
+
+        .modal-section-title {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .modal-section-title::before {
+            content: "";
+            display: inline-block;
+            width: 4px;
+            height: 14px;
+            background-color: var(--primary-color);
+            border-radius: 2px;
+        }
+
+        .call-item-row, .maint-item-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .call-item-row .input-box, .maint-item-row .input-box {
+            flex: 1;
+        }
+
+        .btn-del {
+            background-color: var(--sunday-color);
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            min-height: 44px;
+        }
+
+        .btn-add {
+            width: 100%;
+            background-color: var(--input-bg);
+            border: 1px dashed var(--border-color);
+            color: var(--text-color);
+            padding: 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.9rem;
+            min-height: 44px;
+        }
+
+        .btn-group-toggle {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            min-width: 52px;
+            min-height: 44px;
+            padding: 10px 8px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.95rem;
+        }
+
+        .toggle-btn.active-off {
+            background-color: var(--off-badge-bg);
+            color: var(--off-badge-text);
+            border-color: var(--border-color);
+        }
+
+        .toggle-btn.active-work {
+            background-color: var(--primary-color);
+            color: #ffffff;
+            border-color: var(--primary-color);
+        }
+
+        .modal-btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 46px;
+        }
+
+        .modal-btn.confirm {
+            background-color: var(--primary-color);
+            color: #fff;
+        }
+
+        .modal-btn.cancel {
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .toast-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(15, 23, 42, 0.9);
+            color: #ffffff;
+            padding: 14px 24px;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 700;
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease-in-out;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+        }
+
+        .toast-message.show {
+            opacity: 1;
+        }
+
+        .btn-config-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .btn-config-row input {
+            text-align: center;
+        }
+
+        .maint-summary-card {
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 8px;
+            font-size: 0.9rem;
+        }
+        .maint-summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .maint-summary-item:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="appContent">
+
+        <div class="top-btn-group">
+            <button id="pdfDownloadBtn" class="icon-btn" onclick="downloadPDF()" title="PDF 다운로드" style="display: none;">
+                <svg viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <path d="M12 18v-6"></path>
+                    <path d="M9 15l3 3 3-3"></path>
+                </svg>
+            </button>
+
+            <button class="icon-btn" onclick="toggleMenu()" title="메뉴">
+                <svg viewBox="0 0 24 24">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+
+            <div id="dropdownMenu" class="dropdown-menu hidden">
+                <button id="menuMainBtn" class="dropdown-item" onclick="showMain()" style="display: none;">메인 화면</button>
+                <button class="dropdown-item" onclick="showPersonalPage()">기사 및 차량정보</button>
+                <button class="dropdown-item" onclick="showSettings('main')">설정</button>
+                <button id="menuReportBtn" class="dropdown-item" onclick="showReport()">운송 내역서</button>
+            </div>
+        </div>
+
+        <!-- [메인 페이지] -->
+        <div id="mainPage" class="page">
+            <div class="header">
+                <div id="currentTime">--:--:--</div>
+                <div class="date-navigator">
+                    <button class="arrow-btn" onclick="changeMonth(-1)" title="이전 달">
+                        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <div id="currentDate">----년 --월</div>
+                    <button class="arrow-btn" onclick="changeMonth(1)" title="다음 달">
+                        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="calendar-grid">
+                <div class="day-header sunday">일</div>
+                <div class="day-header">월</div>
+                <div class="day-header">화</div>
+                <div class="day-header">수</div>
+                <div class="day-header">목</div>
+                <div class="day-header">금</div>
+                <div class="day-header saturday">토</div>
+
+                <div id="calendar-cells" style="display: contents;"></div>
+            </div>
+
+            <div class="summary-card">
+                <div class="summary-title">
+                    <span>월간 운송료 정산</span>
+                    <span id="summaryTotalWork">총 0회 운행</span>
+                </div>
+                <div class="summary-row">
+                    <span>기본 운송료</span>
+                    <span class="summary-value" id="summaryFare">0 원</span>
+                </div>
+                <div class="summary-row" id="summaryPalletRow" style="display: none;">
+                    <span>파렛트 회수 청구액</span>
+                    <span class="summary-value" id="summaryPalletFare">0 원</span>
+                </div>
+                <div class="summary-row">
+                    <span>부가세 (10%)</span>
+                    <span class="summary-value" id="summaryVat">0 원</span>
+                </div>
+                <div class="summary-row total">
+                    <span>합계</span>
+                    <span class="summary-value" id="summaryTotal">0 원</span>
+                </div>
+                <div class="summary-row maint" id="summaryMaintRow" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color);">
+                    <span style="display:flex; align-items:center; gap:4px;">
+                        <svg class="inline-icon sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                        차량 정비비
+                    </span>
+                    <span class="summary-value" id="summaryMaintFare">0 원</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- [운송 내역서 페이지] -->
+        <div id="reportPage" class="page hidden">
+            <div class="report-page" id="reportContentToExport">
+                <div class="report-title" id="reportMonthTitle">2026년 8월 운송 내역서</div>
+
+                <table class="info-table">
+                    <tr>
+                        <th>성명</th>
+                        <td id="rptUserName">-</td>
+                        <th>연락처</th>
+                        <td id="rptUserPhone">-</td>
+                    </tr>
+                    <tr>
+                        <th>차량번호</th>
+                        <td id="rptCarNumber">-</td>
+                        <th>차량톤수</th>
+                        <td id="rptCarTonnage">-</td>
+                    </tr>
+                    <tr>
+                        <th>입금은행</th>
+                        <td id="rptBankName">-</td>
+                        <th>계좌번호</th>
+                        <td id="rptAccountNumber">-</td>
+                    </tr>
+                </table>
+
+                <div id="reportTableContainer"></div>
+
+                <div class="report-summary-box">
+                    <div class="summary-row">
+                        <span>운송료 합계</span>
+                        <span class="summary-value" id="rptFare">0 원</span>
+                    </div>
+                    <div class="summary-row" id="rptPalletTotalRow">
+                        <span>파렛트 회수 청구액</span>
+                        <span class="summary-value" id="rptPalletFare">0 원</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>부가세 (10%)</span>
+                        <span class="summary-value" id="rptVat">0 원</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>총 청구 금액</span>
+                        <span class="summary-value" id="rptTotal">0 원</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [기사 및 차량정보 페이지] -->
+        <div id="personalPage" class="page hidden">
+            <div class="settings-header">
+                <button class="icon-btn" onclick="showMain()" title="뒤로가기">
+                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <div class="settings-title">기사 및 차량정보</div>
+                <div style="width: 40px;"></div>
+            </div>
+
+            <div class="setting-section">
+                <h3>기본 정보 설정</h3>
+                <div class="form-group">
+                    <label for="userName">성명</label>
+                    <input type="text" id="userName" class="input-box" placeholder="성명을 입력하세요">
+                </div>
+                <div class="form-group">
+                    <label for="userPhone">연락처</label>
+                    <input type="tel" id="userPhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this)">
+                </div>
+                <div class="form-group">
+                    <label for="carNumber">차량번호</label>
+                    <input type="text" id="carNumber" class="input-box" placeholder="12가 3456">
+                </div>
+                <div class="form-group">
+                    <label for="carTonnage">차량 톤수</label>
+                    <input type="text" id="carTonnage" class="input-box" placeholder="예: 5톤, 11톤, 25톤">
+                </div>
+                <div class="form-group">
+                    <label for="bankName">입금 은행</label>
+                    <input type="text" id="bankName" class="input-box" placeholder="예: OO은행">
+                </div>
+                <div class="form-group">
+                    <label for="accountNumber">계좌번호</label>
+                    <input type="text" id="accountNumber" class="input-box" placeholder="계좌번호 입력">
+                </div>
+            </div>
+
+            <button class="save-btn" onclick="savePersonalSettings()">저장하기</button>
+        </div>
+
+        <!-- [설정 페이지] -->
+        <div id="settingsPage" class="page hidden">
+            <div class="settings-header">
+                <button class="icon-btn" onclick="goBackFromSettings()" title="뒤로가기">
+                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <div class="settings-title">설정</div>
+                <div style="width: 40px;"></div>
+            </div>
+
+            <div class="setting-section">
+                <h3>테마 설정</h3>
+                <div class="setting-item">
+                    <label>테마 선택</label>
+                    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()">
+                        <span id="themeIcon">
+                            <svg class="inline-icon sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                        </span>
+                        <span id="themeText">라이트 모드</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="setting-section">
+                <h3>운송 세부 설정</h3>
+
+                <div class="setting-item">
+                    <label for="fixedToggle">고정 노선 사용</label>
+                    <label class="switch">
+                        <input type="checkbox" id="fixedToggle" onchange="toggleFixedSubSettings()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="fixedSubSettings" class="sub-setting-group" style="display: none;">
+                    <div class="price-setting">
+                        <label for="unitPrice">고정 기본 단가 (원)</label>
+                        <input type="text" id="unitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this)">
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        <div class="price-setting">
+                            <label for="btnCountInput">운행 버튼 개수</label>
+                            <input type="number" id="btnCountInput" class="input-box" inputmode="numeric" style="width: 80px; text-align: center;" value="3" min="1" max="6" onchange="renderButtonConfigInputs()">
+                        </div>
+
+                        <div class="setting-item" style="margin-top: 10px;">
+                            <label for="hideBtnCountToggle" style="font-size: 0.85rem; color: var(--sub-text-color);">버튼 횟수 설정 숨기기</label>
+                            <label class="switch">
+                                <input type="checkbox" id="hideBtnCountToggle" onchange="toggleBtnConfigContainer()">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div id="btnValuesContainer" style="margin-top: 6px;"></div>
+                    </div>
+
+                    <div class="setting-item" style="margin-top: 10px;">
+                        <label for="palletToggle">파렛트 회수 사용</label>
+                        <label class="switch">
+                            <input type="checkbox" id="palletToggle" onchange="togglePalletSubSettings()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div id="palletSubSettings" class="price-setting" style="display: none;">
+                        <label for="palletPrice">파렛트 단가 (원)</label>
+                        <input type="text" id="palletPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this)">
+                    </div>
+                </div>
+
+                <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
+
+                <div class="setting-item">
+                    <label for="callToggle">용차(수시/일회성) 사용</label>
+                    <label class="switch">
+                        <input type="checkbox" id="callToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="setting-section">
+                <h3>데이터 관리 (백업 / 복구 / 초기화)</h3>
+                <p style="font-size: 0.85rem; color: var(--sub-text-color); margin-bottom: 10px;">
+                    기기 변경 시 기록을 보관 및 복원하거나 설정값을 초기화할 수 있습니다.
+                </p>
+                <div class="backup-btn-group">
+                    <button class="backup-btn" onclick="exportData()">
+                        <svg class="inline-icon sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> 백업 저장
+                    </button>
+                    <button class="backup-btn" onclick="document.getElementById('importFileInput').click()">
+                        <svg class="inline-icon sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> 백업 불러오기
+                    </button>
+                </div>
+                <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importData(event)">
+                
+                <button class="reset-btn" onclick="resetSettings()">
+                    <svg class="inline-icon sm" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> 설정 초기화
+                </button>
+            </div>
+
+            <button class="save-btn" onclick="saveSettings()">설정 저장하기</button>
+        </div>
+
+    </div>
+
+    <!-- 근무/운행 입력 메인 모달 -->
+    <div id="workModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div id="modalTitle" class="modal-title">운송 내역 입력</div>
+            
+            <div id="modalOffBtnGroup" class="btn-group-toggle" style="display: flex;">
+                <button type="button" id="btnOffToggle" class="toggle-btn" onclick="toggleOffState()">휴무</button>
+            </div>
+
+            <div>
+                <!-- [고정 & 용차 영역] : 휴무 시 비활성화됨 -->
+                <div id="modalWorkDetails">
+                    <div id="modalFixedSection" class="modal-section" style="display: none;">
+                        <div class="modal-section-title">고정 노선</div>
+                        <div class="form-group">
+                            <label>운행 횟수 선택</label>
+                            <div id="fixedCountBtnContainer" class="btn-group-toggle" style="margin-top: 4px;"></div>
+                        </div>
+                        <div id="modalPalletSection" class="form-group" style="display: none;">
+                            <label for="modalPalletCount">파렛트 회수 (장)</label>
+                            <input type="number" id="modalPalletCount" class="input-box" inputmode="numeric" placeholder="0" min="0">
+                        </div>
+                    </div>
+
+                    <div id="modalCallSection" class="modal-section" style="display: none;">
+                        <div class="modal-section-title">용차 / 수시 운송</div>
+                        <div id="callListContainer"></div>
+                        <button class="btn-add" onclick="addCallInputRow()">+ 용차 운임 추가</button>
+                    </div>
+                </div>
+
+                <!-- [정비 영역] : 휴무 여부 관계없이 입력 가능 -->
+                <div id="modalMaintSection" class="modal-section">
+                    <div class="modal-section-title" style="color: var(--sunday-color);">차량 정비</div>
+                    <button class="btn-add" style="border-color: var(--sunday-color); color: var(--sunday-color); font-weight: 700;" onclick="openMaintDetailModal()">
+                        <svg class="inline-icon sm" viewBox="0 0 24 24" style="stroke: var(--sunday-color);"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                        정비 내역 입력
+                    </button>
+                    <div id="maintSummaryContainer" style="display: none; margin-top: 8px;">
+                        <div class="maint-summary-card" id="maintSummaryList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-btns">
+                <button class="modal-btn cancel" onclick="closeModal()">취소</button>
+                <button class="modal-btn confirm" onclick="confirmWorkRecord()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 정비 세부 입력 모달 (2차 모달) -->
+    <div id="maintDetailModal" class="modal-overlay hidden" style="z-index: 1050;">
+        <div class="modal-content">
+            <div class="modal-title" style="color: var(--sunday-color);">정비 세부 입력</div>
+            <p style="font-size: 0.85rem; color: var(--sub-text-color); margin-bottom: 12px; text-align: center;">
+                정비 항목과 비용을 직접 입력하세요.
+            </p>
+            
+            <div id="maintDetailListContainer"></div>
+            <button class="btn-add" onclick="addMaintDetailInputRow()">+ 정비 항목 추가</button>
+
+            <div class="modal-btns">
+                <button class="modal-btn cancel" onclick="closeMaintDetailModal()">취소</button>
+                <button class="modal-btn confirm" style="background-color: var(--sunday-color);" onclick="saveMaintDetails()">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastMessage" class="toast-message">저장되었습니다.</div>
+
+    <script>
+        let viewDate = new Date(); 
+        let selectedDateKey = null; 
+        let workData = JSON.parse(localStorage.getItem('workData')) || {}; 
+        let previousPage = 'main'; 
+        let isOffSelected = false; 
+        let currentSelectedFixedCount = 0; 
+        let currentTempMaintItems = []; 
+
+        const calendarCells = []; // DOM 재사용을 위한 셀 배열
+
+        function initCalendarDOM() {
+            const cellsContainer = document.getElementById('calendar-cells');
+            cellsContainer.innerHTML = '';
+            calendarCells.length = 0;
+
+            // 최대 42개 셀 생성 (6주 x 7일)
+            for (let i = 0; i < 42; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('date-cell');
+                
+                const dateText = document.createElement('span');
+                dateText.className = 'cell-date-text';
+                cell.appendChild(dateText);
+
+                cell.addEventListener('click', () => {
+                    if (cell.dataset.dateKey) {
+                        const month = parseInt(cell.dataset.month, 10);
+                        const day = parseInt(cell.dataset.day, 10);
+                        openModal(cell.dataset.dateKey, month, day);
+                    }
+                });
+
+                cellsContainer.appendChild(cell);
+                calendarCells.push(cell);
+            }
+        }
+
+        function toggleMenu() {
+            const menu = document.getElementById('dropdownMenu');
+            menu.classList.toggle('hidden');
+        }
+
+        document.addEventListener('click', function(e) {
+            const btnGroup = document.querySelector('.top-btn-group');
+            if (btnGroup && !btnGroup.contains(e.target)) {
+                document.getElementById('dropdownMenu').classList.add('hidden');
+            }
+        });
+
+        function formatCurrencyInput(input) {
+            let value = input.value.replace(/[^0-9]/g, '');
+            if (value) {
+                input.value = parseInt(value, 10).toLocaleString();
+            } else {
+                input.value = '';
+            }
+        }
+
+        function parseCurrencyValue(str) {
+            if (!str) return 0;
+            return parseInt(String(str).replace(/[^0-9]/g, ''), 10) || 0;
+        }
+
+        function formatPhoneNumber(input) {
+            let value = input.value.replace(/[^0-9]/g, '');
+            if (value.length < 4) {
+                input.value = value;
+            } else if (value.length < 7) {
+                input.value = `${value.slice(0, 3)}-${value.slice(3)}`;
+            } else if (value.length < 11) {
+                input.value = `${value.slice(0, 3)}-${value.slice(3, 6)}-${value.slice(6)}`;
+            } else {
+                input.value = `${value.slice(0, 3)}-${value.slice(3, 7)}-${value.slice(7, 11)}`;
+            }
+        }
+
+        async function downloadPDF() {
+            const element = document.getElementById('reportContentToExport');
+            document.body.classList.add('pdf-export-mode');
+            buildReportPage(true);
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            const currentYear = viewDate.getFullYear();
+            const currentMonth = viewDate.getMonth() + 1;
+            
+            const opt = {
+                margin:       [12, 10, 12, 10],
+                filename:     `${currentYear}년_${currentMonth}월_운송내역서.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, backgroundColor: '#ffffff' },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            try {
+                await html2pdf().set(opt).from(element).save();
+            } finally {
+                document.body.classList.remove('pdf-export-mode');
+                buildReportPage(false); 
+            }
+        }
+
+        function hideAllPages() {
+            document.getElementById('mainPage').classList.add('hidden');
+            document.getElementById('settingsPage').classList.add('hidden');
+            document.getElementById('personalPage').classList.add('hidden');
+            document.getElementById('reportPage').classList.add('hidden');
+            document.getElementById('dropdownMenu').classList.add('hidden');
+            
+            document.getElementById('pdfDownloadBtn').style.display = 'none';
+        }
+
+        function showMain() {
+            hideAllPages();
+            document.getElementById('mainPage').classList.remove('hidden');
+            
+            document.getElementById('menuReportBtn').style.display = 'block';
+            document.getElementById('menuMainBtn').style.display = 'none';
+        }
+
+        function showPersonalPage() {
+            hideAllPages();
+            document.getElementById('personalPage').classList.remove('hidden');
+        }
+
+        function showSettings(fromPage) {
+            if (fromPage) previousPage = fromPage;
+            loadSettings();
+            hideAllPages();
+            document.getElementById('settingsPage').classList.remove('hidden');
+        }
+
+        function goBackFromSettings() {
+            loadSettings();
+            if (previousPage === 'report') {
+                showReport();
+            } else {
+                showMain();
+            }
+        }
+
+        function showReport() {
+            hideAllPages();
+            document.getElementById('reportPage').classList.remove('hidden');
+            
+            document.getElementById('pdfDownloadBtn').style.display = 'flex';
+            document.getElementById('menuReportBtn').style.display = 'none';
+            document.getElementById('menuMainBtn').style.display = 'block';
+            
+            buildReportPage(false); 
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function setTheme(theme) {
+            const iconContainer = document.getElementById('themeIcon');
+            const textContainer = document.getElementById('themeText');
+            
+            if (theme === 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                iconContainer.innerHTML = `<svg class="inline-icon sm" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
+                textContainer.textContent = '다크 모드';
+            } else {
+                document.body.removeAttribute('data-theme');
+                iconContainer.innerHTML = `<svg class="inline-icon sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
+                textContainer.textContent = '라이트 모드';
+            }
+        }
+
+        function toggleFixedSubSettings() {
+            const checked = document.getElementById('fixedToggle').checked;
+            document.getElementById('fixedSubSettings').style.display = checked ? 'block' : 'none';
+        }
+
+        function togglePalletSubSettings() {
+            const checked = document.getElementById('palletToggle').checked;
+            document.getElementById('palletSubSettings').style.display = checked ? 'flex' : 'none';
+        }
+
+        function toggleBtnConfigContainer() {
+            const isHide = document.getElementById('hideBtnCountToggle').checked;
+            document.getElementById('btnValuesContainer').style.display = isHide ? 'none' : 'block';
+        }
+
+        function renderButtonConfigInputs(savedValues = null) {
+            const count = parseInt(document.getElementById('btnCountInput').value, 10) || 3;
+            const container = document.getElementById('btnValuesContainer');
+            
+            const currentInputs = document.querySelectorAll('.btn-val-input');
+            const currentValues = Array.from(currentInputs).map(input => parseInt(input.value, 10) || 1);
+
+            container.innerHTML = '';
+
+            for (let i = 0; i < count; i++) {
+                const row = document.createElement('div');
+                row.className = 'btn-config-row';
+                
+                let defaultVal;
+                if (currentValues[i] !== undefined) {
+                    defaultVal = currentValues[i];
+                } else if (savedValues && savedValues[i] !== undefined) {
+                    defaultVal = savedValues[i];
+                } else {
+                    defaultVal = i + 1;
+                }
+
+                row.innerHTML = `
+                    <span style="font-size:0.9rem; font-weight:600;">버튼 ${i + 1} 운행 횟수:</span>
+                    <input type="number" class="input-box btn-val-input" inputmode="numeric" style="width: 90px; text-align: center;" value="${defaultVal}" min="1">
+                    <span style="font-size:0.9rem;">회</span>
+                `;
+                container.appendChild(row);
+            }
+        }
+
+        function showToastMessage(msg = "저장되었습니다.") {
+            const toast = document.getElementById('toastMessage');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 1200);
+        }
+
+        function saveSettings() {
+            const btnInputs = document.querySelectorAll('.btn-val-input');
+            const buttonValues = Array.from(btnInputs).map(input => parseInt(input.value, 10) || 1);
+
+            const settings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            settings.fixedOn = document.getElementById('fixedToggle').checked;
+            settings.unitPrice = document.getElementById('unitPrice').value;
+            settings.btnCount = document.getElementById('btnCountInput').value || 3;
+            settings.buttonValues = buttonValues;
+            settings.hideBtnCount = document.getElementById('hideBtnCountToggle').checked;
+
+            settings.palletOn = document.getElementById('palletToggle').checked;
+            settings.palletPrice = document.getElementById('palletPrice').value;
+            settings.callOn = document.getElementById('callToggle').checked;
+
+            localStorage.setItem('userSettings', JSON.stringify(settings));
+            
+            showToastMessage("저장되었습니다.");
+            buildCalendar(); 
+        }
+
+        function resetSettings() {
+            const confirmReset = confirm("경고: 설정 및 저장된 모든 데이터가 초기화되며 복구할 수 없습니다.\n\n정말 초기화하시겠습니까?");
+            if (confirmReset) {
+                localStorage.clear();
+                showToastMessage("초기화되었습니다.");
+                setTimeout(() => {
+                    location.reload();
+                }, 500);
+            }
+        }
+
+        function savePersonalSettings() {
+            const settings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            settings.userName = document.getElementById('userName').value;
+            settings.userPhone = document.getElementById('userPhone').value;
+            settings.carNumber = document.getElementById('carNumber').value;
+            settings.carTonnage = document.getElementById('carTonnage').value;
+            settings.bankName = document.getElementById('bankName').value;
+            settings.accountNumber = document.getElementById('accountNumber').value;
+
+            localStorage.setItem('userSettings', JSON.stringify(settings));
+            showToastMessage("저장되었습니다.");
+        }
+
+        function loadSettings() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) setTheme(savedTheme);
+
+            const savedSettings = JSON.parse(localStorage.getItem('userSettings'));
+            if (savedSettings) {
+                document.getElementById('fixedToggle').checked = !!savedSettings.fixedOn;
+                document.getElementById('unitPrice').value = savedSettings.unitPrice || '';
+                
+                document.getElementById('btnCountInput').value = savedSettings.btnCount || 3;
+                document.getElementById('hideBtnCountToggle').checked = !!savedSettings.hideBtnCount;
+                
+                renderButtonConfigInputs(savedSettings.buttonValues || [1, 2, 3]);
+                toggleBtnConfigContainer();
+
+                document.getElementById('palletToggle').checked = !!savedSettings.palletOn;
+                document.getElementById('palletPrice').value = savedSettings.palletPrice || '';
+
+                document.getElementById('callToggle').checked = !!savedSettings.callOn;
+
+                document.getElementById('userName').value = savedSettings.userName || '';
+                document.getElementById('userPhone').value = savedSettings.userPhone || '';
+                document.getElementById('carNumber').value = savedSettings.carNumber || '';
+                document.getElementById('carTonnage').value = savedSettings.carTonnage || '';
+                document.getElementById('bankName').value = savedSettings.bankName || '';
+                document.getElementById('accountNumber').value = savedSettings.accountNumber || '';
+
+                toggleFixedSubSettings();
+                togglePalletSubSettings();
+            } else {
+                renderButtonConfigInputs([1, 2, 3]);
+            }
+        }
+
+        function exportData() {
+            const backupData = {
+                userSettings: JSON.parse(localStorage.getItem('userSettings')) || {},
+                workData: JSON.parse(localStorage.getItem('workData')) || {},
+                theme: localStorage.getItem('theme') || 'light'
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            const todayStr = new Date().toISOString().slice(0, 10);
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `운송내역_백업_${todayStr}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.userSettings) localStorage.setItem('userSettings', JSON.stringify(imported.userSettings));
+                    if (imported.workData) {
+                        localStorage.setItem('workData', JSON.stringify(imported.workData));
+                        workData = imported.workData;
+                    }
+                    if (imported.theme) localStorage.setItem('theme', imported.theme);
+
+                    showToastMessage('복원되었습니다!');
+                    loadSettings();
+                    buildCalendar();
+                } catch (err) {
+                    alert('올바르지 않은 백업 파일입니다.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('currentTime').textContent = `${hours}:${minutes}:${seconds}`;
+        }
+
+        function changeMonth(delta) {
+            viewDate.setMonth(viewDate.getMonth() + delta);
+            buildCalendar();
+        }
+
+        function buildCalendar() {
+            const currentYear = viewDate.getFullYear();
+            const currentMonth = viewDate.getMonth();
+            const today = new Date();
+
+            document.getElementById('currentDate').textContent = `${currentYear}년 ${currentMonth + 1}월`;
+
+            const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+            const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+            let monthTotalWork = 0;
+            let monthTotalFare = 0;
+            let monthTotalPalletFare = 0;
+            let monthTotalMaintFare = 0;
+
+            const savedSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            const fixedUnitPrice = parseCurrencyValue(savedSettings.unitPrice);
+            const palletUnitPrice = parseCurrencyValue(savedSettings.palletPrice);
+
+            // 기존에 생성된 42개의 셀을 재사용하여 날짜 및 상태만 업데이트 (DOM 최적화)
+            for (let i = 0; i < calendarCells.length; i++) {
+                const cell = calendarCells[i];
+                const dateText = cell.querySelector('.cell-date-text');
+                
+                // 기존 동적 생성 배지 제거
+                const oldBadges = cell.querySelectorAll('.work-badge, .off-badge, .maint-badge');
+                oldBadges.forEach(b => b.remove());
+
+                // 클래스 초기화
+                cell.className = 'date-cell';
+                cell.removeAttribute('data-date-key');
+                cell.removeAttribute('data-month');
+                cell.removeAttribute('data-day');
+                dateText.textContent = '';
+
+                const dayIndex = i - firstDay + 1;
+                if (dayIndex >= 1 && dayIndex <= lastDate) {
+                    dateText.textContent = dayIndex;
+
+                    const dayOfWeek = new Date(currentYear, currentMonth, dayIndex).getDay();
+                    if (dayOfWeek === 0) cell.classList.add('sunday');
+                    if (dayOfWeek === 6) cell.classList.add('saturday');
+
+                    if (dayIndex === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear()) {
+                        cell.classList.add('today');
+                    }
+
+                    const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(dayIndex).padStart(2, '0')}`;
+                    cell.dataset.dateKey = dateKey;
+                    cell.dataset.month = currentMonth + 1;
+                    cell.dataset.day = dayIndex;
+
+                    const record = workData[dateKey];
+
+                    if (record === 'off') {
+                        const badge = document.createElement('span');
+                        badge.classList.add('off-badge');
+                        badge.textContent = `휴무`;
+                        cell.appendChild(badge);
+                    } else if (record && typeof record === 'object') {
+                        if (record.isOff) {
+                            const badge = document.createElement('span');
+                            badge.classList.add('off-badge');
+                            badge.textContent = `휴무`;
+                            cell.appendChild(badge);
+                        }
+
+                        let dayWorkCount = 0;
+                        let dayFare = 0;
+                        let dayPalletFare = 0;
+
+                        if (record.fixedCount > 0) {
+                            dayWorkCount += parseInt(record.fixedCount, 10);
+                            dayFare += record.fixedCount * fixedUnitPrice;
+                        }
+                        if (record.palletCount > 0 && savedSettings.fixedOn && savedSettings.palletOn) {
+                            dayPalletFare += record.palletCount * palletUnitPrice;
+                            monthTotalPalletFare += dayPalletFare;
+                        }
+                        if (record.callFares && record.callFares.length > 0) {
+                            dayWorkCount += record.callFares.length;
+                            const callSum = record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
+                            dayFare += callSum;
+                        }
+
+                        if (dayWorkCount > 0) {
+                            monthTotalWork += dayWorkCount;
+                            monthTotalFare += dayFare;
+
+                            const badge = document.createElement('span');
+                            badge.classList.add('work-badge');
+                            badge.textContent = `${dayWorkCount}회`;
+                            cell.appendChild(badge);
+                        } else if (dayPalletFare > 0) {
+                            monthTotalPalletFare += dayPalletFare;
+                        }
+
+                        if (record.maintItems && record.maintItems.length > 0) {
+                            const maintSum = record.maintItems.reduce((a, b) => a + parseCurrencyValue(b.fare), 0);
+                            if (maintSum > 0) {
+                                monthTotalMaintFare += maintSum;
+                                const maintBadge = document.createElement('span');
+                                maintBadge.classList.add('maint-badge');
+                                maintBadge.textContent = `${maintSum.toLocaleString()}원`;
+                                cell.appendChild(maintBadge);
+                            }
+                        }
+                    }
+                } else {
+                    cell.classList.add('empty');
+                }
+            }
+
+            updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare);
+        }
+
+        function updateSummary(totalCount, fareTotal, palletTotal, maintTotal) {
+            const vat = Math.round((fareTotal + palletTotal) * 0.1);
+            const grandTotal = fareTotal + palletTotal + vat;
+
+            document.getElementById('summaryTotalWork').textContent = `총 ${totalCount}회 운행`;
+            document.getElementById('summaryFare').textContent = `${fareTotal.toLocaleString()} 원`;
+
+            const savedSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            const palletRow = document.getElementById('summaryPalletRow');
+            
+            if (savedSettings.fixedOn && savedSettings.palletOn && palletTotal > 0) {
+                palletRow.style.display = 'flex';
+                document.getElementById('summaryPalletFare').textContent = `${palletTotal.toLocaleString()} 원`;
+            } else {
+                palletRow.style.display = 'none';
+            }
+
+            document.getElementById('summaryVat').textContent = `${vat.toLocaleString()} 원`;
+            document.getElementById('summaryTotal').textContent = `${grandTotal.toLocaleString()} 원`;
+
+            const maintRow = document.getElementById('summaryMaintRow');
+            if (maintTotal > 0) {
+                maintRow.style.display = 'flex';
+                document.getElementById('summaryMaintFare').textContent = `${maintTotal.toLocaleString()} 원`;
+            } else {
+                maintRow.style.display = 'none';
+            }
+        }
+
+        function openModal(dateKey, month, day) {
+            selectedDateKey = dateKey;
+            document.getElementById('modalTitle').textContent = `${month}월 ${day}일 운송 내역 입력`;
+
+            const savedSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            const fixedOn = savedSettings.fixedOn;
+            const palletOn = savedSettings.palletOn;
+            const callOn = savedSettings.callOn;
+
+            document.getElementById('modalFixedSection').style.display = fixedOn ? 'block' : 'none';
+            document.getElementById('modalPalletSection').style.display = (fixedOn && palletOn) ? 'block' : 'none';
+            document.getElementById('modalCallSection').style.display = callOn ? 'block' : 'none';
+
+            const buttonValues = savedSettings.buttonValues || [1, 2, 3];
+            renderFixedCountButtons(buttonValues);
+
+            const record = workData[dateKey];
+            const callContainer = document.getElementById('callListContainer');
+            callContainer.innerHTML = '';
+
+            currentTempMaintItems = [];
+
+            if (record === 'off') {
+                setOffState(true);
+                selectFixedCount(0);
+                document.getElementById('modalPalletCount').value = '';
+            } else if (record && typeof record === 'object') {
+                setOffState(!!record.isOff);
+                selectFixedCount(record.fixedCount || 0);
+                document.getElementById('modalPalletCount').value = record.palletCount || '';
+
+                if (record.callFares && record.callFares.length > 0) {
+                    record.callFares.forEach(val => addCallInputRow(val));
+                }
+                if (record.maintItems && record.maintItems.length > 0) {
+                    currentTempMaintItems = JSON.parse(JSON.stringify(record.maintItems));
+                }
+            } else {
+                setOffState(false);
+                selectFixedCount(0);
+                document.getElementById('modalPalletCount').value = '';
+            }
+
+            renderMaintSummaryInMainModal();
+            document.getElementById('workModal').classList.remove('hidden');
+        }
+
+        function renderFixedCountButtons(values) {
+            const container = document.getElementById('fixedCountBtnContainer');
+            container.innerHTML = '';
+
+            values.forEach((val) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'toggle-btn fixed-count-btn';
+                btn.dataset.val = val;
+                btn.textContent = `${val}회`;
+                
+                btn.onclick = () => {
+                    if (currentSelectedFixedCount === val) {
+                        selectFixedCount(0);
+                    } else {
+                        selectFixedCount(val);
+                    }
+                    if (isOffSelected) setOffState(false);
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function selectFixedCount(val) {
+            currentSelectedFixedCount = val;
+            const btns = document.querySelectorAll('.fixed-count-btn');
+            btns.forEach(btn => {
+                if (parseInt(btn.dataset.val, 10) === val && val !== 0) {
+                    btn.classList.add('active-work');
+                } else {
+                    btn.classList.remove('active-work');
+                }
+            });
+        }
+
+        function toggleOffState() {
+            setOffState(!isOffSelected);
+        }
+
+        function setOffState(off) {
+            isOffSelected = off;
+            const btnOff = document.getElementById('btnOffToggle');
+            const workDetails = document.getElementById('modalWorkDetails');
+
+            if (isOffSelected) {
+                btnOff.classList.add('active-off');
+                workDetails.style.opacity = '0.3';
+                workDetails.style.pointerEvents = 'none';
+            } else {
+                btnOff.classList.remove('active-off');
+                workDetails.style.opacity = '1';
+                workDetails.style.pointerEvents = 'auto';
+            }
+        }
+
+        function addCallInputRow(val = '') {
+            if (isOffSelected) setOffState(false);
+            const container = document.getElementById('callListContainer');
+            const div = document.createElement('div');
+            div.className = 'call-item-row';
+            div.innerHTML = `
+                <input type="text" class="input-box call-fare-input" inputmode="numeric" placeholder="운임비 입력" value="${val}" oninput="formatCurrencyInput(this);">
+                <button type="button" class="btn-del" onclick="this.parentElement.remove()">삭제</button>
+            `;
+            container.appendChild(div);
+        }
+
+        function renderMaintSummaryInMainModal() {
+            const container = document.getElementById('maintSummaryContainer');
+            const listCard = document.getElementById('maintSummaryList');
+
+            if (currentTempMaintItems.length === 0) {
+                container.style.display = 'none';
+                listCard.innerHTML = '';
+            } else {
+                container.style.display = 'block';
+                let html = '';
+                let total = 0;
+                currentTempMaintItems.forEach(item => {
+                    const fareVal = parseCurrencyValue(item.fare);
+                    total += fareVal;
+                    html += `
+                        <div class="maint-summary-item">
+                            <span style="display:flex; align-items:center; gap:4px;">
+                                <svg class="inline-icon sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                                ${item.name || '정비 항목'}
+                            </span>
+                            <span style="font-weight: 700;">${fareVal.toLocaleString()}원</span>
+                        </div>
+                    `;
+                });
+                html += `
+                    <div class="maint-summary-item" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-color); font-weight:800; color: var(--sunday-color);">
+                        <span>정비 합계</span>
+                        <span>${total.toLocaleString()}원</span>
+                    </div>
+                `;
+                listCard.innerHTML = html;
+            }
+        }
+
+        function openMaintDetailModal() {
+            const listContainer = document.getElementById('maintDetailListContainer');
+            listContainer.innerHTML = '';
+
+            if (currentTempMaintItems.length > 0) {
+                currentTempMaintItems.forEach(item => {
+                    addMaintDetailInputRow(item.name, item.fare);
+                });
+            } else {
+                addMaintDetailInputRow();
+            }
+
+            document.getElementById('maintDetailModal').classList.remove('hidden');
+        }
+
+        function closeMaintDetailModal() {
+            document.getElementById('maintDetailModal').classList.add('hidden');
+        }
+
+        function addMaintDetailInputRow(name = '', fare = '') {
+            const container = document.getElementById('maintDetailListContainer');
+            const div = document.createElement('div');
+            div.className = 'maint-item-row';
+            div.innerHTML = `
+                <input type="text" class="input-box maint-name-input" placeholder="정비 항목명" value="${name}">
+                <input type="text" class="input-box maint-fare-input" inputmode="numeric" placeholder="비용" value="${fare}" oninput="formatCurrencyInput(this);" style="text-align: right;">
+                <button type="button" class="btn-del" onclick="this.parentElement.remove()">삭제</button>
+            `;
+            container.appendChild(div);
+        }
+
+        function saveMaintDetails() {
+            const nameInputs = document.querySelectorAll('.maint-name-input');
+            const fareInputs = document.querySelectorAll('.maint-fare-input');
+
+            const newItems = [];
+            for (let i = 0; i < nameInputs.length; i++) {
+                const name = nameInputs[i].value.trim();
+                const fare = fareInputs[i].value.trim();
+                if (name || fare) {
+                    newItems.push({ name, fare });
+                }
+            }
+
+            currentTempMaintItems = newItems;
+            renderMaintSummaryInMainModal();
+            closeMaintDetailModal();
+        }
+
+        function closeModal() {
+            document.getElementById('workModal').classList.add('hidden');
+        }
+
+        function confirmWorkRecord() {
+            const savedSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            
+            let fixedCount = 0;
+            let palletCount = 0;
+            let callFares = [];
+
+            if (!isOffSelected) {
+                if (savedSettings.fixedOn) {
+                    fixedCount = currentSelectedFixedCount || 0;
+                    if (savedSettings.palletOn) {
+                        palletCount = parseInt(document.getElementById('modalPalletCount').value, 10) || 0;
+                    }
+                }
+
+                if (savedSettings.callOn) {
+                    const inputs = document.querySelectorAll('.call-fare-input');
+                    inputs.forEach(input => {
+                        if (input.value.trim() !== '') {
+                            callFares.push(input.value.trim());
+                        }
+                    });
+                }
+            }
+
+            const maintItems = currentTempMaintItems;
+
+            if (!isOffSelected && fixedCount === 0 && palletCount === 0 && callFares.length === 0 && maintItems.length === 0) {
+                delete workData[selectedDateKey];
+            } else {
+                workData[selectedDateKey] = {
+                    isOff: isOffSelected,
+                    fixedCount,
+                    palletCount,
+                    callFares,
+                    maintItems
+                };
+                showToastMessage("저장되었습니다!");
+            }
+
+            localStorage.setItem('workData', JSON.stringify(workData));
+            closeModal();
+            buildCalendar();
+        }
+
+        function createTableHTML(items, showPallet) {
+            const headerHTML = `
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th style="width: ${showPallet ? '30%' : '35%'};">날짜</th>
+                            <th style="width: ${showPallet ? '20%' : '25%'};">운행</th>
+                            ${showPallet ? '<th style="width: 20%;">파렛트</th>' : ''}
+                            <th style="width: ${showPallet ? '30%' : '40%'};">금액</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            
+            let bodyHTML = '';
+            const currentYear = viewDate.getFullYear();
+            const currentMonth = viewDate.getMonth() + 1;
+
+            items.forEach(item => {
+                const palletStr = item.palletCount > 0 ? `${item.palletCount}장` : '-';
+                const workStr = item.isOff ? '휴무' : `${item.workVal}회`;
+                bodyHTML += `
+                    <tr>
+                        <td>${currentYear}.${currentMonth}.${item.day}</td>
+                        <td>${workStr}</td>
+                        ${showPallet ? `<td>${palletStr}</td>` : ''}
+                        <td class="amount">${item.amount.toLocaleString()}원</td>
+                    </tr>`;
+            });
+
+            const footerHTML = `</tbody></table>`;
+            return headerHTML + bodyHTML + footerHTML;
+        }
+
+        function buildReportPage(isForExport = false) {
+            const currentYear = viewDate.getFullYear();
+            const currentMonth = viewDate.getMonth();
+            const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+            document.getElementById('reportMonthTitle').textContent = `${currentYear}년 ${currentMonth + 1}월 운송 내역서`;
+
+            const savedSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+            document.getElementById('rptUserName').textContent = savedSettings.userName || '-';
+            document.getElementById('rptUserPhone').textContent = savedSettings.userPhone || '-';
+            document.getElementById('rptCarNumber').textContent = savedSettings.carNumber || '-';
+            document.getElementById('rptCarTonnage').textContent = savedSettings.carTonnage || '-';
+            document.getElementById('rptBankName').textContent = savedSettings.bankName || '-';
+            document.getElementById('rptAccountNumber').textContent = savedSettings.accountNumber || '-';
+
+            const fixedUnitPrice = parseCurrencyValue(savedSettings.unitPrice);
+            const palletUnitPrice = parseCurrencyValue(savedSettings.palletPrice);
+            
+            const showPallet = !!(savedSettings.fixedOn && savedSettings.palletOn);
+
+            let workList = [];
+            let totalMonthWork = 0;
+            let totalFare = 0;
+            let totalPalletFare = 0;
+
+            for (let d = 1; d <= lastDate; d++) {
+                const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const record = workData[dateKey];
+
+                if (record === 'off') {
+                    workList.push({
+                        day: d,
+                        isOff: true,
+                        workVal: 0,
+                        palletCount: 0,
+                        amount: 0
+                    });
+                } else if (record && typeof record === 'object') {
+                    if (record.isOff) {
+                        workList.push({
+                            day: d,
+                            isOff: true,
+                            workVal: 0,
+                            palletCount: 0,
+                            amount: 0
+                        });
+                    } else {
+                        let dayWorkCount = 0;
+                        let dayFare = 0;
+                        let dayPalletCount = showPallet ? (record.palletCount || 0) : 0;
+
+                        if (record.fixedCount > 0) {
+                            dayWorkCount += parseInt(record.fixedCount, 10);
+                            dayFare += record.fixedCount * fixedUnitPrice;
+                        }
+                        if (record.callFares && record.callFares.length > 0) {
+                            dayWorkCount += record.callFares.length;
+                            dayFare += record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
+                        }
+
+                        const dayPalletFare = dayPalletCount * palletUnitPrice;
+
+                        if (dayWorkCount > 0 || dayPalletCount > 0) {
+                            totalMonthWork += dayWorkCount;
+                            totalFare += dayFare;
+                            totalPalletFare += dayPalletFare;
+
+                            workList.push({
+                                day: d,
+                                isOff: false,
+                                workVal: dayWorkCount,
+                                palletCount: dayPalletCount,
+                                amount: dayFare + dayPalletFare
+                            });
+                        }
+                    }
+                }
+            }
+
+            const container = document.getElementById('reportTableContainer');
+            container.innerHTML = '';
+
+            if (workList.length === 0) {
+                container.innerHTML = `
+                    <table class="report-table">
+                        <tbody>
+                            <tr><td style="text-align:center; padding: 15px; color: var(--sub-text-color);">해당 월의 운송 내역이 없습니다.</td></tr>
+                        </tbody>
+                    </table>`;
+            } else if (isForExport) {
+                const half = Math.ceil(workList.length / 2);
+                const leftList = workList.slice(0, half);
+                const rightList = workList.slice(half);
+
+                container.innerHTML = `
+                    <div class="report-split-container">
+                        <div class="report-split-column">${createTableHTML(leftList, showPallet)}</div>
+                        <div class="report-split-column">${rightList.length > 0 ? createTableHTML(rightList, showPallet) : ''}</div>
+                    </div>`;
+            } else {
+                container.innerHTML = createTableHTML(workList, showPallet);
+            }
+
+            const totalVat = Math.round((totalFare + totalPalletFare) * 0.1);
+            const grandTotal = totalFare + totalPalletFare + totalVat;
+
+            document.getElementById('rptFare').textContent = `${totalFare.toLocaleString()} 원`;
+            
+            const rptPalletRow = document.getElementById('rptPalletTotalRow');
+            if (showPallet) {
+                rptPalletRow.style.display = 'flex';
+                document.getElementById('rptPalletFare').textContent = `${totalPalletFare.toLocaleString()} 원`;
+            } else {
+                rptPalletRow.style.display = 'none';
+            }
+
+            document.getElementById('rptVat').textContent = `${totalVat.toLocaleString()} 원`;
+            document.getElementById('rptTotal').textContent = `${grandTotal.toLocaleString()} 원`;
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
+        loadSettings();
+        initCalendarDOM(); // 달력 DOM 최초 생성
+        buildCalendar();   // 달력 데이터 채우기
+    </script>
+</body>
+</html>
