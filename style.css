@@ -123,7 +123,6 @@ body {
     height: 16px;
 }
 
-/* [새로운 기능/수정] 드롭다운 메뉴 가로 정렬로 변경 */
 .pdf-menu-dropdown {
     display: none;
     position: absolute;
@@ -133,9 +132,9 @@ body {
     background-color: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 24px;
-    padding: 4px 6px; /* [수정] 가로 배열에 맞게 패딩 조정 */
+    padding: 4px 6px; 
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    flex-direction: row; /* [수정] 세로(column)에서 가로(row)로 변경 */
+    flex-direction: row; 
     gap: 4px;
     z-index: 200;
 }
@@ -143,7 +142,6 @@ body {
     display: flex;
 }
 
-/* 인라인 스타일 분리 클래스 */
 .menu-banner-wrap {
     display: flex;
     align-items: center;
@@ -160,7 +158,6 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* 우측 사이드 메뉴 스타일 */
 .side-menu-overlay {
     position: fixed;
     top: 0; 
@@ -256,7 +253,6 @@ body {
     color: var(--primary-color);
 }
 
-/* 차량 리스트 카드 스타일 */
 .car-card {
     background-color: var(--card-bg);
     border: 1px solid var(--border-color);
@@ -444,33 +440,40 @@ body {
     font-weight: 700;
 }
 
+/* [새로운 기능/수정] 뱃지 공통 스타일 - 공간 절약 및 가독성 최적화 */
 .work-badge, .off-badge, .maint-badge {
-    padding: 4px 6px;
+    padding: 2px 5px;
     border-radius: 6px;
     margin-top: 4px;
     font-weight: 700;
     line-height: 1.2;
     white-space: nowrap;
+    letter-spacing: -0.5px;
+    max-width: 95%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    text-align: center;
 }
 
+/* [새로운 기능/수정] 글자 크기 0.85rem으로 확대 */
 .work-badge {
-    font-size: 0.75rem;
+    font-size: 0.95rem;
     background-color: var(--work-badge-bg);
     color: var(--work-badge-text);
 }
 
 .off-badge {
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     background-color: var(--off-badge-bg);
     color: var(--off-badge-text);
 }
 
 .maint-badge {
-    font-size: 0.7rem;
+    font-size: 0.85rem;
     background-color: var(--maint-badge-bg);
     color: var(--maint-badge-text);
     margin-top: 2px;
-    padding: 3px 5px;
 }
 
 .summary-card {
@@ -1110,7 +1113,6 @@ body.pdf-export-mode .summary-row.total {
 .maint-summary-item:last-child {
     margin-bottom: 0;
 }
-/* 차량 관리 - 액션 버튼 그룹 및 수정 버튼 스타일 */
 .car-action-btns {
     display: flex;
     gap: 6px;

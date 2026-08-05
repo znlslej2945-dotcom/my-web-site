@@ -18,6 +18,16 @@ const calendarCells = [];
 
 let confirmCallback = null;
 
+// [새로운 기능/수정 시작] 금액 축약 (만 단위) 표기 헬퍼 함수
+function formatFareShort(amount) {
+    if (amount >= 10000) {
+        let man = amount / 10000;
+        return (man % 1 === 0) ? `${man}만` : `${man.toFixed(1).replace(/\.0$/, '')}만`;
+    }
+    return `${amount.toLocaleString()}원`;
+}
+// [새로운 기능/수정 끝]
+
 // 공통 설정 호출 및 저장 헬퍼 함수 추가
 function getUserSettings() {
     return JSON.parse(localStorage.getItem('userSettings')) || {};
@@ -184,7 +194,6 @@ function normalizeLegacyData() {
     }
 }
 
-// 중복된 select 생성 코드를 공통 헬퍼 함수로 통합
 function populateYearMonthSelects(yearId, monthId) {
     const yearSelect = document.getElementById(yearId);
     const monthSelect = document.getElementById(monthId);
@@ -281,20 +290,17 @@ async function downloadPDF() {
     const element = document.getElementById('reportContentToExport');
     document.body.classList.add('pdf-export-mode');
     
-    // [새로운 기능/수정 시작] 세부 내역서 조회 중일 때 PDF용(2단 분리/축소)으로 뷰를 임시 전환합니다.
     if (!isDetailReportView) {
         buildReportPage(true);
     } else {
         viewDetailReport(true);
     }
-    // [새로운 기능/수정 끝]
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
     const currentYear = viewDate.getFullYear();
     const currentMonth = viewDate.getMonth() + 1;
     
-    // [새로운 기능/수정] 세부 내역서 다운로드 시 괄호 안의 업체명 등을 포함하여 파일명 동적 생성
     let fileName = `${currentYear}년_${currentMonth}월_운송비내역서.pdf`;
     if (isDetailReportView) {
         const titleText = document.getElementById('reportMonthTitle').textContent;
@@ -315,17 +321,14 @@ async function downloadPDF() {
         await html2pdf().set(opt).from(element).save();
     } finally {
         document.body.classList.remove('pdf-export-mode');
-        // [새로운 기능/수정 시작] PDF 출력 완료 후 원래 화면용 뷰로 원복
         if (!isDetailReportView) {
             buildReportPage(false); 
         } else {
             viewDetailReport(false);
         }
-        // [새로운 기능/수정 끝]
     }
 }
 
-// 개선된 공통 숨김 처리
 function hideAllPages() {
     document.querySelectorAll('.page').forEach(page => page.classList.add('hidden'));
     
@@ -506,12 +509,10 @@ function populateClientDataList() {
     }
 }
 
-// [새로운 기능/수정 시작] 상/하차지 기록을 모아 자동완성(datalist) 옵션을 채우는 함수 추가
 function populateLocationDataLists() {
     const loadLocSet = new Set();
     const unloadLocSet = new Set();
 
-    // 현재 선택된 차량의 workData를 순회하며 기존에 입력된 상차지, 하차지 수집
     for (let key in workData) {
         const record = workData[key];
         if (record && !record.isOff && record.callDetails) {
@@ -547,7 +548,6 @@ function populateLocationDataLists() {
         });
     }
 }
-// [새로운 기능/수정 끝]
 
 function loadCarList() {
     const settings = getUserSettings();
@@ -747,7 +747,6 @@ function renderMaintList() {
     const m = String(maintViewDate.getMonth() + 1).padStart(2, '0');
     const prefix = `${y}-${m}-`;
     
-    // 날짜별로 정비 내역을 묶음
     let groupedMaint = {};
     for (let key in workData) {
         if (key.startsWith(prefix) && workData[key].maintItems && workData[key].maintItems.length > 0) {
@@ -757,7 +756,6 @@ function renderMaintList() {
         }
     }
     
-    // 날짜를 기준으로 정렬
     const sortedDates = Object.keys(groupedMaint).sort((a, b) => a.localeCompare(b));
     
     const container = document.getElementById('maintListContainer');
@@ -771,7 +769,6 @@ function renderMaintList() {
     sortedDates.forEach(date => {
         const items = groupedMaint[date];
         
-        // 해당 날짜에 속한 항목들의 HTML 생성
         let itemsHtml = items.map(item => `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border-color);">
                 <span style="font-weight: 600;">${item.name || '정비 항목'}</span>
@@ -785,7 +782,6 @@ function renderMaintList() {
             </div>
         `).join('');
 
-        // 날짜 카드 하나에 묶어서 렌더링
         const div = document.createElement('div');
         div.className = 'setting-section';
         div.style.marginBottom = '10px';
@@ -1086,12 +1082,8 @@ function saveSettings() {
     }
 
     setUserSettings(settings);
-    
-    // [새로운 기능/수정] 자동 저장 적용으로 인해 토스트 메시지는 생략하여 자연스러운 UI 구성
     buildCalendar(); 
 }
-
-// [새로운 기능/수정] 설정 초기화(resetSettings) 기능 함수 제거
 
 function savePersonalInfo() {
     const settings = getUserSettings();
@@ -1100,7 +1092,6 @@ function savePersonalInfo() {
     settings.bankName = document.getElementById('bankName').value;
     settings.accountNumber = document.getElementById('accountNumber').value;
     setUserSettings(settings);
-    // [새로운 기능/수정] 자동 저장 적용으로 인해 토스트 메시지는 생략
 }
 
 function loadSettings() {
@@ -1332,9 +1323,7 @@ function buildCalendar() {
                     badge.classList.add('work-badge');
                     
                     if (displayMode === 'fare') {
-                        badge.textContent = `${(dayFare + dayPalletFare).toLocaleString()}원`;
-                        badge.style.fontSize = '0.75rem'; 
-                        badge.style.padding = '4px 6px';
+                        badge.textContent = formatFareShort(dayFare + dayPalletFare);
                     } else {
                         badge.textContent = `${dayWorkCount}회`;
                     }
@@ -1346,9 +1335,7 @@ function buildCalendar() {
                     if (displayMode === 'fare') {
                         const badge = document.createElement('span');
                         badge.classList.add('work-badge');
-                        badge.textContent = `${dayPalletFare.toLocaleString()}원`;
-                        badge.style.fontSize = '0.75rem';
-                        badge.style.padding = '4px 6px';
+                        badge.textContent = formatFareShort(dayPalletFare);
                         cell.appendChild(badge);
                     }
                 }
@@ -1359,7 +1346,7 @@ function buildCalendar() {
                         monthTotalMaintFare += maintSum;
                         const maintBadge = document.createElement('span');
                         maintBadge.classList.add('maint-badge');
-                        maintBadge.textContent = `${maintSum.toLocaleString()}원`;
+                        maintBadge.textContent = formatFareShort(maintSum);
                         cell.appendChild(maintBadge);
                     }
                 }
@@ -1533,8 +1520,6 @@ function openCallDetailModal(index = -1) {
     if (isOffSelected) setOffState(false);
     
     populateClientDataList();
-
-    // [새로운 기능/수정] 모달을 열 때마다 상차지, 하차지 자동완성 목록을 갱신합니다.
     populateLocationDataLists();
 
     document.getElementById('callDetailEditIndex').value = index;
@@ -1967,7 +1952,6 @@ function closeDetailReportModal() {
     document.getElementById('detailReportSelectModal').classList.add('hidden');
 }
 
-// [새로운 기능/수정 시작] 세부 내역서 테이블 생성용 공통 함수 (PDF 분리/축소 대응)
 function createDetailTableHTML(items, isForExport, totalItems) {
     let fontSize = '0.8rem';
     let cellPadding = '10px 6px';
@@ -2010,14 +1994,11 @@ function createDetailTableHTML(items, isForExport, totalItems) {
         </table>
     `;
 }
-// [새로운 기능/수정 끝]
 
-// [새로운 기능/수정 시작] PDF 출력 여부를 전달받도록 파라미터 추가
 function viewDetailReport(isForExport) {
     if (typeof isForExport !== 'boolean') isForExport = false;
     isDetailReportView = true;
 
-    // 화면 조회일 경우에만 모달에서 선택한 필터값을 갱신 (PDF 출력 시에는 기존 필터값 유지)
     if (!isForExport) {
         const selectEl = document.getElementById('detailReportClientSelect');
         if (selectEl) {
@@ -2056,7 +2037,6 @@ function viewDetailReport(isForExport) {
 
     let tableHTML = '';
 
-    // PDF 내보내기 시 내용이 길면 2단 분리 및 글씨 축소 적용
     if (isForExport && detailsList.length > 15) {
         const half = Math.ceil(detailsList.length / 2);
         const leftList = detailsList.slice(0, half);
@@ -2103,7 +2083,6 @@ function viewDetailReport(isForExport) {
         showToastMessage("세부 내역서가 조회되었습니다.");
     }
 }
-// [새로운 기능/수정 끝]
 
 let editingCarIndex = -1;
 
