@@ -155,7 +155,7 @@ function switchCarLog(carNum) {
         workData = JSON.parse(localStorage.getItem('workData')) || {};
     } else {
         if(bannerImg) bannerImg.style.display = 'none';
-        if(bannerTxt) bannerTxt.innerText = `${getShortCarNum(carNum)} 운행일지`;
+        if(bannerTxt) bannerTxt.innerText = `${getShortCarNum(carNum)} 운행 일지`;
         workData = JSON.parse(localStorage.getItem('workData_' + carNum)) || {};
     }
     
