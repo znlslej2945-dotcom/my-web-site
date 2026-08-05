@@ -123,7 +123,7 @@ body {
     height: 16px;
 }
 
-/* [새로운 기능/수정 시작] 세부 내역서 드롭다운 메뉴 스타일 */
+/* [새로운 기능/수정] 드롭다운 메뉴 가로 정렬로 변경 */
 .pdf-menu-dropdown {
     display: none;
     position: absolute;
@@ -133,16 +133,15 @@ body {
     background-color: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 24px;
-    padding: 6px 4px;
+    padding: 4px 6px; /* [수정] 가로 배열에 맞게 패딩 조정 */
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    flex-direction: column;
+    flex-direction: row; /* [수정] 세로(column)에서 가로(row)로 변경 */
     gap: 4px;
     z-index: 200;
 }
 .pdf-menu-dropdown.show {
     display: flex;
 }
-/* [새로운 기능/수정 끝] */
 
 /* 인라인 스타일 분리 클래스 */
 .menu-banner-wrap {
@@ -395,8 +394,8 @@ body {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    row-gap: 8px;
-    column-gap: 2px;
+    row-gap: 12px;
+    column-gap: 4px;
     align-items: center;
     justify-items: center;
     margin: 0 auto 25px auto;
@@ -413,7 +412,7 @@ body {
 
 .date-cell {
     width: 100%;
-    min-height: 60px;
+    min-height: 80px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -446,32 +445,32 @@ body {
 }
 
 .work-badge, .off-badge, .maint-badge {
-    padding: 2px 6px;
+    padding: 4px 6px;
     border-radius: 6px;
-    margin-top: 3px;
+    margin-top: 4px;
     font-weight: 700;
     line-height: 1.2;
     white-space: nowrap;
 }
 
 .work-badge {
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     background-color: var(--work-badge-bg);
     color: var(--work-badge-text);
 }
 
 .off-badge {
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     background-color: var(--off-badge-bg);
     color: var(--off-badge-text);
 }
 
 .maint-badge {
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     background-color: var(--maint-badge-bg);
     color: var(--maint-badge-text);
     margin-top: 2px;
-    padding: 2px 5px;
+    padding: 3px 5px;
 }
 
 .summary-card {

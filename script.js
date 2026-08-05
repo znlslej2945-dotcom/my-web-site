@@ -5,9 +5,14 @@ let activeLogId = 'main';
 let workData = JSON.parse(localStorage.getItem('workData')) || {}; 
 let previousPage = 'main'; 
 let isOffSelected = false; 
-let currentSelectedFixedCount = 0; 
 let currentTempMaintItems = []; 
 let currentTempCallDetails = []; 
+
+// [새로운 기능/수정] 세부 내역서 화면 상태를 관리하기 위한 변수 추가
+let isDetailReportView = false; 
+// [새로운 기능/수정 시작] 세부 내역서 필터 조건을 PDF 렌더링 시 유지하기 위한 전역 변수
+let currentDetailClientFilter = 'ALL'; 
+// [새로운 기능/수정 끝]
 
 const calendarCells = []; 
 
@@ -275,16 +280,32 @@ function formatPhoneNumber(input) {
 async function downloadPDF() {
     const element = document.getElementById('reportContentToExport');
     document.body.classList.add('pdf-export-mode');
-    buildReportPage(true);
+    
+    // [새로운 기능/수정 시작] 세부 내역서 조회 중일 때 PDF용(2단 분리/축소)으로 뷰를 임시 전환합니다.
+    if (!isDetailReportView) {
+        buildReportPage(true);
+    } else {
+        viewDetailReport(true);
+    }
+    // [새로운 기능/수정 끝]
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
     const currentYear = viewDate.getFullYear();
     const currentMonth = viewDate.getMonth() + 1;
     
+    // [새로운 기능/수정] 세부 내역서 다운로드 시 괄호 안의 업체명 등을 포함하여 파일명 동적 생성
+    let fileName = `${currentYear}년_${currentMonth}월_운송비내역서.pdf`;
+    if (isDetailReportView) {
+        const titleText = document.getElementById('reportMonthTitle').textContent;
+        const match = titleText.match(/\((.*?)\)/);
+        const clientName = match ? match[1] : '전체';
+        fileName = `${currentYear}년_${currentMonth}월_운송비내역서(세부)_${clientName}.pdf`;
+    }
+    
     const opt = {
         margin:       [12, 10, 12, 10],
-        filename:     `${currentYear}년_${currentMonth}월_운송비내역서.pdf`, 
+        filename:     fileName, 
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0, backgroundColor: '#ffffff' },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -294,7 +315,13 @@ async function downloadPDF() {
         await html2pdf().set(opt).from(element).save();
     } finally {
         document.body.classList.remove('pdf-export-mode');
-        buildReportPage(false); 
+        // [새로운 기능/수정 시작] PDF 출력 완료 후 원래 화면용 뷰로 원복
+        if (!isDetailReportView) {
+            buildReportPage(false); 
+        } else {
+            viewDetailReport(false);
+        }
+        // [새로운 기능/수정 끝]
     }
 }
 
@@ -348,7 +375,7 @@ function showMain() {
         backBtn.style.display = 'flex'; 
     }
 
-    document.getElementById('menuReportBtn').style.display = 'block';
+    document.getElementById('menuReportBtn').style.display = 'flex';
 }
 
 function showPersonalInfo() {
@@ -478,6 +505,49 @@ function populateClientDataList() {
         });
     }
 }
+
+// [새로운 기능/수정 시작] 상/하차지 기록을 모아 자동완성(datalist) 옵션을 채우는 함수 추가
+function populateLocationDataLists() {
+    const loadLocSet = new Set();
+    const unloadLocSet = new Set();
+
+    // 현재 선택된 차량의 workData를 순회하며 기존에 입력된 상차지, 하차지 수집
+    for (let key in workData) {
+        const record = workData[key];
+        if (record && !record.isOff && record.callDetails) {
+            record.callDetails.forEach(item => {
+                if (item.loadLoc) loadLocSet.add(item.loadLoc.trim());
+                if (item.unloadLoc) unloadLocSet.add(item.unloadLoc.trim());
+            });
+        }
+    }
+
+    const loadLocList = document.getElementById('loadLocList');
+    const unloadLocList = document.getElementById('unloadLocList');
+
+    if (loadLocList) {
+        loadLocList.innerHTML = '';
+        loadLocSet.forEach(loc => {
+            if (loc !== '') {
+                const option = document.createElement('option');
+                option.value = loc;
+                loadLocList.appendChild(option);
+            }
+        });
+    }
+
+    if (unloadLocList) {
+        unloadLocList.innerHTML = '';
+        unloadLocSet.forEach(loc => {
+            if (loc !== '') {
+                const option = document.createElement('option');
+                option.value = loc;
+                unloadLocList.appendChild(option);
+            }
+        });
+    }
+}
+// [새로운 기능/수정 끝]
 
 function loadCarList() {
     const settings = getUserSettings();
@@ -677,41 +747,53 @@ function renderMaintList() {
     const m = String(maintViewDate.getMonth() + 1).padStart(2, '0');
     const prefix = `${y}-${m}-`;
     
-    let allMaint = [];
+    // 날짜별로 정비 내역을 묶음
+    let groupedMaint = {};
     for (let key in workData) {
         if (key.startsWith(prefix) && workData[key].maintItems && workData[key].maintItems.length > 0) {
-            workData[key].maintItems.forEach((item, index) => {
-                allMaint.push({ date: key, name: item.name, fare: item.fare, index: index });
+            groupedMaint[key] = workData[key].maintItems.map((item, index) => {
+                return { name: item.name, fare: item.fare, index: index };
             });
         }
     }
     
-    allMaint.sort((a, b) => a.date.localeCompare(b.date)); 
-
+    // 날짜를 기준으로 정렬
+    const sortedDates = Object.keys(groupedMaint).sort((a, b) => a.localeCompare(b));
+    
     const container = document.getElementById('maintListContainer');
     container.innerHTML = '';
     
-    if (allMaint.length === 0) {
+    if (sortedDates.length === 0) {
         container.innerHTML = '<div class="empty-state">이번 달 등록된 정비 내역이 없습니다.</div>';
         return;
     }
 
-    allMaint.forEach(item => {
+    sortedDates.forEach(date => {
+        const items = groupedMaint[date];
+        
+        // 해당 날짜에 속한 항목들의 HTML 생성
+        let itemsHtml = items.map(item => `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border-color);">
+                <span style="font-weight: 600;">${item.name || '정비 항목'}</span>
+                <div style="display:flex; align-items:center; gap: 10px;">
+                    <strong style="color:var(--sunday-color);">${parseCurrencyValue(item.fare).toLocaleString()} 원</strong>
+                    <div style="display:flex; gap: 6px;">
+                        <button class="btn-del" style="background:var(--sub-text-color); padding:6px 10px; min-height:auto;" onclick="openMaintRecordModal('${date}', ${item.index})">수정</button>
+                        <button class="btn-del" style="padding:6px 10px; min-height:auto;" onclick="deleteMaintRecord('${date}', ${item.index})">삭제</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // 날짜 카드 하나에 묶어서 렌더링
         const div = document.createElement('div');
         div.className = 'setting-section';
         div.style.marginBottom = '10px';
         div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <strong style="color:var(--primary-color);">${item.date}</strong>
-                <div style="display:flex; gap: 6px;">
-                    <button class="btn-del" style="background:var(--sub-text-color); padding:6px 10px; min-height:auto;" onclick="openMaintRecordModal('${item.date}', ${item.index})">수정</button>
-                    <button class="btn-del" style="padding:6px 10px; min-height:auto;" onclick="deleteMaintRecord('${item.date}', ${item.index})">삭제</button>
-                </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <strong style="color:var(--primary-color); font-size:1.1rem;">${date}</strong>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight: 600;">${item.name || '정비 항목'}</span>
-                <strong style="color:var(--sunday-color);">${parseCurrencyValue(item.fare).toLocaleString()} 원</strong>
-            </div>
+            ${itemsHtml}
         `;
         container.appendChild(div);
     });
@@ -847,7 +929,17 @@ function executeShowReport(carNum) {
 
     document.getElementById('menuReportBtn').style.display = 'none';
     
+    isDetailReportView = false;
     buildReportPage(false); 
+}
+
+function handleReportBack() {
+    if (isDetailReportView) {
+        isDetailReportView = false;
+        buildReportPage(false);
+    } else {
+        showMain();
+    }
 }
 
 function openReportCarSelectModal(cars) {
@@ -917,11 +1009,6 @@ function togglePalletSubSettings() {
     document.getElementById('palletSubSettings').style.display = checked ? 'flex' : 'none';
 }
 
-function toggleBtnConfigContainer() {
-    const isHide = document.getElementById('hideBtnCountToggle').checked;
-    document.getElementById('btnValuesContainer').style.display = isHide ? 'none' : 'block';
-}
-
 function setInputMode(mode, target) {
     if (target === 'main') {
         const btnCount = document.getElementById('btnInputModeCount');
@@ -950,76 +1037,9 @@ function setInputMode(mode, target) {
     }
 }
 
-function renderButtonConfigInputs(savedValues = null) {
-    const count = parseInt(document.getElementById('btnCountInput').value, 10) || 3;
-    const container = document.getElementById('btnValuesContainer');
-    
-    const currentInputs = document.querySelectorAll('.btn-val-input');
-    const currentValues = Array.from(currentInputs).map(input => parseInt(input.value, 10) || 1);
-
-    container.innerHTML = '';
-
-    for (let i = 0; i < count; i++) {
-        const row = document.createElement('div');
-        row.className = 'btn-config-row';
-        
-        let defaultVal;
-        if (currentValues[i] !== undefined) {
-            defaultVal = currentValues[i];
-        } else if (savedValues && savedValues[i] !== undefined) {
-            defaultVal = savedValues[i];
-        } else {
-            defaultVal = i + 1;
-        }
-
-        row.innerHTML = `
-            <span style="font-size:0.9rem; font-weight:600;">버튼 ${i + 1} 운행 횟수:</span>
-            <input type="number" class="input-box btn-val-input" inputmode="numeric" style="width: 90px; text-align: center;" value="${defaultVal}" min="1">
-            <span style="font-size:0.9rem;">회</span>
-        `;
-        container.appendChild(row);
-    }
-}
-
 function toggleSubPalletSubSettings() {
     const checked = document.getElementById('subPalletToggle').checked;
     document.getElementById('subPalletSubSettings').style.display = checked ? 'flex' : 'none';
-}
-
-function toggleSubBtnConfigContainer() {
-    const isHide = document.getElementById('hideSubBtnCountToggle').checked;
-    document.getElementById('subBtnValuesContainer').style.display = isHide ? 'none' : 'block';
-}
-
-function renderSubButtonConfigInputs(savedValues = null) {
-    const count = parseInt(document.getElementById('subBtnCountInput').value, 10) || 3;
-    const container = document.getElementById('subBtnValuesContainer');
-    
-    const currentInputs = document.querySelectorAll('.sub-btn-val-input');
-    const currentValues = Array.from(currentInputs).map(input => parseInt(input.value, 10) || 1);
-
-    container.innerHTML = '';
-
-    for (let i = 0; i < count; i++) {
-        const row = document.createElement('div');
-        row.className = 'btn-config-row';
-        
-        let defaultVal;
-        if (currentValues[i] !== undefined) {
-            defaultVal = currentValues[i];
-        } else if (savedValues && savedValues[i] !== undefined) {
-            defaultVal = savedValues[i];
-        } else {
-            defaultVal = i + 1;
-        }
-
-        row.innerHTML = `
-            <span style="font-size:0.9rem; font-weight:600;">버튼 ${i + 1} 운행 횟수:</span>
-            <input type="number" class="input-box sub-btn-val-input" inputmode="numeric" style="width: 90px; text-align: center;" value="${defaultVal}" min="1">
-            <span style="font-size:0.9rem;">회</span>
-        `;
-        container.appendChild(row);
-    }
 }
 
 function showToastMessage(msg = "저장되었습니다.") {
@@ -1032,9 +1052,6 @@ function showToastMessage(msg = "저장되었습니다.") {
 }
 
 function saveSettings() {
-    const btnInputs = document.querySelectorAll('.btn-val-input');
-    const buttonValues = Array.from(btnInputs).map(input => parseInt(input.value, 10) || 1);
-
     const settings = getUserSettings();
     
     const mainInputModeBtn = document.getElementById('btnInputModeFare');
@@ -1044,9 +1061,6 @@ function saveSettings() {
     
     settings.fixedOn = document.getElementById('fixedToggle').checked;
     settings.unitPrice = document.getElementById('unitPrice').value;
-    settings.btnCount = document.getElementById('btnCountInput').value || 3;
-    settings.buttonValues = buttonValues;
-    settings.hideBtnCount = document.getElementById('hideBtnCountToggle').checked;
 
     settings.palletOn = document.getElementById('palletToggle').checked;
     settings.palletPrice = document.getElementById('palletPrice').value;
@@ -1055,9 +1069,6 @@ function saveSettings() {
     settings.callDetailOn = document.getElementById('callDetailToggle').checked;
 
     if (document.getElementById('subFixedToggle')) {
-        const subBtnInputs = document.querySelectorAll('.sub-btn-val-input');
-        const subButtonValues = Array.from(subBtnInputs).map(input => parseInt(input.value, 10) || 1);
-
         const subInputModeBtn = document.getElementById('btnSubInputModeFare');
         if (subInputModeBtn) {
             settings.subInputMode = subInputModeBtn.classList.contains('active-work') ? 'fare' : 'count';
@@ -1066,10 +1077,6 @@ function saveSettings() {
         settings.subFixedOn = document.getElementById('subFixedToggle').checked;
         settings.subUnitPrice = document.getElementById('subUnitPrice').value;
         
-        settings.subBtnCount = document.getElementById('subBtnCountInput').value || 3;
-        settings.subButtonValues = subButtonValues;
-        settings.hideSubBtnCount = document.getElementById('hideSubBtnCountToggle').checked;
-
         settings.subPalletOn = document.getElementById('subPalletToggle').checked;
         settings.subPalletPrice = document.getElementById('subPalletPrice').value;
 
@@ -1080,19 +1087,11 @@ function saveSettings() {
 
     setUserSettings(settings);
     
-    showToastMessage("저장되었습니다.");
+    // [새로운 기능/수정] 자동 저장 적용으로 인해 토스트 메시지는 생략하여 자연스러운 UI 구성
     buildCalendar(); 
 }
 
-function resetSettings() {
-    showConfirmModal("경고: 설정 및 저장된 모든 데이터가 초기화되며 복구할 수 없습니다.\n\n정말 초기화하시겠습니까?", () => {
-        localStorage.clear();
-        showToastMessage("초기화되었습니다.");
-        setTimeout(() => {
-            location.reload();
-        }, 500);
-    });
-}
+// [새로운 기능/수정] 설정 초기화(resetSettings) 기능 함수 제거
 
 function savePersonalInfo() {
     const settings = getUserSettings();
@@ -1101,7 +1100,7 @@ function savePersonalInfo() {
     settings.bankName = document.getElementById('bankName').value;
     settings.accountNumber = document.getElementById('accountNumber').value;
     setUserSettings(settings);
-    showToastMessage("저장되었습니다.");
+    // [새로운 기능/수정] 자동 저장 적용으로 인해 토스트 메시지는 생략
 }
 
 function loadSettings() {
@@ -1121,12 +1120,6 @@ function loadSettings() {
         document.getElementById('fixedToggle').checked = !!savedSettings.fixedOn;
         document.getElementById('unitPrice').value = savedSettings.unitPrice || '';
         
-        document.getElementById('btnCountInput').value = savedSettings.btnCount || 3;
-        document.getElementById('hideBtnCountToggle').checked = !!savedSettings.hideBtnCount;
-        
-        renderButtonConfigInputs(savedSettings.buttonValues || [1, 2, 3]);
-        toggleBtnConfigContainer();
-
         document.getElementById('palletToggle').checked = !!savedSettings.palletOn;
         document.getElementById('palletPrice').value = savedSettings.palletPrice || '';
 
@@ -1144,12 +1137,6 @@ function loadSettings() {
             document.getElementById('subFixedToggle').checked = !!savedSettings.subFixedOn;
             document.getElementById('subUnitPrice').value = savedSettings.subUnitPrice || '';
             
-            document.getElementById('subBtnCountInput').value = savedSettings.subBtnCount || 3;
-            document.getElementById('hideSubBtnCountToggle').checked = !!savedSettings.hideSubBtnCount;
-            
-            renderSubButtonConfigInputs(savedSettings.subButtonValues || [1, 2, 3]);
-            toggleSubBtnConfigContainer();
-
             document.getElementById('subPalletToggle').checked = !!savedSettings.subPalletOn;
             document.getElementById('subPalletPrice').value = savedSettings.subPalletPrice || '';
 
@@ -1168,8 +1155,6 @@ function loadSettings() {
 
         toggleFixedSubSettings();
         togglePalletSubSettings();
-    } else {
-        renderButtonConfigInputs([1, 2, 3]);
     }
 }
 
@@ -1348,8 +1333,8 @@ function buildCalendar() {
                     
                     if (displayMode === 'fare') {
                         badge.textContent = `${(dayFare + dayPalletFare).toLocaleString()}원`;
-                        badge.style.fontSize = '0.55rem';
-                        badge.style.padding = '2px 4px';
+                        badge.style.fontSize = '0.75rem'; 
+                        badge.style.padding = '4px 6px';
                     } else {
                         badge.textContent = `${dayWorkCount}회`;
                     }
@@ -1362,8 +1347,8 @@ function buildCalendar() {
                         const badge = document.createElement('span');
                         badge.classList.add('work-badge');
                         badge.textContent = `${dayPalletFare.toLocaleString()}원`;
-                        badge.style.fontSize = '0.55rem';
-                        badge.style.padding = '2px 4px';
+                        badge.style.fontSize = '0.75rem';
+                        badge.style.padding = '4px 6px';
                         cell.appendChild(badge);
                     }
                 }
@@ -1433,15 +1418,11 @@ function openModal(dateKey, month, day) {
     
     const callDetailOn = isMain ? savedSettings.callDetailOn : savedSettings.subCallDetailOn;
     
-    const buttonValues = isMain ? (savedSettings.buttonValues || [1, 2, 3]) : (savedSettings.subButtonValues || [1, 2, 3]);
-
     document.getElementById('modalFixedSection').style.display = fixedOn ? 'block' : 'none';
     document.getElementById('modalPalletSection').style.display = (fixedOn && palletOn) ? 'block' : 'none';
     document.getElementById('modalCallSection').style.display = callOn ? 'block' : 'none';
     
     document.getElementById('modalCallDetailSection').style.display = callDetailOn ? 'block' : 'none';
-
-    renderFixedCountButtons(buttonValues);
 
     const record = workData[dateKey];
     const callContainer = document.getElementById('callListContainer');
@@ -1452,7 +1433,7 @@ function openModal(dateKey, month, day) {
 
     if (record) {
         setOffState(!!record.isOff);
-        selectFixedCount(record.fixedCount || 0);
+        document.getElementById('modalFixedCountInput').value = record.fixedCount || '';
         document.getElementById('modalPalletCount').value = record.palletCount || '';
 
         if (record.callFares && record.callFares.length > 0) {
@@ -1466,48 +1447,13 @@ function openModal(dateKey, month, day) {
         }
     } else {
         setOffState(false);
-        selectFixedCount(0);
+        document.getElementById('modalFixedCountInput').value = '';
         document.getElementById('modalPalletCount').value = '';
     }
 
     renderMaintSummaryInMainModal();
     renderCallDetailSummaryInMainModal();
     document.getElementById('workModal').classList.remove('hidden');
-}
-
-function renderFixedCountButtons(values) {
-    const container = document.getElementById('fixedCountBtnContainer');
-    container.innerHTML = '';
-
-    values.forEach((val) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'toggle-btn fixed-count-btn';
-        btn.dataset.val = val;
-        btn.textContent = `${val}회`;
-        
-        btn.onclick = () => {
-            if (currentSelectedFixedCount === val) {
-                selectFixedCount(0);
-            } else {
-                selectFixedCount(val);
-            }
-            if (isOffSelected) setOffState(false);
-        };
-        container.appendChild(btn);
-    });
-}
-
-function selectFixedCount(val) {
-    currentSelectedFixedCount = val;
-    const btns = document.querySelectorAll('.fixed-count-btn');
-    btns.forEach(btn => {
-        if (parseInt(btn.dataset.val, 10) === val && val !== 0) {
-            btn.classList.add('active-work');
-        } else {
-            btn.classList.remove('active-work');
-        }
-    });
 }
 
 function toggleOffState() {
@@ -1587,6 +1533,9 @@ function openCallDetailModal(index = -1) {
     if (isOffSelected) setOffState(false);
     
     populateClientDataList();
+
+    // [새로운 기능/수정] 모달을 열 때마다 상차지, 하차지 자동완성 목록을 갱신합니다.
+    populateLocationDataLists();
 
     document.getElementById('callDetailEditIndex').value = index;
     if (index >= 0 && currentTempCallDetails[index]) {
@@ -1743,7 +1692,7 @@ function confirmWorkRecord() {
 
     if (!isOffSelected) {
         if (fixedOn) {
-            fixedCount = currentSelectedFixedCount || 0;
+            fixedCount = parseInt(document.getElementById('modalFixedCountInput').value, 10) || 0;
             if (palletOn) {
                 palletCount = parseInt(document.getElementById('modalPalletCount').value, 10) || 0;
             }
@@ -1953,18 +1902,25 @@ function buildReportPage(isForExport = false) {
     const totalVat = Math.round((totalFare + totalPalletFare) * 0.1);
     const grandTotal = totalFare + totalPalletFare + totalVat;
 
-    document.getElementById('rptFare').textContent = `${totalFare.toLocaleString()} 원`;
-    
-    const rptPalletRow = document.getElementById('rptPalletTotalRow');
-    if (showPallet) {
-        rptPalletRow.style.display = 'flex';
-        document.getElementById('rptPalletFare').textContent = `${totalPalletFare.toLocaleString()} 원`;
-    } else {
-        rptPalletRow.style.display = 'none';
-    }
-
-    document.getElementById('rptVat').textContent = `${totalVat.toLocaleString()} 원`;
-    document.getElementById('rptTotal').textContent = `${grandTotal.toLocaleString()} 원`;
+    const summaryBox = document.querySelector('.report-summary-box');
+    summaryBox.innerHTML = `
+        <div class="summary-row">
+            <span>기본 운송료</span>
+            <span class="summary-value" id="rptFare">${totalFare.toLocaleString()} 원</span>
+        </div>
+        <div class="summary-row" id="rptPalletTotalRow" style="display: ${showPallet ? 'flex' : 'none'};">
+            <span>파렛트 회수 청구액</span>
+            <span class="summary-value" id="rptPalletFare">${totalPalletFare.toLocaleString()} 원</span>
+        </div>
+        <div class="summary-row">
+            <span>부가세 (10%)</span>
+            <span class="summary-value" id="rptVat">${totalVat.toLocaleString()} 원</span>
+        </div>
+        <div class="summary-row total">
+            <span>계</span>
+            <span class="summary-value" id="rptTotal">${grandTotal.toLocaleString()} 원</span>
+        </div>
+    `;
 }
 
 function openDetailReportModal() {
@@ -2011,8 +1967,65 @@ function closeDetailReportModal() {
     document.getElementById('detailReportSelectModal').classList.add('hidden');
 }
 
-async function generateDetailReportPDF() {
-    const clientFilter = document.getElementById('detailReportClientSelect').value;
+// [새로운 기능/수정 시작] 세부 내역서 테이블 생성용 공통 함수 (PDF 분리/축소 대응)
+function createDetailTableHTML(items, isForExport, totalItems) {
+    let fontSize = '0.8rem';
+    let cellPadding = '10px 6px';
+    
+    if (isForExport) {
+        if (totalItems > 45) {
+            fontSize = '0.6rem';
+            cellPadding = '3px 2px';
+        } else if (totalItems > 25) {
+            fontSize = '0.7rem';
+            cellPadding = '5px 3px';
+        } else {
+            fontSize = '0.75rem';
+            cellPadding = '6px 4px';
+        }
+    }
+
+    return `
+        <table class="report-table" style="font-size: ${fontSize};">
+            <thead>
+                <tr>
+                    <th style="width: 12%; padding: ${cellPadding};">날짜</th>
+                    <th style="width: 28%; padding: ${cellPadding};">상차지</th>
+                    <th style="width: 28%; padding: ${cellPadding};">하차지</th>
+                    <th style="width: 17%; padding: ${cellPadding};">화주/주선</th>
+                    <th style="width: 15%; padding: ${cellPadding};">금액</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${items.length > 0 ? items.map(item => `
+                    <tr>
+                        <td style="padding: ${cellPadding};">${item.dateStr}</td>
+                        <td style="padding: ${cellPadding}; white-space: normal;">${item.loadLoc}</td>
+                        <td style="padding: ${cellPadding}; white-space: normal;">${item.unloadLoc}</td>
+                        <td style="padding: ${cellPadding}; white-space: normal;">${item.client}</td>
+                        <td class="amount" style="padding: ${cellPadding};">${item.fare.toLocaleString()}원</td>
+                    </tr>
+                `).join('') : `<tr><td colspan="5" style="text-align:center; padding: 15px;">해당 내역이 없습니다.</td></tr>`}
+            </tbody>
+        </table>
+    `;
+}
+// [새로운 기능/수정 끝]
+
+// [새로운 기능/수정 시작] PDF 출력 여부를 전달받도록 파라미터 추가
+function viewDetailReport(isForExport) {
+    if (typeof isForExport !== 'boolean') isForExport = false;
+    isDetailReportView = true;
+
+    // 화면 조회일 경우에만 모달에서 선택한 필터값을 갱신 (PDF 출력 시에는 기존 필터값 유지)
+    if (!isForExport) {
+        const selectEl = document.getElementById('detailReportClientSelect');
+        if (selectEl) {
+            currentDetailClientFilter = selectEl.value;
+        }
+    }
+    const clientFilter = currentDetailClientFilter;
+
     const currentYear = viewDate.getFullYear();
     const currentMonth = viewDate.getMonth();
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -2041,67 +2054,56 @@ async function generateDetailReportPDF() {
         }
     }
 
-    const tableHTML = `
-        <table class="report-table" style="font-size: 0.8rem;">
-            <thead>
-                <tr>
-                    <th style="width: 15%;">날짜</th>
-                    <th style="width: 25%;">상차지</th>
-                    <th style="width: 25%;">하차지</th>
-                    <th style="width: 15%;">화주/주선</th>
-                    <th style="width: 20%;">금액</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${detailsList.length > 0 ? detailsList.map(item => `
-                    <tr>
-                        <td>${item.dateStr}</td>
-                        <td style="white-space: normal;">${item.loadLoc}</td>
-                        <td style="white-space: normal;">${item.unloadLoc}</td>
-                        <td style="white-space: normal;">${item.client}</td>
-                        <td class="amount">${item.fare.toLocaleString()}원</td>
-                    </tr>
-                `).join('') : `<tr><td colspan="5" style="text-align:center; padding: 15px;">해당 내역이 없습니다.</td></tr>`}
-            </tbody>
-        </table>
-    `;
+    let tableHTML = '';
 
-    const originalHTML = document.getElementById('reportContentToExport').innerHTML;
+    // PDF 내보내기 시 내용이 길면 2단 분리 및 글씨 축소 적용
+    if (isForExport && detailsList.length > 15) {
+        const half = Math.ceil(detailsList.length / 2);
+        const leftList = detailsList.slice(0, half);
+        const rightList = detailsList.slice(half);
+
+        tableHTML = `
+            <div class="report-split-container">
+                <div class="report-split-column">${createDetailTableHTML(leftList, true, detailsList.length)}</div>
+                <div class="report-split-column">${rightList.length > 0 ? createDetailTableHTML(rightList, true, detailsList.length) : ''}</div>
+            </div>`;
+    } else {
+        tableHTML = createDetailTableHTML(detailsList, isForExport, detailsList.length);
+    }
 
     const clientText = clientFilter === 'ALL' ? '전체' : clientFilter;
-    document.getElementById('reportMonthTitle').textContent = `${currentYear}년 ${currentMonth + 1}월 세부 운송비 내역서 (${clientText})`;
+    document.getElementById('reportMonthTitle').textContent = `${currentYear}년 ${currentMonth + 1}월 운송비 내역서 (${clientText})`;
     document.getElementById('reportTableContainer').innerHTML = tableHTML;
     
+    const vat = Math.round(totalFare * 0.1);
+    const grandTotal = totalFare + vat;
     const summaryBox = document.querySelector('.report-summary-box');
+    
     summaryBox.innerHTML = `
+        <div class="summary-row">
+            <span>기본 운송료</span>
+            <span class="summary-value" id="rptFare">${totalFare.toLocaleString()} 원</span>
+        </div>
+        <div class="summary-row" id="rptPalletTotalRow" style="display: none;">
+            <span>파렛트 회수 청구액</span>
+            <span class="summary-value" id="rptPalletFare">0 원</span>
+        </div>
+        <div class="summary-row">
+            <span>부가세 (10%)</span>
+            <span class="summary-value" id="rptVat">${vat.toLocaleString()} 원</span>
+        </div>
         <div class="summary-row total">
-            <span>총 청구 금액</span>
-            <span class="summary-value">${totalFare.toLocaleString()} 원</span>
+            <span>계</span>
+            <span class="summary-value" id="rptTotal">${grandTotal.toLocaleString()} 원</span>
         </div>
     `;
 
-    closeDetailReportModal();
-    document.body.classList.add('pdf-export-mode');
-
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    const opt = {
-        margin:       [12, 10, 12, 10],
-        filename:     `${currentYear}년_${currentMonth + 1}월_운송비내역서(세부)_${clientText}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    try {
-        await html2pdf().set(opt).from(document.getElementById('reportContentToExport')).save();
-    } finally {
-        document.body.classList.remove('pdf-export-mode');
-        document.getElementById('reportContentToExport').innerHTML = originalHTML;
-        buildReportPage(false); 
+    if (!isForExport) {
+        closeDetailReportModal();
+        showToastMessage("세부 내역서가 조회되었습니다.");
     }
 }
-
+// [새로운 기능/수정 끝]
 
 let editingCarIndex = -1;
 
