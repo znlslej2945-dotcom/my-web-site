@@ -453,19 +453,19 @@ body {
 
 /* [새로운 기능/수정] 글자 크기 0.85rem으로 확대 */
 .work-badge {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     background-color: var(--work-badge-bg);
     color: var(--work-badge-text);
 }
 
 .off-badge {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     background-color: var(--off-badge-bg);
     color: var(--off-badge-text);
 }
 
 .maint-badge {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     background-color: var(--maint-badge-bg);
     color: var(--maint-badge-text);
     margin-top: 2px;
