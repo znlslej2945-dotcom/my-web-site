@@ -152,10 +152,12 @@ function switchCarLog(carNum) {
     if (carNum === 'main') {
         if(bannerImg) bannerImg.style.display = 'inline-block';
         if(bannerTxt) bannerTxt.innerText = '운행 일지';
+        if(bannerTxt) bannerTxt.classList.remove('sub-banner-text'); //
         workData = JSON.parse(localStorage.getItem('workData')) || {};
     } else {
         if(bannerImg) bannerImg.style.display = 'none';
         if(bannerTxt) bannerTxt.innerText = `${getShortCarNum(carNum)} 운행 일지`;
+        if(bannerTxt) bannerTxt.classList.add('sub-banner-text'); //
         workData = JSON.parse(localStorage.getItem('workData_' + carNum)) || {};
     }
     

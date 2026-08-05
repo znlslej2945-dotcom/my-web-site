@@ -329,6 +329,10 @@ body {
     color: #b9b9b9;
 }
 
+.banner-text.sub-banner-text {
+    transform: translateX(22px);
+}
+
 .date-navigator {
     display: flex;
     align-items: center;
