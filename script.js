@@ -8,28 +8,22 @@ let isOffSelected = false;
 let currentTempMaintItems = []; 
 let currentTempCallDetails = []; 
 
-// [새로운 기능/수정] 세부 내역서 화면 상태를 관리하기 위한 변수 추가
 let isDetailReportView = false; 
-// [새로운 기능/수정 시작] 세부 내역서 필터 조건을 PDF 렌더링 시 유지하기 위한 전역 변수
 let currentDetailClientFilter = 'ALL'; 
-// [새로운 기능/수정 끝]
 
 const calendarCells = []; 
-
 let confirmCallback = null;
 
-// [새로운 기능/수정 시작] 금액 축약 (만 단위) 표기 헬퍼 함수
+// 금액 만 단위 축약 표기 헬퍼
 function formatFareShort(amount) {
     if (amount >= 10000) {
-        // 금액을 10000으로 나눈 뒤, Math.round()로 소수점 첫째 자리에서 반올림합니다.
         let man = Math.round(amount / 10000);
         return `${man}만`;
     }
     return `${amount.toLocaleString()}원`;
 }
-// [새로운 기능/수정 끝]
 
-// 공통 설정 호출 및 저장 헬퍼 함수 추가
+// 설정 데이터 핸들러
 function getUserSettings() {
     return JSON.parse(localStorage.getItem('userSettings')) || {};
 }
@@ -62,9 +56,7 @@ function getShortCarNum(carNum) {
 function updateTransportSettingsUI() {
     const settings = getUserSettings();
     const cars = settings.cars || [];
-    
     const hasActiveSubLog = cars.some(car => car.type === 'sub' && car.logEnabled);
-    
     const mainTitle = document.getElementById('mainSettingsTitle');
     
     if (hasActiveSubLog) {
@@ -81,34 +73,23 @@ function renderSubCarMenu() {
     
     const settings = getUserSettings();
     const cars = settings.cars || [];
-    
-    // [새로운 기능/수정 시작]
-    // 보조차량 진입시 메뉴란의 메인운행일지 제거
-    // 기존의 activeLogId !== 'main' 일 때 추가되던 메인 운행일지 버튼(DOM 추가)을 제거했습니다.
-    // [새로운 기능/수정 끝]
 
     cars.forEach(car => {
         if (car.type === 'sub' && car.logEnabled) {
-            // [새로운 기능/수정 시작]
-            // 보조차량 운행일지 진입시 메뉴란에 보조차량이 제거되지 않고 그대로 남아있되, 비활성화(클릭불가/투명도조절) 되도록 수정
             const wrapper = document.createElement('div');
             wrapper.className = 'menu-item-wrapper';
 
             const btn = document.createElement('button');
             btn.className = 'dropdown-item';
-            
             const shortNum = getShortCarNum(car.number);
             
             if (activeLogId === car.number) {
-                // 현재 활성화된 보조차량 메뉴: 클릭 불가 및 시각적 비활성화(흐리게) 처리
                 btn.style.cssText = 'display: flex; align-items: center; gap: 10px; color: var(--sub-text-color); padding-right: 0; opacity: 0.4; cursor: default;';
                 btn.innerHTML = `
                     <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                     ${shortNum} 운행일지
                 `;
-                // 클릭 이벤트를 연결하지 않아 비활성화 상태 유지
             } else {
-                // 다른 보조차량 메뉴: 정상 클릭 가능
                 btn.style.cssText = 'display: flex; align-items: center; gap: 10px; color: var(--sub-text-color); padding-right: 0;';
                 btn.innerHTML = `
                     <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
@@ -116,7 +97,6 @@ function renderSubCarMenu() {
                 `;
                 btn.onclick = () => switchCarLog(car.number);
             }
-            // [새로운 기능/수정 끝]
 
             const gearBtn = document.createElement('button');
             gearBtn.className = 'menu-item-gear';
@@ -152,22 +132,19 @@ function switchCarLog(carNum) {
     if (carNum === 'main') {
         if(bannerImg) bannerImg.style.display = 'inline-block';
         if(bannerTxt) bannerTxt.innerText = '운행 일지';
-        if(bannerTxt) bannerTxt.classList.remove('sub-banner-text'); //
+        if(bannerTxt) bannerTxt.classList.remove('sub-banner-text');
         workData = JSON.parse(localStorage.getItem('workData')) || {};
     } else {
         if(bannerImg) bannerImg.style.display = 'none';
         if(bannerTxt) bannerTxt.innerText = `${getShortCarNum(carNum)} 운행 일지`;
-        if(bannerTxt) bannerTxt.classList.add('sub-banner-text'); //
+        if(bannerTxt) bannerTxt.classList.add('sub-banner-text');
         workData = JSON.parse(localStorage.getItem('workData_' + carNum)) || {};
     }
     
     normalizeLegacyData();
     renderSubCarMenu(); 
     buildCalendar();
-    
-    // [새로운 기능/수정 시작] 뒤로가기 동작(기본 showMain)과 충돌을 피하기 위해 skipRedirect = true 파라미터 전달
     showMain(true);
-    // [새로운 기능/수정 끝]
     
     const menu = document.getElementById('sideMenu');
     const overlay = document.getElementById('sideMenuOverlay');
@@ -381,14 +358,10 @@ function togglePdfMenu() {
     }
 }
 
-// [새로운 기능/수정 시작] 
-// 뒤로가기 시 항상 메인운행일지로 전환하기 위해 skipRedirect 파라미터를 추가했습니다.
 function showMain(skipRedirect = false) {
-    // 모든 화면(설정, 개인정보 등)에서 뒤로가기를 눌러 showMain이 호출될 때, 
-    // 현재 진입한 상태가 메인운행일지가 아니라면 자동으로 메인운행일지로 스위치(강제 리다이렉트)시킵니다.
     if (!skipRedirect && activeLogId !== 'main') {
         switchCarLog('main');
-        return; // switchCarLog 내에서 showMain을 다시 호출하므로 여기서 중단합니다.
+        return;
     }
 
     hideAllPages();
@@ -401,7 +374,6 @@ function showMain(skipRedirect = false) {
 
     document.getElementById('menuReportBtn').style.display = 'flex';
 }
-// [새로운 기능/수정 끝]
 
 function showPersonalInfo() {
     hideAllPages();
@@ -443,7 +415,7 @@ function renderClientList() {
             </div>
             <div class="car-action-btns">
                 <button class="btn-edit" onclick="openClientModal(${idx})">수정</button>
-                <button class="btn-del" style="padding: 10px 14px;" onclick="deleteClient(${idx})">삭제</button>
+                <button class="btn-del" style="padding: 8px 12px;" onclick="deleteClient(${idx})">삭제</button>
             </div>
         `;
         container.appendChild(div);
@@ -604,7 +576,7 @@ function loadCarList() {
                 </div>
                 <div class="car-action-btns">
                     <button class="btn-edit" onclick="editCar(${idx})">수정</button>
-                    <button class="btn-del" style="padding: 10px 14px;" onclick="deleteCar(${idx})">삭제</button>
+                    <button class="btn-del" style="padding: 8px 12px;" onclick="deleteCar(${idx})">삭제</button>
                 </div>
             `;
             container.appendChild(div);
@@ -643,13 +615,13 @@ function handleCarTypeToggle(type) {
     if (type === 'main' && mainToggle.checked) {
         subToggle.checked = false;
         if (mainCount >= 1) {
-            alert('메인 차량이 등록되어 있습니다.');
+            alert('메인 차량이 이미 등록되어 있습니다.');
             mainToggle.checked = false;
         }
     } else if (type === 'sub' && subToggle.checked) {
         mainToggle.checked = false;
         if (subCount >= 3) {
-            alert('보조 차량은 3대까지 등록 가능합니다.');
+            alert('보조 차량은 최대 3대까지 등록 가능합니다.');
             subToggle.checked = false;
         }
     }
@@ -669,7 +641,7 @@ function saveNewCar() {
     const isSub = document.getElementById('subCarToggle').checked;
     
     if (!num) return alert('차량번호를 입력하세요.');
-    if (!isMain && !isSub) return alert('메인 차량 또는 보조 차량 등록을 활성화(ON)해 주세요.');
+    if (!isMain && !isSub) return alert('메인 차량 또는 보조 차량 선택을 활성화해 주세요.');
 
     const carType = isMain ? 'main' : 'sub';
     const settings = getUserSettings();
@@ -779,7 +751,6 @@ function renderMaintList() {
     }
     
     const sortedDates = Object.keys(groupedMaint).sort((a, b) => a.localeCompare(b));
-    
     const container = document.getElementById('maintListContainer');
     container.innerHTML = '';
     
@@ -905,7 +876,7 @@ function goBackFromSettings() {
     if (previousPage === 'report') {
         showReport();
     } else {
-        showMain(); // [새로운 기능/수정] showMain이 자체적으로 뒤로가기 시 메인운행일지로 리다이렉트합니다.
+        showMain();
     }
 }
 
@@ -915,7 +886,6 @@ function showReport() {
 
     const settings = getUserSettings();
     const cars = settings.cars || [];
-    
     const hasActiveSubLog = cars.some(car => car.type === 'sub' && car.logEnabled);
 
     if (hasActiveSubLog) {
@@ -956,7 +926,7 @@ function handleReportBack() {
         isDetailReportView = false;
         buildReportPage(false);
     } else {
-        showMain(); // [새로운 기능/수정] showMain 내에서 뒤로가기 시 무조건 메인운행일지로 리다이렉트 처리됨
+        showMain();
     }
 }
 
@@ -1262,7 +1232,6 @@ function buildCalendar() {
     let monthTotalMaintFare = 0;
 
     const savedSettings = getUserSettings();
-    
     const isMain = activeLogId === 'main';
     const activeFixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
     const activePalletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
@@ -1419,18 +1388,15 @@ function openModal(dateKey, month, day) {
     document.getElementById('modalTitle').textContent = `${month}월 ${day}일 운송 내역 입력`;
 
     const savedSettings = getUserSettings();
-    
     const isMain = activeLogId === 'main';
     const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
     const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
     const callOn = isMain ? savedSettings.callOn : savedSettings.subCallOn;
-    
     const callDetailOn = isMain ? savedSettings.callDetailOn : savedSettings.subCallDetailOn;
     
     document.getElementById('modalFixedSection').style.display = fixedOn ? 'block' : 'none';
     document.getElementById('modalPalletSection').style.display = (fixedOn && palletOn) ? 'block' : 'none';
     document.getElementById('modalCallSection').style.display = callOn ? 'block' : 'none';
-    
     document.getElementById('modalCallDetailSection').style.display = callDetailOn ? 'block' : 'none';
 
     const record = workData[dateKey];
@@ -1687,7 +1653,6 @@ function closeModal() {
 
 function confirmWorkRecord() {
     const savedSettings = getUserSettings();
-    
     const isMain = activeLogId === 'main';
     const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
     const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
@@ -1778,7 +1743,6 @@ function buildReportPage(isForExport = false) {
     document.getElementById('reportMonthTitle').textContent = `${currentYear}년 ${currentMonth + 1}월 운송비 내역서`;
 
     const savedSettings = getUserSettings();
-    
     let rptName = savedSettings.userName || '-';
     let rptPhone = savedSettings.userPhone || '-';
     let rptBank = savedSettings.bankName || '-';
@@ -1823,7 +1787,6 @@ function buildReportPage(isForExport = false) {
     const isMain = activeLogId === 'main';
     const fixedUnitPrice = parseCurrencyValue(isMain ? savedSettings.unitPrice : savedSettings.subUnitPrice);
     const palletUnitPrice = parseCurrencyValue(isMain ? savedSettings.palletPrice : savedSettings.subPalletPrice);
-    
     const showPallet = !!((isMain ? savedSettings.fixedOn : savedSettings.subFixedOn) && (isMain ? savedSettings.palletOn : savedSettings.subPalletOn));
 
     let workList = [];
@@ -1939,7 +1902,6 @@ function openDetailReportModal() {
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
     
     const clientSet = new Set();
-    
     const settings = getUserSettings();
     if (settings.clients) {
         settings.clients.forEach(c => clientSet.add(c.companyName));
@@ -2189,6 +2151,7 @@ function editCar(idx) {
     document.getElementById('carModal').classList.remove('hidden');
 }
 
+// 앱 초기화 구문
 normalizeLegacyData(); 
 loadSettings();
 initDateSelects();

@@ -8,32 +8,27 @@
     <!-- PDF 저장용 라이브러리 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-    <!-- 분리된 외부 CSS 연결 -->
+    <!-- 외부 CSS 연결 -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div class="container" id="appContent">
 
-        <!-- [기존 부분 유지: 보조 운행일지 달력 진입 시 사용할 뒤로가기 버튼 추가] -->
-        <!-- 기본적으로 숨김 처리(display: none)되며, 메인 로고와 대칭되도록 왼쪽 상단에 배치 -->
+        <!-- 메인으로 돌아가기 버튼 (보조차량 전용) -->
         <button id="subCarBackBtn" class="icon-btn sub-car-back-btn" onclick="switchCarLog('main')" title="메인으로 돌아가기" style="display: none;">
             <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
         </button>
         
+        <!-- 상단 컨트롤 버튼 그룹 -->
         <div class="top-btn-group">
-            <!-- [새로운 기능/수정 시작] 세부 입력 기능 ON 시 보여지는 화살표 모양의 드롭다운 컨테이너 -->
             <div id="pdfDropdownGroup" style="display: none; position: relative;">
-                <!-- 아래 화살표 버튼 -->
                 <button id="pdfDropdownToggleBtn" class="icon-btn" onclick="togglePdfMenu()" title="내역서 다운로드 메뉴">
                     <svg viewBox="0 0 24 24">
                         <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
                 </button>
-                <!-- 세부 메뉴 (일반 PDF 아이콘 & 세부 내역서 아이콘) -->
                 <div id="pdfMenuDropdown" class="pdf-menu-dropdown">
-                    <!-- [새로운 기능/수정] 1. 순서 변경(세부내역서 -> 일반PDF) 및 2. 미니서류모양 SVG 적용 -->
-                    <!-- 세부 내역서 아이콘 -->
                     <button class="icon-btn" onclick="openDetailReportModal(); togglePdfMenu();" title="세부 내역서 조회">
                         <svg viewBox="0 0 24 24">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -43,7 +38,6 @@
                             <polyline points="10 9 9 9 8 9"></polyline>
                         </svg>
                     </button>
-                    <!-- 기존 PDF 아이콘 (일반 내역서) -->
                     <button class="icon-btn" onclick="downloadPDF(); togglePdfMenu();" title="현재 화면 PDF 다운로드">
                         <svg viewBox="0 0 24 24">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -55,7 +49,6 @@
                 </div>
             </div>
             
-            <!-- [새로운 기능/수정 끝] 기능 OFF 시 기존에 단일로 보여지는 PDF 다운로드 버튼 -->
             <button id="pdfDownloadBtn" class="icon-btn" onclick="downloadPDF()" title="PDF 다운로드" style="display: none;">
                 <svg viewBox="0 0 24 24">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -65,7 +58,6 @@
                 </svg>
             </button>
 
-            <!-- 우측 스크롤 메뉴를 여는 버튼 -->
             <button class="icon-btn" onclick="toggleMenu()" title="메뉴">
                 <svg viewBox="0 0 24 24">
                     <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -75,23 +67,22 @@
             </button>
         </div>
 
-        <!-- 우측 목록 스크롤 메뉴 -->
+        <!-- 사이드 메뉴 -->
         <div id="sideMenuOverlay" class="side-menu-overlay" onclick="toggleMenu()"></div>
         <div id="sideMenu" class="side-menu">
-<div class="side-menu-header">
-    <div class="menu-banner-wrap">
-        <img src="banner_image_Light.png" class="menu-banner-light" style="height: 70px; object-fit: contain;">
-        <img src="banner_image_dark.png" class="menu-banner-dark" style="height: 70px; object-fit: contain;">
-    </div>
-    
-    <!-- 개인정보 아이콘 -->
-    <button class="icon-btn" onclick="showPersonalInfo()" style="padding: 6px; min-width: auto; min-height: auto;" title="개인정보">
-        <svg viewBox="0 0 24 24" style="width: 22px; height: 22px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round;">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-        </svg>
-    </button>
-</div>
+            <div class="side-menu-header">
+                <div class="menu-banner-wrap">
+                    <img src="banner_image_Light.png" class="menu-banner-light" style="height: 70px; object-fit: contain;">
+                    <img src="banner_image_dark.png" class="menu-banner-dark" style="height: 70px; object-fit: contain;">
+                </div>
+                
+                <button class="icon-btn" onclick="showPersonalInfo()" style="padding: 6px; min-width: auto; min-height: auto;" title="개인정보">
+                    <svg viewBox="0 0 24 24" style="width: 22px; height: 22px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round;">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </button>
+            </div>
             
             <button class="dropdown-item" onclick="showCarManagement()" style="display: flex; align-items: center; gap: 10px;">
                 <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
@@ -186,19 +177,13 @@
             </div>
         </div>
 
-       <!-- [운송비 내역서 페이지] -->
+        <!-- [운송비 내역서 페이지] -->
         <div id="reportPage" class="page hidden">
             <div class="settings-header">
-                <!-- [새로운 기능/수정 시작] onclick="showMain()" -> "handleReportBack()"으로 변경하여 뒤로가기 동작 분기 처리 -->
                 <button class="icon-btn" onclick="handleReportBack()" title="뒤로가기">
                     <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 </button>
-                <!-- [새로운 기능/수정 끝] -->
-                
-                <!-- [새로운 기능/수정 시작] 상단 중앙의 운송비 내역서 타이틀 텍스트 제거 (레이아웃 유지를 위해 빈 div 유지) -->
                 <div class="settings-title"></div>
-                <!-- [새로운 기능/수정 끝] -->
-                
                 <div style="width: 40px;"></div>
             </div>
 
@@ -229,12 +214,10 @@
                 <div id="reportTableContainer"></div>
 
                 <div class="report-summary-box">
-                    <!-- [새로운 기능/수정 시작] 텍스트 변경: 운송료 합계 -> 기본 운송료 -->
                     <div class="summary-row">
                         <span>기본 운송료</span>
                         <span class="summary-value" id="rptFare">0 원</span>
                     </div>
-                    <!-- [새로운 기능/수정 끝] -->
                     <div class="summary-row" id="rptPalletTotalRow">
                         <span>파렛트 회수 청구액</span>
                         <span class="summary-value" id="rptPalletFare">0 원</span>
@@ -243,12 +226,10 @@
                         <span>부가세 (10%)</span>
                         <span class="summary-value" id="rptVat">0 원</span>
                     </div>
-                    <!-- [새로운 기능/수정 시작] 텍스트 변경: 총 청구 금액 -> 계 -->
                     <div class="summary-row total">
                         <span>계</span>
                         <span class="summary-value" id="rptTotal">0 원</span>
                     </div>
-                    <!-- [새로운 기능/수정 끝] -->
                 </div>
             </div>
         </div>
@@ -267,27 +248,21 @@
                 <h3>기본 정보 설정</h3>
                 <div class="form-group">
                     <label for="userName">성명</label>
-                    <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 savePersonalInfo() 추가 -->
                     <input type="text" id="userName" class="input-box" placeholder="성명을 입력하세요" oninput="savePersonalInfo()">
                 </div>
                 <div class="form-group">
                     <label for="userPhone">연락처</label>
-                    <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 savePersonalInfo() 추가 -->
                     <input type="tel" id="userPhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this); savePersonalInfo()">
                 </div>
                 <div class="form-group">
                     <label for="bankName">입금 은행</label>
-                    <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 savePersonalInfo() 추가 -->
                     <input type="text" id="bankName" class="input-box" placeholder="예: OO은행" oninput="savePersonalInfo()">
                 </div>
                 <div class="form-group">
                     <label for="accountNumber">계좌번호</label>
-                    <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 savePersonalInfo() 추가 -->
                     <input type="text" id="accountNumber" class="input-box" inputmode="numeric" placeholder="계좌번호 입력" oninput="savePersonalInfo()">
                 </div>
             </div>
-
-            <!-- [새로운 기능/수정] 개인정보 저장 버튼 삭제 -->
         </div>
 
         <!-- [차량 관리 페이지] -->
@@ -382,9 +357,7 @@
                 <div class="setting-item">
                     <label>달력 일일 표시 방식</label>
                     <div style="display: flex; gap: 4px; background-color: var(--input-bg); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onclick 속성에 saveSettings() 추가 -->
                         <button type="button" id="btnInputModeCount" class="toggle-btn active-work" style="min-width: 60px; min-height: 28px; padding: 4px 8px; font-size: 0.8rem; margin: 0; border: none; border-radius: 6px; white-space: nowrap;" onclick="setInputMode('count', 'main'); saveSettings();">횟수</button>
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onclick 속성에 saveSettings() 추가 -->
                         <button type="button" id="btnInputModeFare" class="toggle-btn" style="min-width: 60px; min-height: 28px; padding: 4px 8px; font-size: 0.8rem; margin: 0; border: none; border-radius: 6px; white-space: nowrap;" onclick="setInputMode('fare', 'main'); saveSettings();">금액</button>
                     </div>
                 </div>
@@ -392,7 +365,6 @@
                 <div class="setting-item">
                     <label for="fixedToggle">고정 노선 사용</label>
                     <label class="switch">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                         <input type="checkbox" id="fixedToggle" onchange="toggleFixedSubSettings(); saveSettings();">
                         <span class="slider"></span>
                     </label>
@@ -400,21 +372,18 @@
                 <div id="fixedSubSettings" class="sub-setting-group" style="display: none;">
                     <div class="price-setting">
                         <label for="unitPrice">고정 기본 단가 (원)</label>
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 saveSettings() 추가 -->
                         <input type="text" id="unitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();">
                     </div>
                     
                     <div class="setting-item" style="margin-top: 10px;">
                         <label for="palletToggle">파렛트 회수 사용</label>
                         <label class="switch">
-                            <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                             <input type="checkbox" id="palletToggle" onchange="togglePalletSubSettings(); saveSettings();">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div id="palletSubSettings" class="price-setting" style="display: none;">
                         <label for="palletPrice">파렛트 단가 (원)</label>
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 saveSettings() 추가 -->
                         <input type="text" id="palletPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();">
                     </div>
                 </div>
@@ -424,7 +393,6 @@
                 <div class="setting-item">
                     <label for="callToggle">용차(수시/일회성) 사용</label>
                     <label class="switch">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                         <input type="checkbox" id="callToggle" onchange="saveSettings();">
                         <span class="slider"></span>
                     </label>
@@ -435,7 +403,6 @@
                 <div class="setting-item">
                     <label for="callDetailToggle">운행 일지 세부 입력</label>
                     <label class="switch">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                         <input type="checkbox" id="callDetailToggle" onchange="saveSettings();">
                         <span class="slider"></span>
                     </label>
@@ -456,13 +423,10 @@
                     </button>
                 </div>
                 <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importData(event)">
-                
-                <!-- [새로운 기능/수정] 설정 초기화 버튼 삭제 -->
             </div>
-
-            <!-- [새로운 기능/수정] 설정 저장하기 버튼 삭제 -->
         </div>
 
+        <!-- [보조 운행일지 설정 페이지] -->
         <div id="subCarSettingsPage" class="page hidden">
             <div class="settings-header">
                 <button class="icon-btn" onclick="goBackFromSettings()" title="뒤로가기">
@@ -478,17 +442,14 @@
                 <div class="setting-item">
                     <label>달력 일일 표시 방식</label>
                     <div style="display: flex; gap: 4px; background-color: var(--input-bg); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onclick 속성에 saveSettings() 추가 -->
                         <button type="button" id="btnSubInputModeCount" class="toggle-btn active-work" style="min-width: 60px; min-height: 28px; padding: 4px 8px; font-size: 0.8rem; margin: 0; border: none; border-radius: 6px; white-space: nowrap;" onclick="setInputMode('count', 'sub'); saveSettings();">횟수</button>
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onclick 속성에 saveSettings() 추가 -->
-                        <button type="button" id="btnSubInputModeFare" class="toggle-btn" style="min-width: 60px; min-height: 28px; padding: 4px 8px; font-size: 0.8rem; margin: 0; border: none; border-radius: 6px; white-space: nowrap;" onclick="setInputMode('fare', 'sub'); saveSettings();">운송료</button>
+                        <button type="button" id="btnSubInputModeFare" class="toggle-btn" style="min-width: 60px; min-height: 28px; padding: 4px 8px; font-size: 0.8rem; margin: 0; border: none; border-radius: 6px; white-space: nowrap;" onclick="setInputMode('fare', 'sub'); saveSettings();">금액</button>
                     </div>
                 </div>
 
                 <div class="setting-item">
                     <label for="subFixedToggle">고정 노선 사용</label>
                     <label class="switch">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                         <input type="checkbox" id="subFixedToggle" onchange="toggleSubFixedSettings(); saveSettings();">
                         <span class="slider"></span>
                     </label>
@@ -497,21 +458,18 @@
                 <div id="subFixedSubSettings" class="sub-setting-group" style="display: none;">
                     <div class="price-setting">
                         <label for="subUnitPrice">고정 기본 단가 (원)</label>
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 saveSettings() 추가 -->
                         <input type="text" id="subUnitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();">
                     </div>
 
                     <div class="setting-item" style="margin-top: 10px;">
                         <label for="subPalletToggle">파렛트 회수 사용</label>
                         <label class="switch">
-                            <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                             <input type="checkbox" id="subPalletToggle" onchange="toggleSubPalletSubSettings(); saveSettings();">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div id="subPalletSubSettings" class="price-setting" style="display: none;">
                         <label for="subPalletPrice">파렛트 단가 (원)</label>
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 oninput 속성에 saveSettings() 추가 -->
                         <input type="text" id="subPalletPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();">
                     </div>
                 </div>
@@ -521,7 +479,6 @@
                 <div class="setting-item">
                     <label for="subCallToggle">용차(수시/일회성) 사용</label>
                     <label class="switch">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                         <input type="checkbox" id="subCallToggle" onchange="saveSettings();">
                         <span class="slider"></span>
                     </label>
@@ -532,14 +489,11 @@
                 <div class="setting-item">
                     <label for="subCallDetailToggle">운행 일지 세부 입력</label>
                     <label class="switch">
-                        <!-- [새로운 기능/수정] 바로 적용을 위해 onchange 속성에 saveSettings() 추가 -->
                         <input type="checkbox" id="subCallDetailToggle" onchange="saveSettings();">
                         <span class="slider"></span>
                     </label>
                 </div>
             </div>
-
-            <!-- [새로운 기능/수정] 설정 저장하기 버튼 삭제 -->
         </div>
 
     </div>
@@ -616,17 +570,13 @@
             <div style="display: flex; gap: 10px; margin-bottom: 14px;">
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                     <label style="color: var(--primary-color); font-weight: 700;">상차지</label>
-                    <!-- [새로운 기능/수정 시작] 상차지 자동완성 list 연결 및 datalist 추가 -->
                     <input type="text" id="callLoadLoc" list="loadLocList" class="input-box" placeholder="상차지 입력" style="background-color: var(--hover-bg);">
                     <datalist id="loadLocList"></datalist>
-                    <!-- [새로운 기능/수정 끝] -->
                 </div>
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                     <label style="color: var(--sunday-color); font-weight: 700;">하차지</label>
-                    <!-- [새로운 기능/수정 시작] 하차지 자동완성 list 연결 및 datalist 추가 -->
                     <input type="text" id="callUnloadLoc" list="unloadLocList" class="input-box" placeholder="하차지 입력" style="background-color: var(--hover-bg);">
                     <datalist id="unloadLocList"></datalist>
-                    <!-- [새로운 기능/수정 끝] -->
                 </div>
             </div>
 
@@ -662,12 +612,10 @@
             <div class="form-group">
                 <label>화주/주선 업체 선택</label>
                 <select id="detailReportClientSelect" class="input-box">
-                    <!-- 스크립트에서 자동 생성됨 -->
                 </select>
             </div>
             <div class="modal-btns">
                 <button class="modal-btn cancel" onclick="closeDetailReportModal()">취소</button>
-                <!-- [새로운 기능/수정] 3. 출력 버튼 제거 및 조회 화면 전환 버튼만 남김 -->
                 <button class="modal-btn confirm" style="background-color: var(--primary-color);" onclick="viewDetailReport()">조회 (화면)</button>
             </div>
         </div>
@@ -842,6 +790,7 @@
         </div>
     </div>
 
+    <!-- 확인/경고 공통 모달 -->
     <div id="confirmModal" class="modal-overlay hidden">
         <div class="modal-content" style="max-width: 320px; text-align: center;">
             <div class="modal-title" style="color: var(--sunday-color); margin-bottom: 20px;">경고</div>
@@ -853,9 +802,10 @@
         </div>
     </div>
 
+    <!-- 토스트 알림 메시지 -->
     <div id="toastMessage" class="toast-message">저장되었습니다.</div>
 
-    <!-- 분리된 외부 JS 연결 -->
+    <!-- 외부 JS 연결 -->
     <script src="script.js"></script>
 </body>
 </html>
