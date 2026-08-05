@@ -37,9 +37,9 @@
     --hover-bg: #2a2a2a;
     --primary-color: #63b3ed;
     --icon-color: #cccccc;
-    --work-badge-bg: #f1dda0ec;
+    --work-badge-bg: #f6e8c0ec;
     --work-badge-text: #3E2723;
-    --off-badge-bg: #e7a3a3;
+    --off-badge-bg: #ebb7b7;
     --off-badge-text: #2A0036;
     --maint-badge-bg: #e55353;
     --maint-badge-text: #ffffff;
@@ -449,11 +449,6 @@ body {
     line-height: 1.2;
     white-space: nowrap;
     letter-spacing: -0.5px;
-    max-width: 95%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: inline-block;
-    text-align: center;
 }
 
 /* [새로운 기능/수정] 글자 크기 0.85rem으로 확대 */
