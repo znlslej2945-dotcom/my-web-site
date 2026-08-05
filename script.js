@@ -21,8 +21,9 @@ let confirmCallback = null;
 // [새로운 기능/수정 시작] 금액 축약 (만 단위) 표기 헬퍼 함수
 function formatFareShort(amount) {
     if (amount >= 10000) {
-        let man = amount / 10000;
-        return (man % 1 === 0) ? `${man}만` : `${man.toFixed(1).replace(/\.0$/, '')}만`;
+        // 금액을 10000으로 나눈 뒤, Math.round()로 소수점 첫째 자리에서 반올림합니다.
+        let man = Math.round(amount / 10000);
+        return `${man}만`;
     }
     return `${amount.toLocaleString()}원`;
 }
