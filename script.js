@@ -1471,7 +1471,8 @@ function buildCalendar() {
         if (currentCar && currentCar.logEnabled && currentCar.commission) {
             const commPercent = parseFloat(currentCar.commission);
             if (!isNaN(commPercent) && commPercent > 0) {
-                subCarComm = Math.floor((monthTotalFare + monthTotalPalletFare) * (commPercent / 100));
+                // 수정된 수식: 기본 운송료 및 파렛트 요금 합계에서 화주/업체 수수료를 차감한 후 계산
+                subCarComm = Math.floor((monthTotalFare + monthTotalPalletFare - monthTotalCommission) * (commPercent / 100));
                 subCarCommLabel = `${getShortCarNum(currentCar.number)} 차량 ${commPercent}%`;
             }
         }
@@ -2069,18 +2070,21 @@ function buildReportPage(isForExport = false) {
         if (currentCar && currentCar.logEnabled && currentCar.commission) {
             const commPercent = parseFloat(currentCar.commission);
             if (!isNaN(commPercent) && commPercent > 0) {
-                subCarComm = Math.floor((totalFare + totalPalletFare) * (commPercent / 100));
+                // 수정된 수식: 기본 운송료 및 파렛트 요금 합계에서 화주/업체 수수료를 차감한 후 계산
+                subCarComm = Math.floor((totalFare + totalPalletFare - totalCommission) * (commPercent / 100));
                 subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
             }
         }
     }
 
-    const totalVat = Math.round(totalFare * 0.1);
-    const grandTotal = totalFare + totalVat;
+    const totalVat = Math.round((totalFare + totalPalletFare) * 0.1);
+    
+    // 숨겨진 수수료들도 계에서 정상 차감되도록 수식 반영
+    const grandTotal = totalFare + totalPalletFare - totalCommission - subCarComm + totalVat;
 
     const summaryBox = document.querySelector('.report-summary-box');
     
-    // 이외금지
+    // 이외금지 (기본운송료 -> 부가세 -> 계 순서 외에 표출 제한)
     summaryBox.innerHTML = `
         <div class="summary-row">
             <span>기본 운송료</span>
@@ -2269,17 +2273,21 @@ function viewDetailReport(isForExport) {
         if (currentCar && currentCar.logEnabled && currentCar.commission) {
             const commPercent = parseFloat(currentCar.commission);
             if (!isNaN(commPercent) && commPercent > 0) {
-                subCarComm = Math.floor(totalFare * (commPercent / 100));
+                // 수정된 수식: 기본 운송료에서 화주/업체 수수료를 차감한 후 계산
+                subCarComm = Math.floor((totalFare - totalCommission) * (commPercent / 100));
                 subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
             }
         }
     }
 
     const vat = Math.round(totalFare * 0.1);
-    const grandTotal = totalFare + vat;
+    
+    // 숨겨진 수수료들도 계에서 정상 차감되도록 수식 반영
+    const grandTotal = totalFare - totalCommission - subCarComm + vat;
+
     const summaryBox = document.querySelector('.report-summary-box');
     
-    // 이외금지
+    // 이외금지 (기본운송료 -> 부가세 -> 계 순서 외에 표출 제한)
     summaryBox.innerHTML = `
         <div class="summary-row">
             <span>기본 운송료</span>
