@@ -1225,6 +1225,9 @@ function buildCalendar() {
 
     const firstDay = new Date(currentYear, currentMonth, 1).getDay();
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
+    
+    const totalWeeks = Math.ceil((firstDay + lastDate) / 7);
+    const totalVisibleCells = totalWeeks * 7;
 
     let monthTotalWork = 0;
     let monthTotalFare = 0;
@@ -1243,6 +1246,13 @@ function buildCalendar() {
 
     for (let i = 0; i < calendarCells.length; i++) {
         const cell = calendarCells[i];
+        
+        if (i >= totalVisibleCells) {
+            cell.style.display = 'none';
+        } else {
+            cell.style.display = 'flex';
+        }
+
         const dateText = cell.querySelector('.cell-date-text');
         
         const oldBadges = cell.querySelectorAll('.work-badge, .off-badge, .maint-badge');
