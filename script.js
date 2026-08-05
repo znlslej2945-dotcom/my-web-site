@@ -82,50 +82,56 @@ function renderSubCarMenu() {
     const settings = getUserSettings();
     const cars = settings.cars || [];
     
-    if (activeLogId !== 'main') {
-        const mainBtn = document.createElement('button');
-        mainBtn.className = 'dropdown-item';
-        mainBtn.style.cssText = 'display: flex; align-items: center; gap: 10px; color: var(--primary-color); font-weight: 600;';
-        mainBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-            메인 운행일지
-        `;
-        mainBtn.onclick = () => switchCarLog('main');
-        container.appendChild(mainBtn);
-    }
+    // [새로운 기능/수정 시작]
+    // 보조차량 진입시 메뉴란의 메인운행일지 제거
+    // 기존의 activeLogId !== 'main' 일 때 추가되던 메인 운행일지 버튼(DOM 추가)을 제거했습니다.
+    // [새로운 기능/수정 끝]
 
     cars.forEach(car => {
         if (car.type === 'sub' && car.logEnabled) {
-            if (activeLogId !== car.number) {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'menu-item-wrapper';
+            // [새로운 기능/수정 시작]
+            // 보조차량 운행일지 진입시 메뉴란에 보조차량이 제거되지 않고 그대로 남아있되, 비활성화(클릭불가/투명도조절) 되도록 수정
+            const wrapper = document.createElement('div');
+            wrapper.className = 'menu-item-wrapper';
 
-                const btn = document.createElement('button');
-                btn.className = 'dropdown-item';
+            const btn = document.createElement('button');
+            btn.className = 'dropdown-item';
+            
+            const shortNum = getShortCarNum(car.number);
+            
+            if (activeLogId === car.number) {
+                // 현재 활성화된 보조차량 메뉴: 클릭 불가 및 시각적 비활성화(흐리게) 처리
+                btn.style.cssText = 'display: flex; align-items: center; gap: 10px; color: var(--sub-text-color); padding-right: 0; opacity: 0.4; cursor: default;';
+                btn.innerHTML = `
+                    <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                    ${shortNum} 운행일지
+                `;
+                // 클릭 이벤트를 연결하지 않아 비활성화 상태 유지
+            } else {
+                // 다른 보조차량 메뉴: 정상 클릭 가능
                 btn.style.cssText = 'display: flex; align-items: center; gap: 10px; color: var(--sub-text-color); padding-right: 0;';
-                
-                const shortNum = getShortCarNum(car.number);
                 btn.innerHTML = `
                     <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                     ${shortNum} 운행일지
                 `;
                 btn.onclick = () => switchCarLog(car.number);
-
-                const gearBtn = document.createElement('button');
-                gearBtn.className = 'menu-item-gear';
-                gearBtn.title = "보조 운행일지 설정";
-                gearBtn.innerHTML = `
-                    <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                `;
-                gearBtn.onclick = (e) => {
-                    e.stopPropagation(); 
-                    showSubCarSettings(car.number);
-                };
-
-                wrapper.appendChild(btn);
-                wrapper.appendChild(gearBtn);
-                container.appendChild(wrapper);
             }
+            // [새로운 기능/수정 끝]
+
+            const gearBtn = document.createElement('button');
+            gearBtn.className = 'menu-item-gear';
+            gearBtn.title = "보조 운행일지 설정";
+            gearBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            `;
+            gearBtn.onclick = (e) => {
+                e.stopPropagation(); 
+                showSubCarSettings(car.number);
+            };
+
+            wrapper.appendChild(btn);
+            wrapper.appendChild(gearBtn);
+            container.appendChild(wrapper);
         }
     });
 }
@@ -156,7 +162,10 @@ function switchCarLog(carNum) {
     normalizeLegacyData();
     renderSubCarMenu(); 
     buildCalendar();
-    showMain();
+    
+    // [새로운 기능/수정 시작] 뒤로가기 동작(기본 showMain)과 충돌을 피하기 위해 skipRedirect = true 파라미터 전달
+    showMain(true);
+    // [새로운 기능/수정 끝]
     
     const menu = document.getElementById('sideMenu');
     const overlay = document.getElementById('sideMenuOverlay');
@@ -370,7 +379,16 @@ function togglePdfMenu() {
     }
 }
 
-function showMain() {
+// [새로운 기능/수정 시작] 
+// 뒤로가기 시 항상 메인운행일지로 전환하기 위해 skipRedirect 파라미터를 추가했습니다.
+function showMain(skipRedirect = false) {
+    // 모든 화면(설정, 개인정보 등)에서 뒤로가기를 눌러 showMain이 호출될 때, 
+    // 현재 진입한 상태가 메인운행일지가 아니라면 자동으로 메인운행일지로 스위치(강제 리다이렉트)시킵니다.
+    if (!skipRedirect && activeLogId !== 'main') {
+        switchCarLog('main');
+        return; // switchCarLog 내에서 showMain을 다시 호출하므로 여기서 중단합니다.
+    }
+
     hideAllPages();
     document.getElementById('mainPage').classList.remove('hidden');
     
@@ -381,6 +399,7 @@ function showMain() {
 
     document.getElementById('menuReportBtn').style.display = 'flex';
 }
+// [새로운 기능/수정 끝]
 
 function showPersonalInfo() {
     hideAllPages();
@@ -884,7 +903,7 @@ function goBackFromSettings() {
     if (previousPage === 'report') {
         showReport();
     } else {
-        showMain();
+        showMain(); // [새로운 기능/수정] showMain이 자체적으로 뒤로가기 시 메인운행일지로 리다이렉트합니다.
     }
 }
 
@@ -935,7 +954,7 @@ function handleReportBack() {
         isDetailReportView = false;
         buildReportPage(false);
     } else {
-        showMain();
+        showMain(); // [새로운 기능/수정] showMain 내에서 뒤로가기 시 무조건 메인운행일지로 리다이렉트 처리됨
     }
 }
 
