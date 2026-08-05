@@ -10,6 +10,19 @@
 
     <!-- 외부 CSS 연결 -->
     <link rel="stylesheet" href="style.css">
+    
+    <!-- 추가 스타일 (보조차량 수수료 칩) -->
+    <style>
+        .sub-commission-chip {
+            background-color: #276749 !important;
+            color: #F0FFF4 !important;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+    </style>
 </head>
 <body>
 
@@ -155,6 +168,15 @@
                     <span>기본 운송료</span>
                     <span class="summary-value" id="summaryFare">0 원</span>
                 </div>
+                <div class="summary-row" id="summaryCommissionRow" style="display: none;">
+                    <span>화주/업체 수수료</span>
+                    <span class="summary-value commission-chip" id="summaryCommissionFare">- 0 원</span>
+                </div>
+                <!-- 보조차량 수수료 행 추가 -->
+                <div class="summary-row" id="summarySubCarCommissionRow" style="display: none;">
+                    <span><span id="summarySubCarCommissionLabel">보조차량 수수료</span></span>
+                    <span class="summary-value sub-commission-chip" id="summarySubCarCommissionFare">- 0 원</span>
+                </div>
                 <div class="summary-row" id="summaryPalletRow" style="display: none;">
                     <span>파렛트 회수 청구액</span>
                     <span class="summary-value" id="summaryPalletFare">0 원</span>
@@ -217,6 +239,15 @@
                     <div class="summary-row">
                         <span>기본 운송료</span>
                         <span class="summary-value" id="rptFare">0 원</span>
+                    </div>
+                    <div class="summary-row" id="rptCommissionRow" style="display: none;">
+                        <span>화주/업체 수수료</span>
+                        <span class="summary-value commission-chip" id="rptCommissionFare">- 0 원</span>
+                    </div>
+                    <!-- 보조차량 수수료 내역 추가 -->
+                    <div class="summary-row" id="rptSubCarCommissionRow" style="display: none;">
+                        <span><span id="rptSubCarCommissionLabel">보조차량 수수료</span></span>
+                        <span class="summary-value sub-commission-chip" id="rptSubCarCommissionFare">- 0 원</span>
                     </div>
                     <div class="summary-row" id="rptPalletTotalRow">
                         <span>파렛트 회수 청구액</span>
@@ -582,12 +613,15 @@
 
             <div class="form-group" style="background-color: var(--hover-bg); padding: 14px; border-radius: 10px; margin-bottom: 14px;">
                 <label style="font-size: 0.95rem; font-weight: 700;">운송료 (원)</label>
-                <input type="text" id="callDetailFare" class="input-box" inputmode="numeric" placeholder="운송료 입력" oninput="formatCurrencyInput(this)" style="font-size: 1.15rem; font-weight: bold; color: var(--primary-color); background-color: var(--input-bg);">
+                <input type="text" id="callDetailFare" class="input-box" inputmode="numeric" placeholder="운송료 입력" oninput="formatCurrencyInput(this); calculateCallDetailComm();" style="font-size: 1.15rem; font-weight: bold; color: var(--primary-color); background-color: var(--input-bg);">
+                <div id="callDetailCommInfo" style="display:none; margin-top: 8px; font-size: 0.85rem; color: var(--sunday-color); text-align: right;">
+                    수수료 <span id="callDetailCommText">0</span>원 차감 ➔ 최종 <span id="callDetailNetFare" style="font-weight: bold;">0</span>원
+                </div>
             </div>
 
             <div class="form-group" style="margin-bottom: 14px;">
                 <label style="font-weight: 700;">화주/주선 업체</label>
-                <input type="text" id="callClient" list="clientDataList" class="input-box" placeholder="업체 직접입력 또는 선택">
+                <input type="text" id="callClient" list="clientDataList" class="input-box" placeholder="업체 직접입력 또는 선택" oninput="calculateCallDetailComm();" onchange="calculateCallDetailComm();">
                 <datalist id="clientDataList"></datalist>
             </div>
             
@@ -713,6 +747,11 @@
                 </div>
 
                 <div id="newLogSettings" class="sub-setting-group" style="display: none;">
+                    <div class="setting-item" style="margin-bottom: 15px; border-bottom: 1px dashed var(--border-color); padding-bottom: 15px;">
+                        <label for="newCarCommission">수수료율 (%)</label>
+                        <input type="text" id="newCarCommission" class="input-box" inputmode="numeric" placeholder="%" oninput="formatCommValue(this)" style="width: 100px; text-align: right;">
+                    </div>
+
                     <label style="font-size: 0.85rem; font-weight: 600; color: var(--sub-text-color); margin-bottom: 8px; display: block;">개인정보 설정</label>
                     <div class="btn-group-toggle">
                         <button type="button" id="btnUseExistingInfo" class="toggle-btn active-work" onclick="selectInfoType('existing')">기존 정보 사용</button>
@@ -781,6 +820,27 @@
                 <input type="tel" id="clientPhone" class="input-box" placeholder="연락처 입력" oninput="formatPhoneNumber(this)">
             </div>
             
+            <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
+            
+            <div class="setting-item">
+                <label for="clientCommToggle">수수료 적용</label>
+                <label class="switch">
+                    <input type="checkbox" id="clientCommToggle" onchange="toggleClientComm()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div id="clientCommSection" style="display: none; background-color: var(--hover-bg); padding: 12px; border-radius: 12px; margin-bottom: 14px;">
+                <div class="btn-group-toggle" style="margin-bottom: 12px;">
+                    <button type="button" id="btnCommTypePercent" class="toggle-btn active-work" onclick="setClientCommType('percent')">퍼센트 (%)</button>
+                    <button type="button" id="btnCommTypeDirect" class="toggle-btn" onclick="setClientCommType('direct')">직접입력 (원)</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div id="commLabel" style="font-weight: 700; font-size: 0.9rem; white-space: nowrap;">수수료율 (%)</div>
+                    <input type="text" id="clientCommValue" class="input-box" inputmode="numeric" placeholder="비율(%) 입력" oninput="formatClientCommValue(this)" style="flex: 1;">
+                </div>
+            </div>
+            <input type="hidden" id="clientCommType" value="percent">
+
             <input type="hidden" id="clientEditIndex" value="-1">
             
             <div class="modal-btns">

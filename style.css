@@ -215,16 +215,15 @@ body {
 
 .menu-banner-light {
     position: relative;
-    top: 9px;    /* 위에서부터 아래로 10px 이동 */
-    left: -15px;   /* 왼쪽에서부터 오른쪽으로 10px 이동 */
+    top: 9px;
+    left: -15px;
 }
 
 .menu-banner-dark {
     position: relative;
-    top: 9px;    /* 위에서부터 아래로 10px 이동 */
-    left: -15px;   /* 왼쪽에서부터 오른쪽으로 10px 이동 */
+    top: 9px;
+    left: -15px;
 }
-
 
 .menu-banner-dark {
     display: none;
@@ -364,9 +363,8 @@ body {
     height: 52px; 
     object-fit: contain;
     pointer-events: none;
-
     position: relative;
-    top: -3px;   /* 아래로 3px 이동 */
+    top: -3px;
 }
 
 .banner-text {
@@ -571,6 +569,17 @@ body {
 .summary-value {
     font-weight: 700;
     white-space: nowrap;
+}
+
+/* 수수료 전용 칩 스타일 */
+.commission-chip {
+    background-color: #8B4513 !important;
+    color: #FFFF00 !important;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    display: inline-block;
 }
 
 /* 설정 페이지 및 헤더 */
@@ -868,66 +877,6 @@ input:checked + .slider:before {
     box-shadow: var(--shadow-sm);
 }
 
-/* PDF 출력 모드 전용 Overrides */
-body.pdf-export-mode {
-    --bg-color: #ffffff !important;
-    --text-color: #000000 !important;
-    --sub-text-color: #333333 !important;
-    --card-bg: #f9f9f9 !important;
-    --border-color: #cccccc !important;
-    --input-bg: #ffffff !important;
-    background-color: #ffffff !important;
-    color: #000000 !important;
-}
-
-body.pdf-export-mode .container {
-    width: 100% !important;
-    max-width: none !important;
-    padding: 0 !important;
-    margin: 0 auto !important;
-    background-color: #ffffff !important;
-}
-
-body.pdf-export-mode .report-page {
-    margin-top: 0 !important;
-    padding: 10px !important;
-    background-color: #ffffff !important;
-    color: #000000 !important;
-}
-
-body.pdf-export-mode .report-title {
-    color: #000000 !important;
-}
-
-body.pdf-export-mode .info-table th,
-body.pdf-export-mode .report-table th {
-    background-color: #f2f2f2 !important;
-    color: #333333 !important;
-    border: 1px solid #cccccc !important;
-}
-
-body.pdf-export-mode .info-table td,
-body.pdf-export-mode .report-table td {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-    border: 1px solid #cccccc !important;
-}
-
-body.pdf-export-mode .report-summary-box {
-    background-color: #f9f9f9 !important;
-    border: 1px solid #cccccc !important;
-    color: #000000 !important;
-}
-
-body.pdf-export-mode .summary-row {
-    color: #000000 !important;
-}
-
-body.pdf-export-mode .summary-row.total {
-    color: #3182ce !important;
-    border-top: 1px dashed #cccccc !important;
-}
-
 /* 모달 팝업 레이아웃 및 UI 개선 */
 .modal-overlay {
     position: fixed;
@@ -1173,4 +1122,79 @@ body.pdf-export-mode .summary-row.total {
 
 .btn-edit:hover {
     background-color: var(--icon-color);
+}
+
+/* PDF 출력 모드 전용 Overrides */
+body.pdf-export-mode {
+    --bg-color: #ffffff !important;
+    --text-color: #000000 !important;
+    --sub-text-color: #333333 !important;
+    --card-bg: #f9f9f9 !important;
+    --border-color: #cccccc !important;
+    --input-bg: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+body.pdf-export-mode .container {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    background-color: #ffffff !important;
+}
+
+body.pdf-export-mode .report-page {
+    margin-top: 0 !important;
+    padding: 10px !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+body.pdf-export-mode .report-title {
+    color: #000000 !important;
+}
+
+body.pdf-export-mode .info-table,
+body.pdf-export-mode .report-table {
+    border-radius: 0 !important;
+}
+
+body.pdf-export-mode .info-table th,
+body.pdf-export-mode .report-table th {
+    background-color: #f2f2f2 !important;
+    color: #333333 !important;
+    border: 1px solid #cccccc !important;
+    border-radius: 0 !important;
+}
+
+body.pdf-export-mode .info-table td,
+body.pdf-export-mode .report-table td {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #cccccc !important;
+    white-space: normal !important;
+    word-break: break-all !important;
+    border-radius: 0 !important;
+}
+
+body.pdf-export-mode .report-summary-box {
+    background-color: #f9f9f9 !important;
+    border: 1px solid #cccccc !important;
+    color: #000000 !important;
+    border-radius: 0 !important;
+}
+
+body.pdf-export-mode .commission-chip,
+body.pdf-export-mode .sub-commission-chip {
+    border-radius: 0 !important;
+}
+
+body.pdf-export-mode .summary-row {
+    color: #000000 !important;
+}
+
+body.pdf-export-mode .summary-row.total {
+    color: #3182ce !important;
+    border-top: 1px dashed #cccccc !important;
 }

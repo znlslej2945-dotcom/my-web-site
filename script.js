@@ -406,11 +406,17 @@ function renderClientList() {
     }
 
     clients.forEach((client, idx) => {
+        let commBadge = '';
+        if (client.commEnabled) {
+            const badgeText = client.commType === 'direct' ? `${client.commValue}원` : `${client.commValue}%`;
+            commBadge = `<span style="font-size:0.75rem; color:#c05621; background:#feebc8; padding:2px 6px; border-radius:4px; margin-left:6px;">수수료 ${badgeText}</span>`;
+        }
+
         const div = document.createElement('div');
         div.className = 'car-card'; 
         div.innerHTML = `
             <div>
-                <div class="car-info-text">${client.companyName} ${client.managerName ? '(' + client.managerName + ')' : ''}</div>
+                <div class="car-info-text">${client.companyName} ${client.managerName ? '(' + client.managerName + ')' : ''} ${commBadge}</div>
                 <div class="car-sub-text">사업자: ${client.bizNumber || '-'} | 연락처: ${client.phone || '-'}</div>
             </div>
             <div class="car-action-btns">
@@ -420,6 +426,57 @@ function renderClientList() {
         `;
         container.appendChild(div);
     });
+}
+
+function toggleClientComm() {
+    const isChecked = document.getElementById('clientCommToggle').checked;
+    document.getElementById('clientCommSection').style.display = isChecked ? 'block' : 'none';
+}
+
+function formatCommValue(input) {
+    let val = input.value.replace(/[^0-9.]/g, '');
+    if (parseFloat(val) > 100) val = '100';
+    input.value = val;
+}
+
+function setClientCommType(type) {
+    const typeEl = document.getElementById('clientCommType');
+    if (typeEl) typeEl.value = type;
+    
+    const btnPercent = document.getElementById('btnCommTypePercent');
+    const btnDirect = document.getElementById('btnCommTypeDirect');
+    const commLabel = document.getElementById('commLabel');
+    const commInput = document.getElementById('clientCommValue');
+
+    if (!btnPercent || !btnDirect || !commLabel || !commInput) return;
+
+    if (type === 'percent') {
+        btnPercent.classList.add('active-work');
+        btnDirect.classList.remove('active-work');
+        commLabel.textContent = '수수료율 (%)';
+        commInput.placeholder = '비율(%) 입력';
+        let val = commInput.value.replace(/[^0-9.]/g, '');
+        if (parseFloat(val) > 100) val = '100';
+        commInput.value = val;
+    } else {
+        btnDirect.classList.add('active-work');
+        btnPercent.classList.remove('active-work');
+        commLabel.textContent = '수수료 (원)';
+        commInput.placeholder = '금액(원) 입력';
+        formatCurrencyInput(commInput);
+    }
+}
+
+function formatClientCommValue(input) {
+    const typeEl = document.getElementById('clientCommType');
+    const type = typeEl ? typeEl.value : 'percent';
+    if (type === 'percent') {
+        let val = input.value.replace(/[^0-9.]/g, '');
+        if (parseFloat(val) > 100) val = '100';
+        input.value = val;
+    } else {
+        formatCurrencyInput(input);
+    }
 }
 
 function openClientModal(index = -1) {
@@ -433,12 +490,34 @@ function openClientModal(index = -1) {
         document.getElementById('clientManagerName').value = clients[index].managerName || '';
         document.getElementById('clientBizNumber').value = clients[index].bizNumber || '';
         document.getElementById('clientPhone').value = clients[index].phone || '';
+        
+        document.getElementById('clientCommToggle').checked = !!clients[index].commEnabled;
+        
+        const commType = clients[index].commType || 'percent';
+        setClientCommType(commType);
+        
+        const commInput = document.getElementById('clientCommValue');
+        commInput.value = clients[index].commValue || '';
+        
+        if (commType === 'direct') {
+            formatCurrencyInput(commInput);
+        } else {
+            let val = commInput.value.replace(/[^0-9.]/g, '');
+            if (parseFloat(val) > 100) val = '100';
+            commInput.value = val;
+        }
+        toggleClientComm();
     } else {
         document.getElementById('clientModalTitle').textContent = '화주/주선 업체 등록';
         document.getElementById('clientCompanyName').value = '';
         document.getElementById('clientManagerName').value = '';
         document.getElementById('clientBizNumber').value = '';
         document.getElementById('clientPhone').value = '';
+        
+        document.getElementById('clientCommToggle').checked = false;
+        setClientCommType('percent');
+        document.getElementById('clientCommValue').value = '';
+        toggleClientComm();
     }
     
     document.getElementById('clientModal').classList.remove('hidden');
@@ -454,15 +533,24 @@ function saveClient() {
     const bizNumber = document.getElementById('clientBizNumber').value.trim();
     const phone = document.getElementById('clientPhone').value.trim();
 
+    const commEnabled = document.getElementById('clientCommToggle').checked;
+    const commTypeEl = document.getElementById('clientCommType');
+    const commType = commTypeEl ? commTypeEl.value : 'percent';
+    const commValue = document.getElementById('clientCommValue').value.trim();
+
     if (!companyName) {
         alert('업체명을 입력해주세요.');
+        return;
+    }
+    if (commEnabled && !commValue) {
+        alert('수수료 수치/금액을 입력해주세요.');
         return;
     }
 
     const settings = getUserSettings();
     if (!settings.clients) settings.clients = [];
 
-    const clientData = { companyName, managerName, bizNumber, phone };
+    const clientData = { companyName, managerName, bizNumber, phone, commEnabled, commType, commValue };
 
     if (editingClientIndex >= 0) {
         settings.clients[editingClientIndex] = clientData;
@@ -475,6 +563,7 @@ function saveClient() {
     setUserSettings(settings);
     closeClientModal();
     renderClientList();
+    buildCalendar(); 
 }
 
 function deleteClient(idx) {
@@ -485,6 +574,7 @@ function deleteClient(idx) {
             setUserSettings(settings);
             showToastMessage('삭제되었습니다.');
             renderClientList();
+            buildCalendar(); 
         }
     });
 }
@@ -648,6 +738,7 @@ function saveNewCar() {
     if (!settings.cars) settings.cars = [];
 
     const logEnabled = isMain ? true : document.getElementById('newLogToggle').checked;
+    const commission = document.getElementById('newCarCommission').value.trim();
     
     let infoType = 'existing';
     let personalInfo = null;
@@ -671,7 +762,8 @@ function saveNewCar() {
         type: carType,
         logEnabled: logEnabled,
         infoType: infoType,
-        personalInfo: personalInfo
+        personalInfo: personalInfo,
+        commission: commission
     };
 
     if (editingCarIndex > -1) {
@@ -1233,6 +1325,7 @@ function buildCalendar() {
     let monthTotalFare = 0;
     let monthTotalPalletFare = 0;
     let monthTotalMaintFare = 0;
+    let monthTotalCommission = 0;
 
     const savedSettings = getUserSettings();
     const isMain = activeLogId === 'main';
@@ -1312,8 +1405,22 @@ function buildCalendar() {
                 
                 if (record.callDetails && record.callDetails.length > 0) {
                     dayWorkCount += record.callDetails.length;
-                    const detailSum = record.callDetails.reduce((a, b) => a + parseCurrencyValue(b.fare), 0);
-                    dayFare += detailSum;
+                    record.callDetails.forEach(detail => {
+                        let gross = parseCurrencyValue(detail.fare);
+                        let comm = 0;
+                        if (detail.client) {
+                            const clientObj = savedSettings.clients?.find(c => c.companyName === detail.client);
+                            if (clientObj && clientObj.commEnabled) {
+                                if (clientObj.commType === 'percent' || !clientObj.commType) {
+                                    comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
+                                } else {
+                                    comm = parseCurrencyValue(clientObj.commValue);
+                                }
+                            }
+                        }
+                        dayFare += gross;
+                        monthTotalCommission += comm;
+                    });
                 }
 
                 if (dayWorkCount > 0) {
@@ -1357,15 +1464,42 @@ function buildCalendar() {
         }
     }
 
-    updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare);
+    let subCarComm = 0;
+    let subCarCommLabel = '보조차량 수수료';
+    if (activeLogId !== 'main') {
+        const currentCar = savedSettings.cars?.find(c => c.number === activeLogId);
+        if (currentCar && currentCar.logEnabled && currentCar.commission) {
+            const commPercent = parseFloat(currentCar.commission);
+            if (!isNaN(commPercent) && commPercent > 0) {
+                subCarComm = Math.floor((monthTotalFare + monthTotalPalletFare) * (commPercent / 100));
+                subCarCommLabel = `${getShortCarNum(currentCar.number)} 차량 ${commPercent}%`;
+            }
+        }
+    }
+
+    updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare, monthTotalCommission, subCarComm, subCarCommLabel);
 }
 
-function updateSummary(totalCount, fareTotal, palletTotal, maintTotal) {
-    const vat = Math.round((fareTotal + palletTotal) * 0.1);
-    const grandTotal = fareTotal + palletTotal + vat;
-
+function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, commissionTotal = 0, subCarComm = 0, subCarCommLabel = '') {
     document.getElementById('summaryTotalWork').textContent = `총 ${totalCount}회 운행`;
     document.getElementById('summaryFare').textContent = `${fareTotal.toLocaleString()} 원`;
+
+    const commRow = document.getElementById('summaryCommissionRow');
+    if (commissionTotal > 0) {
+        commRow.style.display = 'flex';
+        document.getElementById('summaryCommissionFare').textContent = `- ${commissionTotal.toLocaleString()} 원`;
+    } else {
+        commRow.style.display = 'none';
+    }
+
+    const subCommRow = document.getElementById('summarySubCarCommissionRow');
+    if (subCarComm > 0) {
+        subCommRow.style.display = 'flex';
+        document.getElementById('summarySubCarCommissionLabel').textContent = subCarCommLabel;
+        document.getElementById('summarySubCarCommissionFare').textContent = `- ${subCarComm.toLocaleString()} 원`;
+    } else {
+        subCommRow.style.display = 'none';
+    }
 
     const savedSettings = getUserSettings();
     const palletRow = document.getElementById('summaryPalletRow');
@@ -1380,6 +1514,9 @@ function updateSummary(totalCount, fareTotal, palletTotal, maintTotal) {
     } else {
         palletRow.style.display = 'none';
     }
+
+    const vat = Math.round((fareTotal + palletTotal) * 0.1);
+    const grandTotal = fareTotal + palletTotal - commissionTotal - subCarComm + vat;
 
     document.getElementById('summaryVat').textContent = `${vat.toLocaleString()} 원`;
     document.getElementById('summaryTotal').textContent = `${grandTotal.toLocaleString()} 원`;
@@ -1514,6 +1651,36 @@ function renderCallDetailSummaryInMainModal() {
     }
 }
 
+function calculateCallDetailComm() {
+    const fareInput = document.getElementById('callDetailFare').value;
+    const clientName = document.getElementById('callClient').value;
+    const infoDiv = document.getElementById('callDetailCommInfo');
+    
+    let gross = parseCurrencyValue(fareInput);
+    if(gross === 0 || !clientName) {
+        infoDiv.style.display = 'none';
+        return;
+    }
+
+    const settings = getUserSettings();
+    const clientObj = settings.clients?.find(c => c.companyName === clientName);
+
+    if(clientObj && clientObj.commEnabled) {
+        let comm = 0;
+        if(clientObj.commType === 'percent' || !clientObj.commType) {
+            comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
+        } else {
+            comm = parseCurrencyValue(clientObj.commValue);
+        }
+        
+        document.getElementById('callDetailCommText').textContent = comm.toLocaleString();
+        document.getElementById('callDetailNetFare').textContent = (gross - comm).toLocaleString();
+        infoDiv.style.display = 'block';
+    } else {
+        infoDiv.style.display = 'none';
+    }
+}
+
 function openCallDetailModal(index = -1) {
     if (isOffSelected) setOffState(false);
     
@@ -1536,6 +1703,7 @@ function openCallDetailModal(index = -1) {
         document.getElementById('callRemarks').value = '';
     }
     document.getElementById('callDetailModal').classList.remove('hidden');
+    calculateCallDetailComm();
 }
 
 function closeCallDetailModal() {
@@ -1726,7 +1894,6 @@ function createTableHTML(items, showPallet) {
             <tbody>`;
     
     let bodyHTML = '';
-    const currentYear = viewDate.getFullYear();
     const currentMonth = viewDate.getMonth() + 1;
 
     items.forEach(item => {
@@ -1734,7 +1901,7 @@ function createTableHTML(items, showPallet) {
         const workStr = item.isOff ? '휴무' : `${item.workVal}회`;
         bodyHTML += `
             <tr>
-                <td>${currentYear}.${currentMonth}.${item.day}</td>
+                <td>${currentMonth}월 ${item.day}일</td>
                 <td>${workStr}</td>
                 ${showPallet ? `<td>${palletStr}</td>` : ''}
                 <td class="amount">${item.amount.toLocaleString()}원</td>
@@ -1803,6 +1970,7 @@ function buildReportPage(isForExport = false) {
     let totalMonthWork = 0;
     let totalFare = 0;
     let totalPalletFare = 0;
+    let totalCommission = 0;
 
     for (let d = 1; d <= lastDate; d++) {
         const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -1833,7 +2001,22 @@ function buildReportPage(isForExport = false) {
 
                 if (record.callDetails && record.callDetails.length > 0) {
                     dayWorkCount += record.callDetails.length;
-                    dayFare += record.callDetails.reduce((a, b) => a + parseCurrencyValue(b.fare), 0);
+                    record.callDetails.forEach(detail => {
+                        let gross = parseCurrencyValue(detail.fare);
+                        let comm = 0;
+                        if (detail.client) {
+                            const clientObj = savedSettings.clients?.find(c => c.companyName === detail.client);
+                            if (clientObj && clientObj.commEnabled) {
+                                if (clientObj.commType === 'percent' || !clientObj.commType) {
+                                    comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
+                                } else {
+                                    comm = parseCurrencyValue(clientObj.commValue);
+                                }
+                            }
+                        }
+                        dayFare += gross;
+                        totalCommission += comm;
+                    });
                 }
 
                 const dayPalletFare = dayPalletCount * palletUnitPrice;
@@ -1879,18 +2062,29 @@ function buildReportPage(isForExport = false) {
         container.innerHTML = createTableHTML(workList, showPallet);
     }
 
-    const totalVat = Math.round((totalFare + totalPalletFare) * 0.1);
-    const grandTotal = totalFare + totalPalletFare + totalVat;
+    let subCarComm = 0;
+    let subCarCommLabel = '보조차량 수수료';
+    if (activeLogId !== 'main') {
+        const currentCar = savedSettings.cars?.find(c => c.number === activeLogId);
+        if (currentCar && currentCar.logEnabled && currentCar.commission) {
+            const commPercent = parseFloat(currentCar.commission);
+            if (!isNaN(commPercent) && commPercent > 0) {
+                subCarComm = Math.floor((totalFare + totalPalletFare) * (commPercent / 100));
+                subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
+            }
+        }
+    }
+
+    const totalVat = Math.round(totalFare * 0.1);
+    const grandTotal = totalFare + totalVat;
 
     const summaryBox = document.querySelector('.report-summary-box');
+    
+    // 이외금지
     summaryBox.innerHTML = `
         <div class="summary-row">
             <span>기본 운송료</span>
             <span class="summary-value" id="rptFare">${totalFare.toLocaleString()} 원</span>
-        </div>
-        <div class="summary-row" id="rptPalletTotalRow" style="display: ${showPallet ? 'flex' : 'none'};">
-            <span>파렛트 회수 청구액</span>
-            <span class="summary-value" id="rptPalletFare">${totalPalletFare.toLocaleString()} 원</span>
         </div>
         <div class="summary-row">
             <span>부가세 (10%)</span>
@@ -1948,18 +2142,21 @@ function closeDetailReportModal() {
 
 function createDetailTableHTML(items, isForExport, totalItems) {
     let fontSize = '0.8rem';
-    let cellPadding = '10px 6px';
+    let cellPadding = '10px 4px';
     
     if (isForExport) {
-        if (totalItems > 45) {
-            fontSize = '0.6rem';
-            cellPadding = '3px 2px';
+        if (totalItems > 70) {
+            fontSize = '0.5rem';
+            cellPadding = '2px 1px';
+        } else if (totalItems > 45) {
+            fontSize = '0.55rem';
+            cellPadding = '3px 1px';
         } else if (totalItems > 25) {
-            fontSize = '0.7rem';
-            cellPadding = '5px 3px';
+            fontSize = '0.65rem';
+            cellPadding = '4px 2px';
         } else {
             fontSize = '0.75rem';
-            cellPadding = '6px 4px';
+            cellPadding = '6px 3px';
         }
     }
 
@@ -1968,20 +2165,20 @@ function createDetailTableHTML(items, isForExport, totalItems) {
             <thead>
                 <tr>
                     <th style="width: 12%; padding: ${cellPadding};">날짜</th>
-                    <th style="width: 28%; padding: ${cellPadding};">상차지</th>
-                    <th style="width: 28%; padding: ${cellPadding};">하차지</th>
+                    <th style="width: 27%; padding: ${cellPadding};">상차지</th>
+                    <th style="width: 27%; padding: ${cellPadding};">하차지</th>
                     <th style="width: 17%; padding: ${cellPadding};">화주/주선</th>
-                    <th style="width: 15%; padding: ${cellPadding};">금액</th>
+                    <th style="width: 17%; padding: ${cellPadding};">금액</th>
                 </tr>
             </thead>
             <tbody>
                 ${items.length > 0 ? items.map(item => `
                     <tr>
-                        <td style="padding: ${cellPadding};">${item.dateStr}</td>
-                        <td style="padding: ${cellPadding}; white-space: normal;">${item.loadLoc}</td>
-                        <td style="padding: ${cellPadding}; white-space: normal;">${item.unloadLoc}</td>
-                        <td style="padding: ${cellPadding}; white-space: normal;">${item.client}</td>
-                        <td class="amount" style="padding: ${cellPadding};">${item.fare.toLocaleString()}원</td>
+                        <td style="padding: ${cellPadding}; white-space: nowrap;">${item.dateStr}</td>
+                        <td style="padding: ${cellPadding}; white-space: normal; word-break: break-all;">${item.loadLoc}</td>
+                        <td style="padding: ${cellPadding}; white-space: normal; word-break: break-all;">${item.unloadLoc}</td>
+                        <td style="padding: ${cellPadding}; white-space: normal; word-break: break-all;">${item.client}</td>
+                        <td class="amount" style="padding: ${cellPadding}; white-space: nowrap;">${item.fare.toLocaleString()}원</td>
                     </tr>
                 `).join('') : `<tr><td colspan="5" style="text-align:center; padding: 15px;">해당 내역이 없습니다.</td></tr>`}
             </tbody>
@@ -2005,8 +2202,10 @@ function viewDetailReport(isForExport) {
     const currentMonth = viewDate.getMonth();
     const lastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
 
+    const savedSettings = getUserSettings();
     let detailsList = [];
     let totalFare = 0;
+    let totalCommission = 0;
 
     for (let d = 1; d <= lastDate; d++) {
         const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -2016,14 +2215,28 @@ function viewDetailReport(isForExport) {
                 const clientName = item.client || '미지정';
                 if (clientFilter === 'ALL' || clientFilter === clientName) {
                     const fareVal = parseCurrencyValue(item.fare);
+                    
+                    let comm = 0;
+                    if (item.client) {
+                        const clientObj = savedSettings.clients?.find(c => c.companyName === item.client);
+                        if (clientObj && clientObj.commEnabled) {
+                            if (clientObj.commType === 'percent' || !clientObj.commType) {
+                                comm = Math.floor(fareVal * (parseFloat(clientObj.commValue) / 100));
+                            } else {
+                                comm = parseCurrencyValue(clientObj.commValue);
+                            }
+                        }
+                    }
+                    
                     detailsList.push({
-                        dateStr: `${currentYear}.${currentMonth + 1}.${d}`,
+                        dateStr: `${currentMonth + 1}월 ${d}일`,
                         loadLoc: item.loadLoc || '-',
                         unloadLoc: item.unloadLoc || '-',
                         client: clientName,
                         fare: fareVal
                     });
                     totalFare += fareVal;
+                    totalCommission += comm;
                 }
             });
         }
@@ -2049,18 +2262,28 @@ function viewDetailReport(isForExport) {
     document.getElementById('reportMonthTitle').textContent = `${currentYear}년 ${currentMonth + 1}월 운송비 내역서 (${clientText})`;
     document.getElementById('reportTableContainer').innerHTML = tableHTML;
     
+    let subCarComm = 0;
+    let subCarCommLabel = '보조차량 수수료';
+    if (activeLogId !== 'main') {
+        const currentCar = savedSettings.cars?.find(c => c.number === activeLogId);
+        if (currentCar && currentCar.logEnabled && currentCar.commission) {
+            const commPercent = parseFloat(currentCar.commission);
+            if (!isNaN(commPercent) && commPercent > 0) {
+                subCarComm = Math.floor(totalFare * (commPercent / 100));
+                subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
+            }
+        }
+    }
+
     const vat = Math.round(totalFare * 0.1);
     const grandTotal = totalFare + vat;
     const summaryBox = document.querySelector('.report-summary-box');
     
+    // 이외금지
     summaryBox.innerHTML = `
         <div class="summary-row">
             <span>기본 운송료</span>
             <span class="summary-value" id="rptFare">${totalFare.toLocaleString()} 원</span>
-        </div>
-        <div class="summary-row" id="rptPalletTotalRow" style="display: none;">
-            <span>파렛트 회수 청구액</span>
-            <span class="summary-value" id="rptPalletFare">0 원</span>
         </div>
         <div class="summary-row">
             <span>부가세 (10%)</span>
@@ -2109,6 +2332,7 @@ function resetCarForm() {
     document.getElementById('logToggleContainer').style.display = 'none';
     document.getElementById('newLogToggle').checked = false;
     toggleNewLogSettings();
+    document.getElementById('newCarCommission').value = ''; 
     selectInfoType('existing');
     document.getElementById('newUserName').value = '';
     document.getElementById('newUserPhone').value = '';
@@ -2156,6 +2380,8 @@ function editCar(idx) {
         toggleNewLogSettings();
         selectInfoType('existing');
     }
+
+    document.getElementById('newCarCommission').value = car.commission || ''; 
 
     document.getElementById('carModalTitle').textContent = '차량 정보 수정';
     document.getElementById('carModal').classList.remove('hidden');
