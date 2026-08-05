@@ -1327,6 +1327,11 @@ function buildCalendar() {
     let monthTotalMaintFare = 0;
     let monthTotalCommission = 0;
 
+    let defaultBaseFare = 0; 
+    let monthFareByClient = {}; 
+    let monthCommByClient = {};
+    let clientCommLabels = {};
+
     const savedSettings = getUserSettings();
     const isMain = activeLogId === 'main';
     const activeFixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
@@ -1387,10 +1392,13 @@ function buildCalendar() {
                 let dayWorkCount = 0;
                 let dayFare = 0;
                 let dayPalletFare = 0;
+                let dayDefaultFare = 0; 
 
                 if (record.fixedCount > 0) {
                     dayWorkCount += parseInt(record.fixedCount, 10);
-                    dayFare += record.fixedCount * fixedUnitPrice;
+                    let fAmount = record.fixedCount * fixedUnitPrice;
+                    dayFare += fAmount;
+                    dayDefaultFare += fAmount;
                 }
                 
                 if (record.palletCount > 0 && activeFixedOn && activePalletOn) {
@@ -1401,6 +1409,7 @@ function buildCalendar() {
                     dayWorkCount += record.callFares.length;
                     const callSum = record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
                     dayFare += callSum;
+                    dayDefaultFare += callSum;
                 }
                 
                 if (record.callDetails && record.callDetails.length > 0) {
@@ -1408,20 +1417,38 @@ function buildCalendar() {
                     record.callDetails.forEach(detail => {
                         let gross = parseCurrencyValue(detail.fare);
                         let comm = 0;
-                        if (detail.client) {
-                            const clientObj = savedSettings.clients?.find(c => c.companyName === detail.client);
-                            if (clientObj && clientObj.commEnabled) {
-                                if (clientObj.commType === 'percent' || !clientObj.commType) {
-                                    comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
-                                } else {
-                                    comm = parseCurrencyValue(clientObj.commValue);
+                        let clientName = detail.client ? detail.client.trim() : '';
+                        let isRegisteredClient = false;
+
+                        if (clientName) {
+                            const clientObj = savedSettings.clients?.find(c => c.companyName === clientName);
+                            if (clientObj) {
+                                isRegisteredClient = true;
+                                if (clientObj.commEnabled) {
+                                    if (clientObj.commType === 'percent' || !clientObj.commType) {
+                                        comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
+                                        clientCommLabels[clientName] = `${clientObj.commValue}%`;
+                                    } else {
+                                        comm = parseCurrencyValue(clientObj.commValue);
+                                        clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
+                                    }
+                                    monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
                                 }
                             }
                         }
+
+                        if (isRegisteredClient) {
+                            monthFareByClient[clientName] = (monthFareByClient[clientName] || 0) + gross;
+                        } else {
+                            dayDefaultFare += gross;
+                        }
+
                         dayFare += gross;
                         monthTotalCommission += comm;
                     });
                 }
+                
+                defaultBaseFare += dayDefaultFare;
 
                 if (dayWorkCount > 0) {
                     monthTotalWork += dayWorkCount;
@@ -1471,26 +1498,46 @@ function buildCalendar() {
         if (currentCar && currentCar.logEnabled && currentCar.commission) {
             const commPercent = parseFloat(currentCar.commission);
             if (!isNaN(commPercent) && commPercent > 0) {
-                // 수정된 수식: 기본 운송료 및 파렛트 요금 합계에서 화주/업체 수수료를 차감한 후 계산
                 subCarComm = Math.floor((monthTotalFare + monthTotalPalletFare - monthTotalCommission) * (commPercent / 100));
                 subCarCommLabel = `${getShortCarNum(currentCar.number)} 차량 ${commPercent}%`;
             }
         }
     }
 
-    updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare, monthTotalCommission, subCarComm, subCarCommLabel);
+    updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare, monthTotalCommission, subCarComm, subCarCommLabel, defaultBaseFare, monthFareByClient, monthCommByClient, clientCommLabels);
 }
 
-function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, commissionTotal = 0, subCarComm = 0, subCarCommLabel = '') {
+function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, commissionTotal = 0, subCarComm = 0, subCarCommLabel = '', defaultBaseFare = 0, monthFareByClient = {}, monthCommByClient = {}, clientCommLabels = {}) {
     document.getElementById('summaryTotalWork').textContent = `총 ${totalCount}회 운행`;
-    document.getElementById('summaryFare').textContent = `${fareTotal.toLocaleString()} 원`;
-
-    const commRow = document.getElementById('summaryCommissionRow');
-    if (commissionTotal > 0) {
-        commRow.style.display = 'flex';
-        document.getElementById('summaryCommissionFare').textContent = `- ${commissionTotal.toLocaleString()} 원`;
-    } else {
-        commRow.style.display = 'none';
+    
+    const baseFareContainer = document.getElementById('dynamicBaseFareContainer');
+    if (baseFareContainer) {
+        let html = '';
+        if (defaultBaseFare > 0 || Object.keys(monthFareByClient).length === 0) {
+            html += `
+                <div class="summary-row">
+                    <span>기본 운송료</span>
+                    <span class="summary-value">${defaultBaseFare.toLocaleString()} 원</span>
+                </div>
+            `;
+        }
+        for (let client in monthFareByClient) {
+            html += `
+                <div class="summary-row">
+                    <span>${client} 기본 운송료</span>
+                    <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
+                </div>
+            `;
+            if (monthCommByClient[client] > 0) {
+                html += `
+                    <div class="summary-row">
+                        <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${client} 수수료 (${clientCommLabels[client]})</span>
+                        <span class="summary-value">- ${monthCommByClient[client].toLocaleString()} 원</span>
+                    </div>
+                `;
+            }
+        }
+        baseFareContainer.innerHTML = html;
     }
 
     const subCommRow = document.getElementById('summarySubCarCommissionRow');
@@ -1973,6 +2020,11 @@ function buildReportPage(isForExport = false) {
     let totalPalletFare = 0;
     let totalCommission = 0;
 
+    let defaultBaseFare = 0;
+    let monthFareByClient = {};
+    let monthCommByClient = {};
+    let clientCommLabels = {};
+
     for (let d = 1; d <= lastDate; d++) {
         const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const record = workData[dateKey];
@@ -1990,14 +2042,19 @@ function buildReportPage(isForExport = false) {
                 let dayWorkCount = 0;
                 let dayFare = 0;
                 let dayPalletCount = showPallet ? (record.palletCount || 0) : 0;
+                let dayDefaultFare = 0;
 
                 if (record.fixedCount > 0) {
                     dayWorkCount += parseInt(record.fixedCount, 10);
-                    dayFare += record.fixedCount * fixedUnitPrice;
+                    let fAmt = record.fixedCount * fixedUnitPrice;
+                    dayFare += fAmt;
+                    dayDefaultFare += fAmt;
                 }
                 if (record.callFares && record.callFares.length > 0) {
                     dayWorkCount += record.callFares.length;
-                    dayFare += record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
+                    let cAmt = record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
+                    dayFare += cAmt;
+                    dayDefaultFare += cAmt;
                 }
 
                 if (record.callDetails && record.callDetails.length > 0) {
@@ -2005,21 +2062,38 @@ function buildReportPage(isForExport = false) {
                     record.callDetails.forEach(detail => {
                         let gross = parseCurrencyValue(detail.fare);
                         let comm = 0;
-                        if (detail.client) {
-                            const clientObj = savedSettings.clients?.find(c => c.companyName === detail.client);
-                            if (clientObj && clientObj.commEnabled) {
-                                if (clientObj.commType === 'percent' || !clientObj.commType) {
-                                    comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
-                                } else {
-                                    comm = parseCurrencyValue(clientObj.commValue);
+                        let clientName = detail.client ? detail.client.trim() : '';
+                        let isRegisteredClient = false;
+                        
+                        if (clientName) {
+                            const clientObj = savedSettings.clients?.find(c => c.companyName === clientName);
+                            if (clientObj) {
+                                isRegisteredClient = true;
+                                if (clientObj.commEnabled) {
+                                    if (clientObj.commType === 'percent' || !clientObj.commType) {
+                                        comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
+                                        clientCommLabels[clientName] = `${clientObj.commValue}%`;
+                                    } else {
+                                        comm = parseCurrencyValue(clientObj.commValue);
+                                        clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
+                                    }
+                                    monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
                                 }
                             }
                         }
+                        
+                        if (isRegisteredClient) {
+                            monthFareByClient[clientName] = (monthFareByClient[clientName] || 0) + gross;
+                        } else {
+                            dayDefaultFare += gross;
+                        }
+
                         dayFare += gross;
                         totalCommission += comm;
                     });
                 }
 
+                defaultBaseFare += dayDefaultFare;
                 const dayPalletFare = dayPalletCount * palletUnitPrice;
 
                 if (dayWorkCount > 0 || dayPalletCount > 0) {
@@ -2070,7 +2144,6 @@ function buildReportPage(isForExport = false) {
         if (currentCar && currentCar.logEnabled && currentCar.commission) {
             const commPercent = parseFloat(currentCar.commission);
             if (!isNaN(commPercent) && commPercent > 0) {
-                // 수정된 수식: 기본 운송료 및 파렛트 요금 합계에서 화주/업체 수수료를 차감한 후 계산
                 subCarComm = Math.floor((totalFare + totalPalletFare - totalCommission) * (commPercent / 100));
                 subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
             }
@@ -2078,25 +2151,45 @@ function buildReportPage(isForExport = false) {
     }
 
     const totalVat = Math.round((totalFare + totalPalletFare) * 0.1);
-    
-    // 숨겨진 수수료들도 계에서 정상 차감되도록 수식 반영
     const grandTotal = totalFare + totalPalletFare - totalCommission - subCarComm + totalVat;
 
     const summaryBox = document.querySelector('.report-summary-box');
     
-    // 이외금지 (기본운송료 -> 부가세 -> 계 순서 외에 표출 제한)
+    let baseFareHtml = '';
+    if (defaultBaseFare > 0 || Object.keys(monthFareByClient).length === 0) {
+        baseFareHtml += `
+            <div class="summary-row">
+                <span>기본 운송료</span>
+                <span class="summary-value">${defaultBaseFare.toLocaleString()} 원</span>
+            </div>
+        `;
+    }
+    for (let client in monthFareByClient) {
+        baseFareHtml += `
+            <div class="summary-row">
+                <span>${client} 기본 운송료</span>
+                <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
+            </div>
+        `;
+        if (monthCommByClient[client] > 0) {
+            baseFareHtml += `
+                <div class="summary-row">
+                    <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${client} 수수료 (${clientCommLabels[client]})</span>
+                    <span class="summary-value">- ${monthCommByClient[client].toLocaleString()} 원</span>
+                </div>
+            `;
+        }
+    }
+    
     summaryBox.innerHTML = `
-        <div class="summary-row">
-            <span>기본 운송료</span>
-            <span class="summary-value" id="rptFare">${totalFare.toLocaleString()} 원</span>
-        </div>
+        ${baseFareHtml}
         <div class="summary-row">
             <span>부가세 (10%)</span>
-            <span class="summary-value" id="rptVat">${totalVat.toLocaleString()} 원</span>
+            <span class="summary-value">${totalVat.toLocaleString()} 원</span>
         </div>
         <div class="summary-row total">
             <span>계</span>
-            <span class="summary-value" id="rptTotal">${grandTotal.toLocaleString()} 원</span>
+            <span class="summary-value">${grandTotal.toLocaleString()} 원</span>
         </div>
     `;
 }
@@ -2211,6 +2304,11 @@ function viewDetailReport(isForExport) {
     let totalFare = 0;
     let totalCommission = 0;
 
+    let defaultBaseFare = 0;
+    let monthFareByClient = {};
+    let monthCommByClient = {};
+    let clientCommLabels = {};
+
     for (let d = 1; d <= lastDate; d++) {
         const dateKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const record = workData[dateKey];
@@ -2221,15 +2319,29 @@ function viewDetailReport(isForExport) {
                     const fareVal = parseCurrencyValue(item.fare);
                     
                     let comm = 0;
+                    let isRegisteredClient = false;
+
                     if (item.client) {
                         const clientObj = savedSettings.clients?.find(c => c.companyName === item.client);
-                        if (clientObj && clientObj.commEnabled) {
-                            if (clientObj.commType === 'percent' || !clientObj.commType) {
-                                comm = Math.floor(fareVal * (parseFloat(clientObj.commValue) / 100));
-                            } else {
-                                comm = parseCurrencyValue(clientObj.commValue);
+                        if (clientObj) {
+                            isRegisteredClient = true;
+                            if (clientObj.commEnabled) {
+                                if (clientObj.commType === 'percent' || !clientObj.commType) {
+                                    comm = Math.floor(fareVal * (parseFloat(clientObj.commValue) / 100));
+                                    clientCommLabels[clientName] = `${clientObj.commValue}%`;
+                                } else {
+                                    comm = parseCurrencyValue(clientObj.commValue);
+                                    clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
+                                }
+                                monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
                             }
                         }
+                    }
+
+                    if (isRegisteredClient) {
+                        monthFareByClient[clientName] = (monthFareByClient[clientName] || 0) + fareVal;
+                    } else {
+                        defaultBaseFare += fareVal;
                     }
                     
                     detailsList.push({
@@ -2273,7 +2385,6 @@ function viewDetailReport(isForExport) {
         if (currentCar && currentCar.logEnabled && currentCar.commission) {
             const commPercent = parseFloat(currentCar.commission);
             if (!isNaN(commPercent) && commPercent > 0) {
-                // 수정된 수식: 기본 운송료에서 화주/업체 수수료를 차감한 후 계산
                 subCarComm = Math.floor((totalFare - totalCommission) * (commPercent / 100));
                 subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
             }
@@ -2281,25 +2392,45 @@ function viewDetailReport(isForExport) {
     }
 
     const vat = Math.round(totalFare * 0.1);
-    
-    // 숨겨진 수수료들도 계에서 정상 차감되도록 수식 반영
     const grandTotal = totalFare - totalCommission - subCarComm + vat;
 
     const summaryBox = document.querySelector('.report-summary-box');
     
-    // 이외금지 (기본운송료 -> 부가세 -> 계 순서 외에 표출 제한)
+    let baseFareHtml = '';
+    if (defaultBaseFare > 0 || Object.keys(monthFareByClient).length === 0) {
+        baseFareHtml += `
+            <div class="summary-row">
+                <span>기본 운송료</span>
+                <span class="summary-value">${defaultBaseFare.toLocaleString()} 원</span>
+            </div>
+        `;
+    }
+    for (let client in monthFareByClient) {
+        baseFareHtml += `
+            <div class="summary-row">
+                <span>${client} 기본 운송료</span>
+                <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
+            </div>
+        `;
+        if (monthCommByClient[client] > 0) {
+            baseFareHtml += `
+                <div class="summary-row">
+                    <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${client} 수수료 (${clientCommLabels[client]})</span>
+                    <span class="summary-value">- ${monthCommByClient[client].toLocaleString()} 원</span>
+                </div>
+            `;
+        }
+    }
+
     summaryBox.innerHTML = `
-        <div class="summary-row">
-            <span>기본 운송료</span>
-            <span class="summary-value" id="rptFare">${totalFare.toLocaleString()} 원</span>
-        </div>
+        ${baseFareHtml}
         <div class="summary-row">
             <span>부가세 (10%)</span>
-            <span class="summary-value" id="rptVat">${vat.toLocaleString()} 원</span>
+            <span class="summary-value">${vat.toLocaleString()} 원</span>
         </div>
         <div class="summary-row total">
             <span>계</span>
-            <span class="summary-value" id="rptTotal">${grandTotal.toLocaleString()} 원</span>
+            <span class="summary-value">${grandTotal.toLocaleString()} 원</span>
         </div>
     `;
 

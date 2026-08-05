@@ -571,16 +571,6 @@ body {
     white-space: nowrap;
 }
 
-/* 수수료 전용 칩 스타일 */
-.commission-chip {
-    background-color: #8B4513 !important;
-    color: #FFFF00 !important;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: bold;
-    display: inline-block;
-}
 
 /* 설정 페이지 및 헤더 */
 .settings-header {
