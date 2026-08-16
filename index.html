@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <!-- 외부 CSS 연결 -->
-    <link rel="stylesheet" href="style.css?v=20260816-account-roles">
+    <link rel="stylesheet" href="style.css?v=20260816-login-redesign">
     
 </head>
 <body>
@@ -184,7 +184,7 @@
         <div id="accountTypePage" class="page hidden account-flow-page">
             <div class="account-flow-shell">
                 <button id="accountTypeBackBtn" type="button" class="account-flow-back hidden" onclick="cancelAccountTypeSelection()" aria-label="뒤로가기"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-                <div class="account-flow-brand"><img src="banner_image.png" alt="운행 일지"><span>운행 일지</span></div>
+                <div class="account-flow-brand"><img src="banner_image.png" alt=""><span>운행 일지</span></div>
                 <div class="account-flow-heading">
                     <span>ACCOUNT TYPE</span>
                     <h1>어떤 방식으로<br>이용하시나요?</h1>
@@ -193,11 +193,7 @@
                 <div class="account-type-options" role="radiogroup" aria-label="사용자 유형">
                     <button type="button" class="account-type-option" data-account-type="owner_driver" onclick="selectAccountType('owner_driver')" role="radio" aria-checked="false">
                         <span class="account-type-icon"><svg viewBox="0 0 24 24"><path d="M3 14.5v-2l2.5-1.4 1.6-3.7A2.3 2.3 0 0 1 9.2 6h5.6a2.3 2.3 0 0 1 2.1 1.4l1.6 3.7 2.5 1.4v4.2"></path><path d="M5 18h14M6 11h12"></path><circle cx="6.8" cy="17.5" r="2.5"></circle><circle cx="17.2" cy="17.5" r="2.5"></circle></svg></span>
-                        <span><strong>개인 차주(1인)</strong><small>내 차량을 직접 운행하고 일지를 관리해요.</small></span>
-                    </button>
-                    <button type="button" class="account-type-option" data-account-type="operator" onclick="selectAccountType('operator')" role="radio" aria-checked="false">
-                        <span class="account-type-icon"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-4 7 4v13"></path><path d="M9 21v-5h6v5M8 11h2M14 11h2"></path></svg></span>
-                        <span><strong>운송사·운영 사장</strong><small>기사 연결과 차량 할당을 함께 관리해요.</small></span>
+                        <span><strong>차주</strong><small>본인 차량 일지 및 기사를 관리해요.</small></span>
                     </button>
                     <button type="button" class="account-type-option" data-account-type="employed_driver" onclick="selectAccountType('employed_driver')" role="radio" aria-checked="false">
                         <span class="account-type-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"></circle><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"></path><path d="M9 21v-4h6v4"></path></svg></span>
@@ -211,8 +207,10 @@
         <!-- [로컬 로그인] -->
         <div id="loginPage" class="page hidden account-flow-page">
             <div class="account-flow-shell login-flow-shell">
-                <button type="button" class="account-flow-back" onclick="showAccountTypePage('login')" aria-label="사용자 유형 다시 선택"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-                <div class="account-flow-brand"><img src="banner_image.png" alt="운행 일지"><span>운행 일지</span></div>
+                <div class="account-flow-topbar">
+                    <button type="button" class="account-flow-back" onclick="showAccountTypePage('login')" aria-label="사용자 유형 다시 선택"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                    <div class="account-flow-brand"><img src="banner_image.png" alt=""><span>운행 일지</span></div>
+                </div>
                 <div class="account-flow-heading">
                     <span>WELCOME</span>
                     <h1>기본 정보를<br>입력해 주세요.</h1>
@@ -221,11 +219,15 @@
                 <div id="loginSelectedAccountType" class="login-selected-account-type"></div>
                 <div class="login-local-form">
                     <label for="loginUserName">이름</label>
-                    <input type="text" id="loginUserName" class="input-box" placeholder="이름을 입력하세요" autocomplete="name">
+                    <input type="text" id="loginUserName" class="input-box" placeholder="이름을 입력하세요" autocomplete="name" oninput="updateLoginContinueState()">
                     <label for="loginUserPhone">휴대전화 번호</label>
-                    <input type="tel" id="loginUserPhone" class="input-box" placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhoneNumber(this)">
+                    <input type="tel" id="loginUserPhone" class="input-box" placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhoneNumber(this); updateLoginContinueState()">
+                    <div id="loginInviteField" class="login-invite-field hidden">
+                        <span><strong>초대코드</strong><small>사장님에게 받은 6자리 코드를 입력해 주세요.</small></span>
+                        <input type="text" id="loginInviteCode" class="input-box" inputmode="numeric" maxlength="6" aria-label="초대코드" placeholder="000000" oninput="this.value=this.value.replace(/\D/g, '').slice(0, 6); updateLoginContinueState()">
+                    </div>
                 </div>
-                <button type="button" class="account-flow-primary" onclick="completeLocalLogin()">로그인하고 시작하기</button>
+                <button id="loginContinueBtn" type="button" class="account-flow-primary" onclick="completeLocalLogin()" disabled>시작하기</button>
             </div>
         </div>
 
@@ -391,21 +393,27 @@
 
         <!-- [세금계산서 관리 페이지] -->
         <div id="taxInvoicePage" class="page hidden">
-            <div class="settings-header">
+            <div class="settings-header tax-invoice-page-header">
                 <button class="icon-btn" onclick="goBackFromUtilityPage()" title="뒤로가기"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
                 <div class="settings-title">세금계산서</div>
-                <button class="icon-btn" onclick="showPersonalInfo()" title="사업자 정보 설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33A1.65 1.65 0 0 0 14 20.83V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15 1.65 1.65 0 0 0 3.09 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 4.3l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.12.6.65 1 1.26 1H21a2 2 0 0 1 0 4h-.09c-.61 0-1.14.4-1.51 1z"></path></svg></button>
+                <span class="tax-invoice-header-spacer" aria-hidden="true"></span>
             </div>
-            <section class="tax-invoice-toolbar">
-                <label for="taxInvoiceMonth">작성 월</label>
-                <input type="month" id="taxInvoiceMonth" class="input-box" onchange="changeTaxInvoiceMonth(this.value)">
+            <section class="tax-invoice-control-card">
+                <div class="tax-invoice-month-navigator">
+                    <button type="button" class="arrow-btn" onclick="changeTaxInvoiceMonthBy(-1)" title="이전 달"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                    <label class="tax-invoice-month-picker" for="taxInvoiceMonth">
+                        <span>작성 월</span>
+                        <input type="month" id="taxInvoiceMonth" onchange="changeTaxInvoiceMonth(this.value)">
+                    </label>
+                    <button type="button" class="arrow-btn" onclick="changeTaxInvoiceMonthBy(1)" title="다음 달"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                </div>
+                <div class="tax-invoice-flow-tabs" role="tablist" aria-label="계산서 흐름">
+                    <button type="button" id="taxInvoiceSalesFlowTab" class="active" onclick="selectTaxInvoiceFlow('sales')">매출 발행 <span id="taxInvoiceSalesFlowCount">0</span></button>
+                    <button type="button" id="taxInvoicePurchaseFlowTab" onclick="selectTaxInvoiceFlow('purchase')">기사 매입 <span id="taxInvoicePurchaseFlowCount">0</span></button>
+                    <button type="button" id="taxInvoiceCommissionFlowTab" onclick="selectTaxInvoiceFlow('commission')">수수료 발행 <span id="taxInvoiceCommissionFlowCount">0</span></button>
+                </div>
             </section>
             <div class="tax-invoice-guide" id="taxInvoiceIssuerGuide"></div>
-            <div class="tax-invoice-flow-tabs" role="tablist" aria-label="계산서 흐름">
-                <button type="button" id="taxInvoiceSalesFlowTab" class="active" onclick="selectTaxInvoiceFlow('sales')">매출 발행 <span id="taxInvoiceSalesFlowCount">0</span></button>
-                <button type="button" id="taxInvoicePurchaseFlowTab" onclick="selectTaxInvoiceFlow('purchase')">기사 매입 <span id="taxInvoicePurchaseFlowCount">0</span></button>
-                <button type="button" id="taxInvoiceCommissionFlowTab" onclick="selectTaxInvoiceFlow('commission')">수수료 발행 <span id="taxInvoiceCommissionFlowCount">0</span></button>
-            </div>
             <div class="tax-invoice-tabs">
                 <button type="button" id="taxInvoiceDraftTab" class="active" onclick="selectTaxInvoiceTab('draft')">작성 전 <span id="taxInvoiceDraftCount">0</span></button>
                 <button type="button" id="taxInvoiceIssuedTab" onclick="selectTaxInvoiceTab('issued')">발급 완료 <span id="taxInvoiceIssuedCount">0</span></button>
@@ -1023,7 +1031,7 @@
             <div class="setting-section settings-backup-card">
                 <h3>데이터 관리 (백업 / 복구)</h3>
                 <p style="font-size: 0.85rem; color: var(--sub-text-color); margin-bottom: 10px;">
-                    기기 변경 시 기록을 보관 및 복원할 수 있습니다.
+                    운행일지, 기사 연동 기록, 세금계산서와 설정을 함께 보관하고 복원합니다.
                 </p>
                 <div class="backup-btn-group">
                     <button class="backup-btn" onclick="exportData()">
@@ -1033,7 +1041,7 @@
                         <svg class="inline-icon sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> 백업 불러오기
                     </button>
                 </div>
-                <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importData(event)">
+                <input type="file" id="importFileInput" accept=".json,application/json" style="display: none;" onchange="importData(event)">
             </div>
         </div>
 
@@ -1919,6 +1927,6 @@
     </div>
 
     <!-- 외부 JS 연결 -->
-    <script src="script.js?v=20260816-navigation-back"></script>
+    <script src="script.js?v=20260816-login-redesign"></script>
 </body>
 </html>

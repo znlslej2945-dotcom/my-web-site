@@ -79,8 +79,8 @@ function setUserSettings(settings) {
 function getAccountTypeMeta(type) {
     const types = {
         owner_driver: {
-            label: '개인 차주(1인)',
-            description: '내 차량을 직접 운행하고 연결 기사를 조회·관리합니다.',
+            label: '차주',
+            description: '본인 차량 일지 및 기사를 관리합니다.',
             icon: '<svg viewBox="0 0 24 24"><path d="M3 14.5v-2l2.5-1.4 1.6-3.7A2.3 2.3 0 0 1 9.2 6h5.6a2.3 2.3 0 0 1 2.1 1.4l1.6 3.7 2.5 1.4v4.2"></path><path d="M5 18h14M6 11h12"></path><circle cx="6.8" cy="17.5" r="2.5"></circle><circle cx="17.2" cy="17.5" r="2.5"></circle></svg>'
         },
         operator: {
@@ -119,7 +119,7 @@ function getEffectiveDriverSettlementMode(car, settings = getUserSettings()) {
 function showAccountTypePage(returnPage = 'login') {
     accountTypeReturnPage = returnPage === 'personal' ? 'personal' : 'login';
     const settings = getUserSettings();
-    pendingAccountType = settings.accountType || '';
+    pendingAccountType = settings.accountType === 'operator' ? 'owner_driver' : (settings.accountType || '');
     hideAllPages();
     document.body.classList.add('account-flow-active');
     document.getElementById('accountTypePage').classList.remove('hidden');
@@ -134,7 +134,7 @@ function showAccountTypePage(returnPage = 'login') {
 }
 
 function selectAccountType(type) {
-    if (!getAccountTypeMeta(type).label || !['owner_driver', 'operator', 'employed_driver'].includes(type)) return;
+    if (!getAccountTypeMeta(type).label || !['owner_driver', 'employed_driver'].includes(type)) return;
     pendingAccountType = type;
     document.querySelectorAll('.account-type-option').forEach(button => {
         const selected = button.dataset.accountType === type;
@@ -185,6 +185,21 @@ function showLocalLoginPage() {
     if (selectedType) selectedType.innerHTML = `<span>${meta.icon}</span><span><strong>${meta.label}</strong><small>${meta.description}</small></span>`;
     document.getElementById('loginUserName').value = settings.userName || '';
     document.getElementById('loginUserPhone').value = settings.userPhone || '';
+    const employedDriver = settings.accountType === 'employed_driver';
+    document.getElementById('loginInviteField')?.classList.toggle('hidden', !employedDriver);
+    const inviteInput = document.getElementById('loginInviteCode');
+    if (inviteInput) inviteInput.value = employedDriver ? (settings.employerLink?.inviteCode || '') : '';
+    updateLoginContinueState();
+}
+
+function updateLoginContinueState() {
+    const settings = getUserSettings();
+    const name = document.getElementById('loginUserName')?.value.trim() || '';
+    const phoneDigits = document.getElementById('loginUserPhone')?.value.replace(/\D/g, '') || '';
+    const inviteDigits = document.getElementById('loginInviteCode')?.value.replace(/\D/g, '') || '';
+    const needsInvite = settings.accountType === 'employed_driver';
+    const button = document.getElementById('loginContinueBtn');
+    if (button) button.disabled = !name || phoneDigits.length < 10 || (needsInvite && inviteDigits.length !== 6);
 }
 
 function completeLocalLogin() {
@@ -195,8 +210,25 @@ function completeLocalLogin() {
         return;
     }
     const settings = getUserSettings();
+    const inviteCode = document.getElementById('loginInviteCode')?.value.trim() || '';
+    if (settings.accountType === 'employed_driver' && !/^\d{6}$/.test(inviteCode)) {
+        showToastMessage('사장님에게 받은 6자리 초대코드를 입력해 주세요.');
+        return;
+    }
     settings.userName = name;
     settings.userPhone = phone;
+    if (settings.accountType === 'employed_driver') {
+        const existingLink = settings.employerLink || {};
+        settings.employerLink = {
+            ...existingLink,
+            id: existingLink.id || generateLocalId('employer'),
+            status: 'linked',
+            ownerName: existingLink.ownerName || '연동된 운송사',
+            ownerPhone: existingLink.ownerPhone || '',
+            inviteCode,
+            linkedAt: existingLink.linkedAt || new Date().toISOString()
+        };
+    }
     settings.isLoggedIn = true;
     settings.onboardingCompleted = true;
     setUserSettings(settings);
@@ -4176,69 +4208,208 @@ function updateToggleDependencies(type) {
     }
 }
 
-function exportData() {
-    const backupData = {
-        userSettings: getUserSettings(),
-        workData: JSON.parse(localStorage.getItem('workData')) || {},
-        subWorkData: {}, 
-        theme: localStorage.getItem('theme') || 'light'
-    };
-    
-    if (backupData.userSettings.cars) {
-        backupData.userSettings.cars.forEach(car => {
-            if (car.type === 'sub' && car.logEnabled) {
-                backupData.subWorkData[car.number] = JSON.parse(localStorage.getItem('workData_' + car.number)) || {};
-            }
-        });
-    }
+const APP_BACKUP_TYPE = 'plaintext-transport-log';
+const APP_BACKUP_VERSION = 2;
+const APP_BACKUP_JSON_KEYS = new Set([
+    'userSettings',
+    'workData',
+    'taxInvoiceRecords',
+    'messageTemplateCustomBodies',
+    'supportInquiries'
+]);
+const APP_BACKUP_TEXT_KEYS = new Set(['theme', 'reportShareMessagePattern']);
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+function isBackupRecord(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isAppBackupStorageKey(key) {
+    return APP_BACKUP_JSON_KEYS.has(key)
+        || APP_BACKUP_TEXT_KEYS.has(key)
+        || key.startsWith('workData_')
+        || key.startsWith('linkedDriverWorkData_');
+}
+
+function readBackupJsonStorage(key, fallback) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw === null ? fallback : JSON.parse(raw);
+    } catch (error) {
+        console.warn(`${key} 백업 데이터 읽기 실패:`, error);
+        return fallback;
+    }
+}
+
+function exportData() {
+    const storageData = {};
+    const storageKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+        .filter(key => key && isAppBackupStorageKey(key));
+    storageKeys.forEach(key => {
+        storageData[key] = localStorage.getItem(key);
+    });
+
+    const subWorkData = {};
+    Object.keys(storageData).filter(key => key.startsWith('workData_')).forEach(key => {
+        const carNumber = key.slice('workData_'.length);
+        try {
+            subWorkData[carNumber] = JSON.parse(storageData[key]) || {};
+        } catch (error) {
+            subWorkData[carNumber] = {};
+        }
+    });
+
+    const backupData = {
+        backupType: APP_BACKUP_TYPE,
+        backupVersion: APP_BACKUP_VERSION,
+        createdAt: new Date().toISOString(),
+        userSettings: getUserSettings(),
+        workData: readBackupJsonStorage('workData', {}),
+        subWorkData,
+        taxInvoiceRecords: readBackupJsonStorage('taxInvoiceRecords', []),
+        theme: localStorage.getItem('theme') || 'light',
+        storageData
+    };
+
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json;charset=utf-8' });
+    const fileUrl = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
     const todayStr = new Date().toISOString().slice(0, 10);
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `운송내역_백업_${todayStr}.json`);
+    downloadAnchor.href = fileUrl;
+    downloadAnchor.download = `운송내역_백업_${todayStr}.json`;
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+    showToastMessage('백업 파일을 저장했습니다.');
+}
+
+function parseBackupStorageJson(key, value) {
+    try {
+        return JSON.parse(value);
+    } catch (error) {
+        throw new Error(`${key} 데이터가 손상되어 있습니다.`);
+    }
+}
+
+function normalizeImportedBackup(imported) {
+    if (!isBackupRecord(imported)) {
+        throw new Error('백업 파일의 기본 구조를 확인할 수 없습니다.');
+    }
+    if (imported.backupType && imported.backupType !== APP_BACKUP_TYPE) {
+        throw new Error('이 앱에서 만든 백업 파일이 아닙니다.');
+    }
+
+    const storageData = isBackupRecord(imported.storageData) ? imported.storageData : {};
+    const storedUserSettings = typeof storageData.userSettings === 'string'
+        ? parseBackupStorageJson('사용자 설정', storageData.userSettings)
+        : null;
+    const storedWorkData = typeof storageData.workData === 'string'
+        ? parseBackupStorageJson('메인 운행일지', storageData.workData)
+        : null;
+    const userSettings = imported.userSettings ?? storedUserSettings;
+    const mainWorkData = imported.workData ?? storedWorkData;
+    const subWorkData = imported.subWorkData ?? {};
+
+    if (!isBackupRecord(userSettings)) {
+        throw new Error('사용자 설정 정보가 없는 백업 파일입니다.');
+    }
+    if (!isBackupRecord(mainWorkData)) {
+        throw new Error('메인 운행일지 정보가 없는 백업 파일입니다.');
+    }
+    if (!isBackupRecord(subWorkData)) {
+        throw new Error('기사차량 운행일지 형식이 올바르지 않습니다.');
+    }
+
+    const storageWrites = {};
+    Object.entries(storageData).forEach(([key, value]) => {
+        if (!isAppBackupStorageKey(key) || typeof value !== 'string') return;
+        if (APP_BACKUP_JSON_KEYS.has(key) || key.startsWith('workData_') || key.startsWith('linkedDriverWorkData_')) {
+            parseBackupStorageJson(key, value);
+        }
+        storageWrites[key] = value;
+    });
+
+    storageWrites.userSettings = JSON.stringify(userSettings);
+    storageWrites.workData = JSON.stringify(mainWorkData);
+    Object.entries(subWorkData).forEach(([carNumber, carWorkData]) => {
+        if (!carNumber || !isBackupRecord(carWorkData)) {
+            throw new Error('기사차량 운행일지 일부가 손상되어 있습니다.');
+        }
+        storageWrites[`workData_${carNumber}`] = JSON.stringify(carWorkData);
+    });
+
+    if (imported.taxInvoiceRecords !== undefined) {
+        if (!Array.isArray(imported.taxInvoiceRecords)) throw new Error('세금계산서 기록 형식이 올바르지 않습니다.');
+        storageWrites.taxInvoiceRecords = JSON.stringify(imported.taxInvoiceRecords);
+    }
+    if (imported.theme === 'light' || imported.theme === 'dark') storageWrites.theme = imported.theme;
+
+    return { userSettings, mainWorkData, subWorkData, storageWrites };
+}
+
+function restoreBackupStorage(storageWrites) {
+    const previousValues = new Map();
+    Object.keys(storageWrites).forEach(key => previousValues.set(key, localStorage.getItem(key)));
+    try {
+        Object.entries(storageWrites).forEach(([key, value]) => localStorage.setItem(key, value));
+    } catch (error) {
+        previousValues.forEach((value, key) => {
+            if (value === null) localStorage.removeItem(key);
+            else localStorage.setItem(key, value);
+        });
+        throw new Error('기기 저장 공간이 부족하거나 데이터 저장이 차단되어 복원하지 못했습니다.');
+    }
 }
 
 function importData(event) {
-    const file = event.target.files[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+        showConfirmModal('앱에서 저장한 JSON 백업 파일을 선택해 주세요. ZIP 파일은 불러올 수 없습니다.', null);
+        input.value = '';
+        return;
+    }
 
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            const imported = JSON.parse(e.target.result);
-            if (imported.userSettings) setUserSettings(imported.userSettings);
-            if (imported.workData) {
-                localStorage.setItem('workData', JSON.stringify(imported.workData));
-            }
-            
-            if (imported.subWorkData) {
-                for (let carNum in imported.subWorkData) {
-                    localStorage.setItem('workData_' + carNum, JSON.stringify(imported.subWorkData[carNum]));
-                }
-            }
+            const imported = JSON.parse(String(e.target.result || '').replace(/^\uFEFF/, ''));
+            const normalized = normalizeImportedBackup(imported);
+            restoreBackupStorage(normalized.storageWrites);
 
             if (activeLogId === 'main') {
-                workData = imported.workData || {};
+                workData = normalized.mainWorkData;
             } else {
-                workData = imported.subWorkData[activeLogId] || {};
+                workData = normalized.subWorkData?.[activeLogId]
+                    || readBackupJsonStorage(`workData_${activeLogId}`, {});
             }
-            normalizeLegacyData(); 
-            
-            if (imported.theme) localStorage.setItem('theme', imported.theme);
+            normalizeLegacyData();
 
-            showToastMessage('복원되었습니다!');
+            const restoredTheme = localStorage.getItem('theme') || 'light';
+            setTheme(restoredTheme);
             loadSettings();
+            updateAccountRoleUI();
             buildCalendar();
-            renderSubCarMenu(); 
-        } catch (err) {
-            showConfirmModal('올바르지 않은 백업 파일입니다.', null);
+            renderSubCarMenu();
+            renderLinkedDriverList();
+            showToastMessage('백업 데이터를 복원했습니다.');
+        } catch (error) {
+            console.error('백업 불러오기 실패:', error);
+            const message = error instanceof SyntaxError
+                ? '파일 내용이 손상되었거나 JSON 백업 파일이 아닙니다.'
+                : (error.message || '백업 파일을 복원하지 못했습니다.');
+            showConfirmModal(message, null);
+        } finally {
+            input.value = '';
         }
     };
-    reader.readAsText(file);
+    reader.onerror = function() {
+        showConfirmModal('선택한 백업 파일을 읽지 못했습니다. 파일 권한을 확인해 주세요.', null);
+        input.value = '';
+    };
+    reader.readAsText(file, 'utf-8');
 }
 
 function changeMonth(delta) {
@@ -7250,7 +7421,16 @@ function showTaxInvoices(returnPage = 'main') {
 function changeTaxInvoiceMonth(value) {
     if (!/^\d{4}-\d{2}$/.test(value)) return;
     taxInvoiceViewMonth = value;
+    const monthInput = document.getElementById('taxInvoiceMonth');
+    if (monthInput && monthInput.value !== value) monthInput.value = value;
     renderTaxInvoices();
+}
+
+function changeTaxInvoiceMonthBy(offset) {
+    if (!taxInvoiceViewMonth) return;
+    const [year, month] = taxInvoiceViewMonth.split('-').map(Number);
+    const targetDate = new Date(year, month - 1 + Number(offset || 0), 1);
+    changeTaxInvoiceMonth(`${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`);
 }
 
 function selectTaxInvoiceTab(tab) {
@@ -7273,11 +7453,11 @@ function renderTaxInvoices() {
     if (currentTaxInvoiceFlow === 'purchase') {
         guide.innerHTML = issuerReady
             ? `<strong>기사에게 받을 매입 계산서</strong><span>${settings.driverInvoiceBasis === 'gross' ? '총 운송료' : '수수료·산재보험 차감 후 기사 정산액'} 기준 · 공급받는 자 ${escapeDetailText(settings.bizName)}</span>`
-            : '<strong>회사 사업자 정보가 필요합니다.</strong><span>오른쪽 설정에서 계산서를 받을 회사의 사업자 정보를 입력해 주세요.</span>';
+            : '<strong>회사 사업자 정보가 필요합니다.</strong><span>마이페이지 → 개인정보에서 계산서를 받을 회사의 사업자 정보를 입력해 주세요.</span>';
     } else {
         guide.innerHTML = issuerReady
             ? `<strong>${escapeDetailText(settings.bizName)}</strong><span>${escapeDetailText(settings.bizNumber)} · ${flowMeta.label} · ${escapeDetailText(settings.bizType)} / ${escapeDetailText(settings.bizItem)}</span>`
-            : '<strong>회사 사업자 정보가 필요합니다.</strong><span>오른쪽 설정에서 계산서를 발행할 회사의 사업자 정보를 입력해 주세요.</span>';
+            : '<strong>회사 사업자 정보가 필요합니다.</strong><span>마이페이지 → 개인정보에서 계산서를 발행할 회사의 사업자 정보를 입력해 주세요.</span>';
     }
 
     const flowGroups = {
@@ -7308,7 +7488,14 @@ function renderTaxInvoices() {
     const entries = currentTaxInvoiceTab === 'issued' ? issuedEntries : draftEntries;
     const supplyTotal = entries.reduce((sum, item) => sum + Number(item.supplyAmount || 0), 0);
     const taxTotal = entries.reduce((sum, item) => sum + Number(item.taxAmount || 0), 0);
-    document.getElementById('taxInvoiceSummary').innerHTML = `<span>${entries.length}건</span><strong>${(supplyTotal + taxTotal).toLocaleString()}원</strong><small>공급가액 ${supplyTotal.toLocaleString()}원 · 세액 ${taxTotal.toLocaleString()}원</small>`;
+    document.getElementById('taxInvoiceSummary').innerHTML = `
+        <div class="summary-title">
+            <span>${flowMeta.label} 월간 정산</span>
+            <span>${entries.length}건</span>
+        </div>
+        <div class="summary-row"><span>공급가액</span><span class="summary-value">${supplyTotal.toLocaleString()} 원</span></div>
+        <div class="summary-row"><span>부가세</span><span class="summary-value">${taxTotal.toLocaleString()} 원</span></div>
+        <div class="summary-row total"><span>합계</span><span class="summary-value">${(supplyTotal + taxTotal).toLocaleString()} 원</span></div>`;
 
     const list = document.getElementById('taxInvoiceList');
     if (entries.length === 0) {
@@ -7317,7 +7504,7 @@ function renderTaxInvoices() {
             : currentTaxInvoiceFlow === 'purchase'
                 ? '회사 매입 방식으로 설정된 기사의 운행내역이 없습니다.'
                 : '기사 직접발행 방식으로 설정된 수수료 내역이 없습니다.';
-        list.innerHTML = `<div class="tax-invoice-empty">${currentTaxInvoiceTab === 'issued' ? `${flowMeta.completeLabel} 내역이 없습니다.` : emptyDraft}</div>`;
+        list.innerHTML = `<div class="tax-invoice-empty"><span class="tax-invoice-empty-mark" aria-hidden="true">–</span><strong>${currentTaxInvoiceTab === 'issued' ? `${flowMeta.completeLabel} 내역이 없습니다.` : emptyDraft}</strong><small>선택한 월의 운행 기록을 기준으로 표시됩니다.</small></div>`;
         return;
     }
 
@@ -7331,7 +7518,7 @@ function renderTaxInvoices() {
         const cancelLabel = currentTaxInvoiceFlow === 'purchase' ? '수취 취소' : '발급 취소';
         return `<article class="tax-invoice-card">
             <div class="tax-invoice-card-head"><div><strong>${escapeDetailText(item.clientName)}</strong><span>${item.count || 0}건 · ${missingInfo ? '사업자번호 미입력' : escapeDetailText(item.clientBizNumber)}</span>${driverBreakdown}</div><em class="${item.status}">${item.status === 'issued' ? flowMeta.completeLabel : (currentTaxInvoiceFlow === 'purchase' ? '수취 전' : '작성 전')}</em></div>
-            <div class="tax-invoice-card-money"><span>공급가액 <b>${Number(item.supplyAmount).toLocaleString()}원</b></span><span>세액 <b>${Number(item.taxAmount).toLocaleString()}원</b></span><strong>${Number(item.totalAmount).toLocaleString()}원</strong></div>
+            <div class="tax-invoice-card-money"><span>공급가액 <b>${Number(item.supplyAmount).toLocaleString()}원</b></span><span>세액 <b>${Number(item.taxAmount).toLocaleString()}원</b></span><strong><small>합계</small>${Number(item.totalAmount).toLocaleString()}원</strong></div>
             <div class="tax-invoice-card-actions">
                 <button type="button" onclick="openTaxInvoiceDraft('${partyKey}')">${item.status === 'issued' ? '내용 보기' : draftActionLabel}</button>
                 <button type="button" onclick="exportTaxInvoiceCsv('${partyKey}')">엑셀 저장</button>

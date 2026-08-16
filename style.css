@@ -1653,6 +1653,19 @@ body {
 }
 
 /* 사용자 유형 선택·로컬 로그인 */
+body.account-flow-active {
+    min-height: 100dvh;
+    padding-bottom: 0;
+    background: #111111;
+    color: #f5f5f5;
+}
+
+body.account-flow-active .container {
+    min-height: 100dvh;
+    padding-top: max(28px, env(safe-area-inset-top));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
 body.account-flow-active .top-btn-group,
 body.account-flow-active .bottom-nav-bar,
 body.account-flow-active #subCarBackBtn,
@@ -1674,8 +1687,8 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 .account-flow-page {
-    min-height: calc(100dvh - 40px);
-    padding: 12px 0 26px;
+    min-height: calc(100dvh - 52px);
+    padding: 16px 2px 0;
     box-sizing: border-box;
     text-align: left;
 }
@@ -1684,20 +1697,20 @@ body.account-flow-active #sideMenuOverlay {
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: calc(100dvh - 78px);
+    min-height: calc(100dvh - 84px);
 }
 
 .account-flow-back {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
-    margin-bottom: 12px;
+    width: 48px;
+    height: 48px;
+    margin: 0;
     padding: 0;
-    border: 1px solid var(--border-color);
-    border-radius: 13px;
-    background: var(--card-bg);
-    color: var(--text-color);
+    border: 1px solid #353535;
+    border-radius: 16px;
+    background: #1d1d1d;
+    color: #f5f5f5;
     cursor: pointer;
 }
 
@@ -1714,80 +1727,91 @@ body.account-flow-active #sideMenuOverlay {
 .account-flow-brand {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 26px;
-    color: var(--primary-color);
-    font-size: .82rem;
+    gap: 9px;
+    width: max-content;
+    margin: 0 0 42px;
+    color: #69a9f2;
+    font-size: 1.05rem;
     font-weight: 900;
+    letter-spacing: -.03em;
 }
 
 .account-flow-brand img {
-    width: 34px;
-    height: 34px;
+    width: 39px;
+    height: 30px;
     object-fit: contain;
 }
 
+.account-flow-topbar {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.account-flow-topbar::after { content: ''; }
+.account-flow-topbar .account-flow-brand { justify-self: center; margin: 0; }
+
 .account-flow-heading > span {
-    color: var(--primary-color);
-    font-size: .66rem;
+    color: #69a9f2;
+    font-size: .72rem;
     font-weight: 900;
-    letter-spacing: .13em;
+    letter-spacing: .15em;
 }
 
 .account-flow-heading h1 {
-    margin: 9px 0 10px;
-    color: var(--text-color);
-    font-size: clamp(1.65rem, 7vw, 2.05rem);
-    line-height: 1.2;
-    letter-spacing: -.04em;
+    margin: 14px 0 16px;
+    color: #f7f7f7;
+    font-size: clamp(2rem, 8.8vw, 2.5rem);
+    line-height: 1.16;
+    letter-spacing: -.055em;
 }
 
 .account-flow-heading p {
     margin: 0;
-    color: var(--sub-text-color);
-    font-size: .78rem;
-    line-height: 1.55;
+    color: #9b9b9b;
+    font-size: .88rem;
+    line-height: 1.6;
 }
 
 .account-type-options {
     display: grid;
-    gap: 9px;
-    margin: 24px 0 16px;
+    gap: 12px;
+    margin: 48px 0 20px;
 }
 
 .account-type-option {
     display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: 58px minmax(0, 1fr);
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     width: 100%;
-    min-height: 86px;
-    padding: 13px 14px;
-    border: 1px solid var(--border-color);
-    border-radius: 18px;
-    background: var(--card-bg);
-    color: var(--text-color);
-    box-shadow: var(--shadow-sm);
+    min-height: 104px;
+    padding: 18px;
+    border: 1px solid #363636;
+    border-radius: 22px;
+    background: #1d1d1d;
+    color: #f5f5f5;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, .24);
     font: inherit;
     text-align: left;
     cursor: pointer;
 }
 
 .account-type-option.active {
-    border-color: var(--primary-color);
-    background: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
-    outline: 2px solid var(--primary-color);
-    outline-offset: -2px;
+    border-color: #587da7;
+    background: #22282e;
+    box-shadow: 0 0 0 1px rgba(105, 169, 242, .08), 0 8px 20px rgba(0, 0, 0, .28);
 }
 
 .account-type-icon {
     display: grid;
     place-items: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 15px;
-    background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
-    color: var(--primary-color);
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+    background: #303740;
+    color: #69a9f2;
 }
 
 .account-type-icon svg,
@@ -1811,65 +1835,112 @@ body.account-flow-active #sideMenuOverlay {
     min-width: 0;
 }
 
-.account-type-option strong { font-size: .88rem; font-weight: 850; }
-.account-type-option small { color: var(--sub-text-color); font-size: .68rem; line-height: 1.4; }
+.account-type-option strong { color: #f5f5f5; font-size: 1rem; font-weight: 850; }
+.account-type-option small { color: #9d9d9d; font-size: .78rem; line-height: 1.45; }
 
 .account-flow-primary {
     width: 100%;
-    min-height: 50px;
+    min-height: 60px;
     margin-top: auto;
-    border: 1px solid var(--primary-color);
-    border-radius: 15px;
-    background: var(--primary-color);
+    border: 1px solid #4d91dc;
+    border-radius: 18px;
+    background: #4d91dc;
     color: #fff;
     font: inherit;
-    font-size: .86rem;
+    font-size: 1rem;
     font-weight: 850;
     cursor: pointer;
 }
 
 .account-flow-primary:disabled {
-    border-color: var(--border-color);
-    background: var(--input-bg);
-    color: var(--sub-text-color);
+    border-color: #343434;
+    background: #2a2a2a;
+    color: #909090;
     cursor: default;
 }
 
-.login-flow-shell .account-flow-heading { margin-bottom: 22px; }
+.login-flow-shell .account-flow-heading { margin-bottom: 42px; }
 
 .login-selected-account-type {
     display: grid;
-    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-columns: 54px minmax(0, 1fr);
     align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-    padding: 12px;
-    border: 1px solid color-mix(in srgb, var(--primary-color) 28%, var(--border-color));
-    border-radius: 15px;
-    background: color-mix(in srgb, var(--primary-color) 7%, var(--card-bg));
-    color: var(--primary-color);
+    gap: 14px;
+    min-height: 94px;
+    margin-bottom: 32px;
+    padding: 14px 16px;
+    border: 1px solid #56799f;
+    border-radius: 21px;
+    background: #22282e;
+    color: #69a9f2;
 }
 
 .login-selected-account-type > span:first-child {
     display: grid;
     place-items: center;
-    width: 42px;
-    height: 42px;
-    border-radius: 13px;
-    background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
+    width: 54px;
+    height: 54px;
+    border-radius: 17px;
+    background: #303740;
 }
 
-.login-selected-account-type strong { color: var(--text-color); font-size: .82rem; }
-.login-selected-account-type small { color: var(--sub-text-color); font-size: .65rem; line-height: 1.4; }
+.login-selected-account-type strong { color: #f5f5f5; font-size: .96rem; }
+.login-selected-account-type small { color: #9d9d9d; font-size: .75rem; line-height: 1.45; }
 
 .login-local-form {
     display: grid;
-    gap: 7px;
-    margin-bottom: 18px;
+    gap: 10px;
+    margin-bottom: 24px;
 }
 
-.login-local-form label { margin-top: 5px; color: var(--text-color); font-size: .74rem; font-weight: 800; }
-.login-local-form .input-box { width: 100%; min-height: 46px; margin: 0; box-sizing: border-box; }
+.login-local-form label {
+    margin: 7px 0 2px;
+    color: #f5f5f5;
+    font-size: .8rem;
+    font-weight: 850;
+}
+
+.login-local-form .input-box {
+    width: 100%;
+    min-height: 58px;
+    margin: 0;
+    padding: 0 20px;
+    box-sizing: border-box;
+    border: 1px solid #383838;
+    border-radius: 22px;
+    background: #292929;
+    color: #f5f5f5;
+    font-size: .92rem;
+}
+
+.login-local-form .input-box::placeholder { color: #929292; }
+.login-local-form .input-box:focus { border-color: #5d8fc5; outline: 2px solid rgba(105, 169, 242, .12); }
+
+.login-invite-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    align-items: center;
+    gap: 14px;
+    margin-top: 9px;
+}
+
+.login-invite-field.hidden { display: none !important; }
+.login-invite-field > span { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.login-invite-field strong { color: #f5f5f5; font-size: .8rem; font-weight: 850; }
+.login-invite-field small { color: #929292; font-size: .7rem; line-height: 1.45; }
+.login-invite-field .input-box { min-width: 0; text-align: center; letter-spacing: .16em; }
+
+@media (max-width: 360px) {
+    .account-flow-page { padding-inline: 0; }
+    .account-flow-heading h1 { font-size: 1.88rem; }
+    .account-flow-heading p { font-size: .8rem; }
+    .account-type-options { margin-top: 36px; }
+    .account-type-option { grid-template-columns: 52px minmax(0, 1fr); min-height: 94px; padding: 15px; }
+    .account-type-icon { width: 52px; height: 52px; }
+    .login-flow-shell .account-flow-heading { margin-bottom: 32px; }
+    .login-selected-account-type { margin-bottom: 24px; }
+    .login-invite-field { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
+}
 
 /* 개인정보의 사용자 유형·연동 상태 */
 .personal-role-summary {
@@ -2182,8 +2253,6 @@ body.account-flow-active #sideMenuOverlay {
 .linked-driver-record-card > b { color:var(--primary-color); font-size:.76rem; }
 
 @media (max-width: 350px) {
-    .account-type-option { grid-template-columns:42px minmax(0,1fr); padding-inline:10px; }
-    .account-type-icon { width:42px; height:42px; }
     .driver-form-grid { grid-template-columns:1fr; }
     .driver-form-wide { grid-column:auto; }
     .linked-driver-assignment { grid-template-columns:1fr; }
@@ -6568,41 +6637,53 @@ body.pdf-export-mode .summary-row.total {
 .personal-inline-fields > .form-group { min-width:0; }
 
 #taxInvoicePage { padding-bottom:92px; text-align:left; }
-.tax-invoice-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:12px 14px; border:1px solid var(--border-color); border-radius:15px; background:var(--card-bg); }
-.tax-invoice-toolbar label { color:var(--sub-text-color); font-size:.74rem; font-weight:800; }
-.tax-invoice-toolbar .input-box { width:150px; min-height:36px; margin:0; padding:6px 10px; }
-.tax-invoice-guide { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; padding:11px 13px; border:1px solid color-mix(in srgb,var(--sunday-color) 28%,var(--border-color)); border-radius:13px; background:color-mix(in srgb,var(--sunday-color) 5%,var(--card-bg)); }
+.tax-invoice-header-spacer { flex:0 0 40px; width:40px; height:40px; }
+.tax-invoice-control-card { margin-bottom:10px; padding:14px 12px 12px; border:1px solid var(--border-color); border-radius:24px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
+.tax-invoice-month-navigator { display:flex; align-items:center; justify-content:center; gap:8px; }
+.tax-invoice-month-navigator .arrow-btn { flex:0 0 36px; width:36px; height:36px; }
+.tax-invoice-month-navigator .arrow-btn svg { width:20px; height:20px; }
+.tax-invoice-month-picker { display:flex; align-items:center; gap:9px; min-height:44px; padding:5px 12px; border:1px solid var(--border-color); border-radius:30px; background:var(--input-bg); box-shadow:var(--shadow-sm); cursor:pointer; }
+.tax-invoice-month-picker > span { color:var(--sub-text-color); font-size:.65rem; font-weight:800; white-space:nowrap; }
+.tax-invoice-month-picker input { width:128px; min-width:0; padding:3px 0; border:0; outline:0; background:transparent; color:var(--text-color); font-family:inherit; font-size:.94rem; font-weight:800; text-align:center; color-scheme:light dark; }
+.tax-invoice-month-picker input::-webkit-calendar-picker-indicator { margin-left:4px; opacity:.68; cursor:pointer; }
+.tax-invoice-guide { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; padding:12px 14px; border:1px solid color-mix(in srgb,var(--sunday-color) 28%,var(--border-color)); border-radius:16px; background:color-mix(in srgb,var(--sunday-color) 5%,var(--card-bg)); }
 .tax-invoice-guide.ready { border-color:color-mix(in srgb,var(--primary-color) 25%,var(--border-color)); background:color-mix(in srgb,var(--primary-color) 5%,var(--card-bg)); }
-.tax-invoice-guide strong { color:var(--text-color); font-size:.76rem; }
-.tax-invoice-guide span { color:var(--sub-text-color); font-size:.65rem; line-height:1.4; }
-.tax-invoice-flow-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin:12px 0 8px; }
-.tax-invoice-flow-tabs button { min-height:42px; padding:5px 4px; border:1px solid var(--border-color); border-radius:11px; background:var(--card-bg); color:var(--sub-text-color); font-size:.66rem; font-weight:850; }
-.tax-invoice-flow-tabs button.active { border-color:var(--primary-color); background:color-mix(in srgb,var(--primary-color) 8%,var(--card-bg)); color:var(--primary-color); }
-.tax-invoice-flow-tabs span { display:inline-grid; place-items:center; min-width:17px; height:17px; margin-left:2px; padding:0 4px; border-radius:999px; background:var(--input-bg); font-size:.57rem; }
-.tax-invoice-tabs { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:14px 0 10px; padding:4px; border-radius:13px; background:var(--input-bg); }
+.tax-invoice-guide strong { color:var(--text-color); font-size:.78rem; }
+.tax-invoice-guide span { color:var(--sub-text-color); font-size:.65rem; line-height:1.5; }
+.tax-invoice-flow-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-color); }
+.tax-invoice-flow-tabs button { min-height:42px; padding:6px 3px; border:0; border-radius:13px; background:var(--input-bg); color:var(--sub-text-color); font-size:.66rem; font-weight:850; transition:background-color .18s,color .18s,transform .18s; }
+.tax-invoice-flow-tabs button.active { background:var(--primary-color); color:#fff; box-shadow:0 4px 10px color-mix(in srgb,var(--primary-color) 24%,transparent); }
+.tax-invoice-flow-tabs button:active { transform:scale(.98); }
+.tax-invoice-flow-tabs span { display:inline-grid; place-items:center; min-width:17px; height:17px; margin-left:2px; padding:0 4px; border-radius:999px; background:var(--card-bg); color:var(--sub-text-color); font-size:.57rem; }
+.tax-invoice-flow-tabs button.active span { background:rgba(255,255,255,.2); color:#fff; }
+.tax-invoice-tabs { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin:0 0 10px; padding:4px; border:1px solid var(--border-color); border-radius:14px; background:var(--input-bg); }
 .tax-invoice-tabs button { min-height:36px; border:0; border-radius:10px; background:transparent; color:var(--sub-text-color); font-size:.72rem; font-weight:800; }
 .tax-invoice-tabs button.active { background:var(--card-bg); color:var(--primary-color); box-shadow:var(--shadow-sm); }
 .tax-invoice-tabs span { display:inline-grid; place-items:center; min-width:18px; height:18px; margin-left:3px; padding:0 5px; border-radius:999px; background:var(--hover-bg); font-size:.61rem; }
-.tax-invoice-summary { display:grid; grid-template-columns:auto 1fr; align-items:baseline; gap:3px 10px; margin-bottom:10px; padding:12px 14px; border-radius:14px; background:color-mix(in srgb,var(--primary-color) 7%,var(--card-bg)); }
-.tax-invoice-summary span { color:var(--sub-text-color); font-size:.68rem; font-weight:750; }
-.tax-invoice-summary strong { color:var(--primary-color); font-size:1rem; text-align:right; }
-.tax-invoice-summary small { grid-column:1/-1; color:var(--sub-text-color); font-size:.62rem; text-align:right; }
-.tax-invoice-card { margin-bottom:10px; padding:14px; border:1px solid var(--border-color); border-radius:16px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
+.tax-invoice-summary { width:100%; margin-bottom:10px; padding:18px; border:1px solid var(--border-color); border-radius:24px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
+.tax-invoice-summary .summary-title { margin-bottom:14px; }
+.tax-invoice-summary .summary-row { margin-bottom:9px; font-size:.82rem; }
+.tax-invoice-summary .summary-row.total { margin-bottom:0; margin-top:12px; padding-top:11px; font-size:1rem; }
+.tax-invoice-card { margin-bottom:10px; padding:15px; border:1px solid var(--border-color); border-radius:20px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
 .tax-invoice-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .tax-invoice-card-head > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.tax-invoice-card-head strong { color:var(--text-color); font-size:.84rem; }
+.tax-invoice-card-head strong { color:var(--text-color); font-size:.86rem; }
 .tax-invoice-card-head span { color:var(--sub-text-color); font-size:.64rem; }
 .tax-invoice-card-head .tax-invoice-driver-breakdown { display:block; max-width:240px; color:var(--sub-text-color); font-size:.59rem; line-height:1.45; overflow-wrap:anywhere; }
 .tax-invoice-card-head em { flex:none; padding:4px 7px; border-radius:999px; background:var(--input-bg); color:var(--sub-text-color); font-size:.6rem; font-style:normal; font-weight:850; }
 .tax-invoice-card-head em.issued { background:color-mix(in srgb,var(--primary-color) 12%,var(--card-bg)); color:var(--primary-color); }
-.tax-invoice-card-money { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; margin:12px 0; padding:10px; border-radius:11px; background:var(--input-bg); }
-.tax-invoice-card-money span { display:flex; justify-content:space-between; color:var(--sub-text-color); font-size:.62rem; }
+.tax-invoice-card-money { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin:13px 0; padding:12px; border-radius:14px; background:var(--input-bg); }
+.tax-invoice-card-money span { display:flex; justify-content:space-between; color:var(--sub-text-color); font-size:.64rem; }
 .tax-invoice-card-money b { color:var(--text-color); }
-.tax-invoice-card-money > strong { grid-column:1/-1; padding-top:6px; border-top:1px solid var(--border-color); color:var(--primary-color); font-size:.88rem; text-align:right; }
+.tax-invoice-card-money > strong { display:flex; grid-column:1/-1; align-items:center; justify-content:space-between; padding-top:8px; border-top:1px dashed var(--border-color); color:var(--primary-color); font-size:.92rem; text-align:right; }
+.tax-invoice-card-money > strong small { color:var(--sub-text-color); font-size:.65rem; }
 .tax-invoice-card-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-.tax-invoice-card-actions button { min-height:34px; padding:5px; border:1px solid var(--border-color); border-radius:9px; background:transparent; color:var(--sub-text-color); font-size:.65rem; font-weight:800; }
+.tax-invoice-card-actions button { min-height:36px; padding:5px; border:1px solid var(--border-color); border-radius:11px; background:transparent; color:var(--sub-text-color); font-size:.65rem; font-weight:800; }
 .tax-invoice-card-actions button.primary { border-color:var(--primary-color); background:var(--primary-color); color:#fff; }
-.tax-invoice-empty { padding:42px 12px; color:var(--sub-text-color); font-size:.76rem; text-align:center; }
+.tax-invoice-empty { display:flex; flex-direction:column; align-items:center; gap:5px; padding:34px 14px; border:1px dashed var(--border-color); border-radius:20px; background:var(--card-bg); color:var(--sub-text-color); text-align:center; }
+.tax-invoice-empty-mark { display:grid; place-items:center; width:34px; height:34px; margin-bottom:3px; border-radius:50%; background:var(--input-bg); color:var(--primary-color); font-size:1.1rem; font-weight:800; }
+.tax-invoice-empty strong { color:var(--text-color); font-size:.75rem; line-height:1.45; }
+.tax-invoice-empty small { color:var(--sub-text-color); font-size:.62rem; }
 .tax-invoice-modal-content { max-height:min(88vh,760px); overflow-y:auto; }
 .tax-invoice-form-section { margin-bottom:12px; padding:12px; border:1px solid var(--border-color); border-radius:14px; background:var(--card-bg); }
 .tax-invoice-form-section h3 { margin:0 0 10px; color:var(--text-color); font-size:.78rem; text-align:left; }
@@ -6618,7 +6699,13 @@ body.pdf-export-mode .summary-row.total {
 
 @media (max-width:380px) {
     .personal-inline-fields { grid-template-columns:1fr; gap:0; }
-    .tax-invoice-card-actions { grid-template-columns:1fr; }
+    .tax-invoice-control-card { padding-right:10px; padding-left:10px; }
+    .tax-invoice-month-navigator { gap:3px; }
+    .tax-invoice-month-navigator .arrow-btn { flex-basis:30px; width:30px; }
+    .tax-invoice-month-picker { gap:6px; padding-right:9px; padding-left:9px; }
+    .tax-invoice-month-picker input { width:116px; font-size:.84rem; }
+    .tax-invoice-flow-tabs button { font-size:.62rem; }
+    .tax-invoice-card-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 
 /* 거래처 목록과 세금계산서 사용 설정 */
