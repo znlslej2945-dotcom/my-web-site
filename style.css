@@ -1092,7 +1092,7 @@ body {
 .calendar-grid {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(7, 1fr);
     row-gap: 8px;
     column-gap: 6px;
     align-items: center;
@@ -1116,7 +1116,6 @@ body {
 
 .date-cell {
     width: 100%;
-    min-width: 0;
     min-height: 76px;
     display: flex;
     flex-direction: column;
@@ -1170,18 +1169,8 @@ body {
     overflow-wrap: normal;
 }
 
-/* 작은 화면에서도 횟수·금액·휴무 배지는 한 줄을 유지하고 달력 밖으로 넘치지 않게 한다. */
+/* 작은 화면에서도 휴무 배지는 한 줄을 유지한다. */
 @media (max-width: 380px) {
-    #mainPage .calendar-grid {
-        column-gap: 2px;
-        padding-inline: 4px;
-    }
-
-    #mainPage .date-cell {
-        padding-inline: 1px;
-    }
-
-    #mainPage .work-badge,
     #mainPage .off-badge {
         max-width: 100%;
         padding: 3px 2px;
@@ -1203,10 +1192,13 @@ body {
 }
 
 .maint-badge {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     background-color: var(--maint-badge-bg);
     color: var(--maint-badge-text);
-    margin-top: 2px;
+    margin-top: 4px;
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow-wrap: normal;
 }
 
 /* 정산 요약 카드 */
