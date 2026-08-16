@@ -1151,6 +1151,9 @@ body {
     font-size: 0.75rem;
     background-color: var(--work-badge-bg);
     color: var(--work-badge-text);
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow-wrap: normal;
 }
 
 .off-badge {
