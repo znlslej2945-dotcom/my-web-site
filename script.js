@@ -668,6 +668,7 @@ function showSubCarSettings(carNum) {
 
 function switchCarLog(carNum) {
     activeLogId = carNum;
+    document.body.classList.toggle('sub-car-log-active', carNum !== 'main');
     const bannerImg = document.getElementById('mainBannerImage');
     const bannerTxt = document.getElementById('mainBannerText');
 

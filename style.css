@@ -335,6 +335,19 @@ body {
     border-radius: 30px;
 }
 
+/* 작은 화면의 기사차량 일지에서는 뒤로가기를 위에, 알림을 그 아래에 배치한다. */
+@media (max-width: 380px) {
+    body.sub-car-log-active #subCarBackBtn {
+        top: 29px;
+        left: 15px;
+    }
+
+    body.sub-car-log-active #notificationBtn {
+        top: 81px;
+        left: 15px;
+    }
+}
+
 /* 사이드 메뉴 */
 .side-menu-overlay {
     position: fixed;
@@ -1079,7 +1092,7 @@ body {
 .calendar-grid {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     row-gap: 8px;
     column-gap: 6px;
     align-items: center;
@@ -1103,6 +1116,7 @@ body {
 
 .date-cell {
     width: 100%;
+    min-width: 0;
     min-height: 76px;
     display: flex;
     flex-direction: column;
@@ -1156,10 +1170,36 @@ body {
     overflow-wrap: normal;
 }
 
+/* 작은 화면에서도 횟수·금액·휴무 배지는 한 줄을 유지하고 달력 밖으로 넘치지 않게 한다. */
+@media (max-width: 380px) {
+    #mainPage .calendar-grid {
+        column-gap: 2px;
+        padding-inline: 4px;
+    }
+
+    #mainPage .date-cell {
+        padding-inline: 1px;
+    }
+
+    #mainPage .work-badge,
+    #mainPage .off-badge {
+        max-width: 100%;
+        padding: 3px 2px;
+        font-size: clamp(0.52rem, 2.7vw, 0.68rem);
+        letter-spacing: -0.4px;
+        white-space: nowrap;
+        word-break: keep-all;
+        overflow-wrap: normal;
+    }
+}
+
 .off-badge {
     font-size: 0.75rem;
     background-color: var(--off-badge-bg);
     color: var(--off-badge-text);
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow-wrap: normal;
 }
 
 .maint-badge {
