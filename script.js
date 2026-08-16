@@ -101,6 +101,21 @@ function isOwnerAccountType(type) {
     return type === 'owner_driver' || type === 'operator';
 }
 
+function getDriverSettlementModeMeta(mode) {
+    const modes = {
+        company: { label: '회사 정산', description: '회사가 거래처에 매출 계산서를 발행하고 기사 계산서를 수취합니다.' },
+        driver_direct: { label: '기사 직접 정산', description: '기사가 거래처에 직접 발행하고 회사는 기사에게 수수료 계산서를 발행합니다.' },
+        employee: { label: '직원 기사', description: '회사가 거래처에 발행하며 기사 계산서는 만들지 않습니다.' },
+        none: { label: '계산서 미사용', description: '이 기사차량 운행분은 계산서 자동 생성에서 제외합니다.' }
+    };
+    return modes[mode] || modes.company;
+}
+
+function getEffectiveDriverSettlementMode(car, settings = getUserSettings()) {
+    const selected = car?.settlementMode || 'default';
+    return selected === 'default' ? (settings.defaultDriverSettlementMode || 'company') : selected;
+}
+
 function showAccountTypePage(returnPage = 'login') {
     accountTypeReturnPage = returnPage === 'personal' ? 'personal' : 'login';
     const settings = getUserSettings();
@@ -215,13 +230,10 @@ function updateAccountRoleUI() {
     if (roleIcon) roleIcon.innerHTML = meta.icon;
 
     const ownerRole = isOwnerAccountType(settings.accountType);
-    document.getElementById('ownerDriverLinkSummaryCard')?.classList.toggle('hidden', !ownerRole);
     document.getElementById('employedDriverLinkCard')?.classList.toggle('hidden', settings.accountType !== 'employed_driver');
-    document.getElementById('driverConnectionMenuBtn')?.classList.toggle('hidden', !ownerRole);
-
-    const activeLinkCount = (settings.driverLinks || []).filter(link => link.status === 'linked').length;
-    const countElement = document.getElementById('personalLinkedDriverCount');
-    if (countElement) countElement.textContent = `${activeLinkCount}명`;
+    document.getElementById('myPageDriverConnectionLink')?.classList.toggle('hidden', !ownerRole);
+    const accountCardNumber = document.getElementById('personalAccountCardNumber');
+    if (accountCardNumber) accountCardNumber.textContent = settings.accountType === 'employed_driver' ? '05' : '04';
 
     const loginButton = document.getElementById('personalLoginBtn');
     const logoutButton = document.getElementById('personalLogoutBtn');
@@ -359,6 +371,11 @@ function generateDriverInviteCode() {
     if (input) input.value = code;
 }
 
+function generateCarDriverInviteCode() {
+    const input = document.getElementById('carLinkInviteCode');
+    if (input) input.value = String(Math.floor(100000 + Math.random() * 900000));
+}
+
 function populateLinkedDriverVehicleOptions() {
     const datalist = document.getElementById('linkedDriverVehicleOptions');
     if (!datalist) return;
@@ -375,16 +392,18 @@ function showDriverConnectionManagement(returnPage = 'main') {
         showConfirmModal('개인 차주 또는 운송사·운영 사장 유형에서 사용할 수 있습니다.', null);
         return;
     }
-    driverConnectionReturnPage = returnPage === 'personal' ? 'personal' : 'main';
+    driverConnectionReturnPage = ['personal', 'car', 'myPage'].includes(returnPage) ? returnPage : 'main';
     hideAllPages();
     document.getElementById('driverConnectionManagementPage').classList.remove('hidden');
     populateLinkedDriverVehicleOptions();
     renderLinkedDriverList();
-    setActiveNav(driverConnectionReturnPage === 'personal' ? 'personal' : 'main');
+    setActiveNav(['personal', 'myPage'].includes(driverConnectionReturnPage) ? 'personal' : 'main');
 }
 
 function goBackFromDriverConnectionManagement() {
     if (driverConnectionReturnPage === 'personal') showPersonalInfo(personalInfoReturnPage);
+    else if (driverConnectionReturnPage === 'car') showCarManagement();
+    else if (driverConnectionReturnPage === 'myPage') showMyPage();
     else showMain();
 }
 
@@ -439,6 +458,14 @@ function saveLinkedDriverInvitation() {
     if (existingIndex >= 0) links[existingIndex] = nextLink;
     else links.push(nextLink);
     settings.driverLinks = links;
+    const assignedCar = (settings.cars || []).find(car =>
+        (car.driverLinkId && car.driverLinkId === nextLink.id)
+        || car.number === nextLink.vehicleNumber
+    );
+    if (assignedCar) {
+        assignedCar.driverName = nextLink.driverName;
+        assignedCar.driverPhone = nextLink.phone;
+    }
     setUserSettings(settings);
     resetLinkedDriverForm();
     renderLinkedDriverList();
@@ -659,7 +686,8 @@ function disconnectEmployedDriver() {
 }
 
 function showSubCarSettings(carNum) {
-    previousPage = 'main'; 
+    previousPage = 'main';
+    settingsReturnLogId = activeLogId;
     hideAllPages();
     loadSettings(); 
     document.getElementById('subCarSettingsPage').classList.remove('hidden');
@@ -1108,6 +1136,86 @@ function hideAllPages() {
     if (notificationBtn) notificationBtn.style.display = 'none';
 }
 
+let mobileBackIntegrationReady = false;
+let mobileNativeExitRequested = false;
+
+function handleCurrentAppBack() {
+    const sideMenu = document.getElementById('sideMenu');
+    if (sideMenu?.classList.contains('open')) {
+        toggleMenu();
+        return true;
+    }
+
+    const notificationPanel = document.getElementById('notificationPanel');
+    if (notificationPanel?.classList.contains('open')) {
+        closeNotificationPanel();
+        return true;
+    }
+
+    const visibleModals = [...document.querySelectorAll('.modal-overlay:not(.hidden)')];
+    const visibleModal = visibleModals[visibleModals.length - 1];
+    if (visibleModal) {
+        const modalBackButton = visibleModal.querySelector(
+            'button[title="뒤로가기"], button[aria-label="뒤로가기"], .modal-btn.cancel, button.cancel'
+        );
+        if (modalBackButton) modalBackButton.click();
+        else visibleModal.classList.add('hidden');
+        return true;
+    }
+
+    const visiblePage = document.querySelector('.page:not(.hidden)');
+    const pageBackButton = visiblePage?.querySelector(
+        'button[title="뒤로가기"]:not(.hidden), button[aria-label="뒤로가기"]:not(.hidden)'
+    );
+    if (pageBackButton) {
+        pageBackButton.click();
+        return true;
+    }
+
+    if (activeLogId !== 'main' && !document.getElementById('mainPage')?.classList.contains('hidden')) {
+        switchCarLog('main');
+        return true;
+    }
+
+    return false;
+}
+
+function armMobileBackGuard() {
+    try {
+        history.pushState({ ...(history.state || {}), appBackGuard: true }, document.title);
+    } catch (error) {
+        console.warn('모바일 뒤로가기 상태 저장 실패:', error);
+    }
+}
+
+function setupMobileBackIntegration() {
+    if (mobileBackIntegrationReady || !window.history?.pushState) return;
+    mobileBackIntegrationReady = true;
+
+    try {
+        history.replaceState({ ...(history.state || {}), appBackRoot: true, appBackGuard: false }, document.title);
+        armMobileBackGuard();
+    } catch (error) {
+        console.warn('모바일 뒤로가기 초기화 실패:', error);
+        return;
+    }
+
+    window.addEventListener('popstate', () => {
+        if (mobileNativeExitRequested) {
+            mobileNativeExitRequested = false;
+            return;
+        }
+
+        if (handleCurrentAppBack()) {
+            armMobileBackGuard();
+            return;
+        }
+
+        mobileNativeExitRequested = true;
+        history.back();
+    });
+}
+
 function setActiveNav(pageId) {
     document.querySelectorAll('.bottom-nav-bar .nav-item').forEach(item => item.classList.remove('active'));
     const navItems = document.querySelectorAll('.bottom-nav-bar .nav-item');
@@ -1170,22 +1278,44 @@ function showMain(skipRedirect = false) {
 
 let utilityReturnPage = 'main';
 let personalInfoReturnPage = 'myPage';
+let utilityReturnLogId = 'main';
+let personalInfoReturnLogId = 'main';
+let myPageReturnLogId = 'main';
+let settingsReturnLogId = 'main';
+
+function getValidReturnLogId(logId) {
+    if (!logId || logId === 'main') return 'main';
+    const cars = getUserSettings().cars || [];
+    return cars.some(car => car.type === 'sub' && car.number === logId && car.logEnabled) ? logId : 'main';
+}
+
+function returnToLogHome(logId = 'main') {
+    const targetLogId = getValidReturnLogId(logId);
+    if (activeLogId !== targetLogId) {
+        switchCarLog(targetLogId);
+    } else {
+        showMain(true);
+    }
+}
 
 function setUtilityReturnPage(returnPage = 'main') {
     utilityReturnPage = returnPage === 'myPage' ? 'myPage' : 'main';
+    utilityReturnLogId = activeLogId;
 }
 
 function goBackFromUtilityPage() {
     const returnPage = utilityReturnPage;
+    const returnLogId = utilityReturnLogId;
     utilityReturnPage = 'main';
     if (returnPage === 'myPage') {
-        showMyPage();
+        showMyPage(true);
     } else {
-        showMain();
+        returnToLogHome(returnLogId);
     }
 }
 
-function showMyPage() {
+function showMyPage(preserveReturnLog = false) {
+    if (!preserveReturnLog) myPageReturnLogId = activeLogId;
     utilityReturnPage = 'main';
     const settings = getUserSettings();
     const profileSummary = document.getElementById('myPageProfileSummary');
@@ -1199,6 +1329,51 @@ function showMyPage() {
     hideAllPages();
     document.getElementById('myPage').classList.remove('hidden');
     setActiveNav('personal');
+}
+
+function goBackFromMyPage() {
+    returnToLogHome(myPageReturnLogId);
+}
+
+function showBillingSettingsPage() {
+    const settings = getUserSettings();
+    const modeSelect = document.getElementById('defaultDriverSettlementMode');
+    const basisSelect = document.getElementById('driverInvoiceBasis');
+    modeSelect.value = settings.defaultDriverSettlementMode || 'company';
+    basisSelect.value = settings.driverInvoiceBasis || 'net';
+    modeSelect.parentElement?._dropdownSync?.();
+    basisSelect.parentElement?._dropdownSync?.();
+    updateBillingSettingsGuide();
+    hideAllPages();
+    document.getElementById('billingSettingsPage').classList.remove('hidden');
+    setActiveNav('personal');
+}
+
+function saveBillingSettings() {
+    const settings = getUserSettings();
+    settings.defaultDriverSettlementMode = document.getElementById('defaultDriverSettlementMode').value || 'company';
+    settings.driverInvoiceBasis = document.getElementById('driverInvoiceBasis').value || 'net';
+    setUserSettings(settings);
+    showToastMessage('정산·계산서 기본 설정을 저장했습니다.');
+}
+
+function updateBillingSettingsGuide() {
+    const mode = document.getElementById('defaultDriverSettlementMode')?.value || 'company';
+    const basis = document.getElementById('driverInvoiceBasis')?.value || 'net';
+    const meta = getDriverSettlementModeMeta(mode);
+    const basisText = basis === 'gross' ? '기사 매입 계산서는 공제 전 운송료를 기준으로 준비합니다.' : '기사 매입 계산서는 수수료·산재보험료 공제 후 지급액을 기준으로 준비합니다.';
+    const guide = document.getElementById('billingSettingsModeGuide');
+    if (guide) guide.innerHTML = `<strong>${meta.label}</strong><br>${meta.description}<br>${basisText}`;
+}
+
+function updateDriverSettlementModeGuide() {
+    const select = document.getElementById('newCarSettlementMode');
+    const guide = document.getElementById('newCarSettlementModeGuide');
+    if (!select || !guide) return;
+    const settings = getUserSettings();
+    const effectiveMode = select.value === 'default' ? (settings.defaultDriverSettlementMode || 'company') : select.value;
+    const meta = getDriverSettlementModeMeta(effectiveMode);
+    guide.textContent = select.value === 'default' ? `기본값 · ${meta.label} — ${meta.description}` : meta.description;
 }
 
 function showNoticePage() {
@@ -1276,6 +1451,7 @@ function showPersonalInfo(fromPage) {
         fromPage = taxPage && !taxPage.classList.contains('hidden') ? 'tax' : 'myPage';
     }
     personalInfoReturnPage = fromPage;
+    personalInfoReturnLogId = activeLogId;
     loadSettings();
     updateAccountRoleUI();
     hideAllPages();
@@ -1287,9 +1463,9 @@ function goBackFromPersonalInfo() {
     if (personalInfoReturnPage === 'tax') {
         showTaxInvoices(utilityReturnPage);
     } else if (personalInfoReturnPage === 'myPage') {
-        showMyPage();
+        showMyPage(true);
     } else {
-        showMain();
+        returnToLogHome(personalInfoReturnLogId);
     }
 }
 
@@ -2226,6 +2402,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAppTemporalInputs();
     initAppAutocompletes();
     initBackdropDismissModals();
+    setupMobileBackIntegration();
     new MutationObserver(() => {
         document.querySelectorAll('.app-temporal').forEach(wrapper => wrapper._temporalSync?.());
     }).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
@@ -2430,13 +2607,15 @@ function loadCarList() {
                 ? '<span class="management-badge car-type main">메인</span>' 
                 : '<span class="management-badge car-type sub">기사차량</span>';
             
-            const driverInfo = car.type === 'sub' && car.personalInfo && car.personalInfo.driverName ? ` [기사: ${car.personalInfo.driverName}]` : '';
+            const savedDriverName = car.driverName || car.personalInfo?.driverName || '';
+            const driverInfo = car.type === 'sub' && savedDriverName ? ` [기사: ${savedDriverName}]` : '';
+            const settlementBadge = car.type === 'sub' ? `<span class="management-badge commission">${escapeDetailText(getDriverSettlementModeMeta(getEffectiveDriverSettlementMode(car, settings)).label)}</span>` : '';
 
             const div = document.createElement('div');
             div.className = 'car-card management-list-card car-list-card';
             div.innerHTML = `
                 <div class="management-card-copy">
-                    <div class="car-info-text">${typeBadge}${escapeDetailText(car.number)}${escapeDetailText(driverInfo)}${car.type === 'sub' && car.logEnabled ? '<span class="management-badge log-enabled">운행일지</span>' : ''}</div>
+                    <div class="car-info-text">${typeBadge}${escapeDetailText(car.number)}${escapeDetailText(driverInfo)}${settlementBadge}${car.type === 'sub' && car.driverLinkEnabled ? '<span class="management-badge log-enabled">기사연동</span>' : ''}${car.type === 'sub' && car.logEnabled ? '<span class="management-badge log-enabled">운행일지</span>' : ''}</div>
                     <div class="car-sub-text">${car.tonnage ? '(' + escapeDetailText(car.tonnage) + ')' : ''}${car.commEnabled && car.commission ? ' · 수수료 ' + escapeDetailText(car.commission) + (car.commType === 'direct' ? '원' : '%') : ''}</div>
                 </div>
                 <div class="car-action-btns">
@@ -2472,6 +2651,7 @@ function openCarModal(mode = 'main') {
             return;
         }
         document.getElementById('carModalTitle').textContent = '차량 등록';
+        document.getElementById('driverBasicInfoFields').style.display = 'none';
         document.getElementById('logToggleContainer').style.display = 'none';
     } else {
         let subCount = cars.filter((c, idx) => idx !== editingCarIndex && c.type === 'sub').length;
@@ -2480,6 +2660,7 @@ function openCarModal(mode = 'main') {
             return;
         }
         document.getElementById('carModalTitle').textContent = '기사 등록';
+        document.getElementById('driverBasicInfoFields').style.display = 'block';
         document.getElementById('logToggleContainer').style.display = 'block';
     }
 
@@ -2493,28 +2674,39 @@ function closeCarModal() {
 
 function setCarCommType(type) {
     const hiddenType = document.getElementById('newCarCommType');
+    const previousType = hiddenType?.value || 'percent';
     if (hiddenType) hiddenType.value = type;
 
     const btnPercent = document.getElementById('btnCarCommPercent');
     const btnDirect = document.getElementById('btnCarCommDirect');
     const label = document.getElementById('carCommLabel');
     const input = document.getElementById('newCarCommission');
+    const unit = document.getElementById('carCommUnit');
 
-    if (!btnPercent || !btnDirect || !label || !input) return;
+    if (!btnPercent || !btnDirect || !label || !input || !unit) return;
+    if (previousType !== type) input.value = '';
 
     if (type === 'percent') {
-        btnPercent.classList.add('active-work');
-        btnDirect.classList.remove('active-work');
-        label.textContent = '수수료율 (%)';
-        input.placeholder = '비율(%) 입력';
+        btnPercent.classList.add('active');
+        btnDirect.classList.remove('active');
+        btnPercent.setAttribute('aria-pressed', 'true');
+        btnDirect.setAttribute('aria-pressed', 'false');
+        label.textContent = '수수료율';
+        input.placeholder = '0';
+        input.inputMode = 'decimal';
+        unit.textContent = '%';
         let val = input.value.replace(/[^0-9.]/g, '');
         if (parseFloat(val) > 100) val = '100';
         input.value = val;
     } else {
-        btnDirect.classList.add('active-work');
-        btnPercent.classList.remove('active-work');
-        label.textContent = '수수료 (원)';
-        input.placeholder = '금액(원) 입력';
+        btnDirect.classList.add('active');
+        btnPercent.classList.remove('active');
+        btnDirect.setAttribute('aria-pressed', 'true');
+        btnPercent.setAttribute('aria-pressed', 'false');
+        label.textContent = '건당 수수료';
+        input.placeholder = '0';
+        input.inputMode = 'numeric';
+        unit.textContent = '원';
         formatCurrencyInput(input);
     }
 }
@@ -2548,7 +2740,16 @@ function saveNewCar() {
     const settings = getUserSettings();
     if (!settings.cars) settings.cars = [];
 
-    const logEnabled = carType === 'main' ? true : document.getElementById('newLogToggle').checked;
+    const driverName = carType === 'sub' ? document.getElementById('newDriverName').value.trim() : '';
+    const driverPhone = carType === 'sub' ? document.getElementById('newUserPhone').value.trim() : '';
+    const settlementMode = carType === 'sub' ? document.getElementById('newCarSettlementMode').value : 'default';
+    if (carType === 'sub' && (!driverName || driverPhone.replace(/\D/g, '').length < 10)) {
+        showToastMessage('기사명과 연락처를 확인해 주세요.');
+        return;
+    }
+
+    const driverLinkEnabled = carType === 'sub' && document.getElementById('newDriverLinkToggle').checked;
+    const logEnabled = carType === 'main' ? true : (!driverLinkEnabled && document.getElementById('newLogToggle').checked);
     const insuranceOn = carType === 'sub' ? document.getElementById('newCarInsuranceToggle').checked : false;
     
     const commEnabled = document.getElementById('newCarCommToggle') ? document.getElementById('newCarCommToggle').checked : false;
@@ -2563,20 +2764,74 @@ function saveNewCar() {
         if (isNewInfo) {
             infoType = 'new';
             personalInfo = {
-                driverName: document.getElementById('newDriverName').value.trim(),
+                driverName: driverName,
                 name: document.getElementById('newUserName').value.trim(),
                 bizNumber: document.getElementById('newBizNumber').value.trim(),
-                phone: document.getElementById('newUserPhone').value.trim(),
+                phone: driverPhone,
                 bank: document.getElementById('newBankName').value.trim(),
                 account: document.getElementById('newAccountNumber').value.trim()
             };
         }
     }
 
+    const previousCar = editingCarIndex > -1 ? settings.cars[editingCarIndex] : null;
+    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+    const existingLinkIndex = links.findIndex(link =>
+        (previousCar?.driverLinkId && link.id === previousCar.driverLinkId)
+        || (!previousCar?.driverLinkId && previousCar?.number && link.vehicleNumber === previousCar.number && link.status !== 'disconnected')
+    );
+    const existingLink = existingLinkIndex >= 0 ? links[existingLinkIndex] : null;
+    let driverLinkId = existingLink?.id || '';
+
+    if (driverLinkEnabled) {
+        const inviteCode = document.getElementById('carLinkInviteCode').value.trim();
+        const assignmentStart = document.getElementById('carLinkAssignmentStart').value;
+        const assignmentEnd = document.getElementById('carLinkAssignmentEnd').value;
+
+        if (!assignmentStart) {
+            showToastMessage('기사 할당 시작일을 입력해 주세요.');
+            return;
+        }
+        if (assignmentEnd && assignmentEnd < assignmentStart) {
+            showToastMessage('할당 종료일은 시작일 이후로 선택해 주세요.');
+            return;
+        }
+
+        const now = new Date().toISOString();
+        const nextLink = {
+            ...(existingLink || {}),
+            id: existingLink?.id || generateLocalId('driver'),
+            driverName,
+            phone: driverPhone,
+            inviteCode,
+            vehicleNumber: num,
+            assignmentStart,
+            assignmentEnd,
+            status: existingLink?.status === 'linked' ? 'linked' : 'pending',
+            updatedAt: now,
+            createdAt: existingLink?.createdAt || now
+        };
+        driverLinkId = nextLink.id;
+        if (existingLinkIndex >= 0) links[existingLinkIndex] = nextLink;
+        else links.push(nextLink);
+    } else if (existingLink) {
+        links[existingLinkIndex] = {
+            ...existingLink,
+            status: 'disconnected',
+            updatedAt: new Date().toISOString()
+        };
+    }
+    settings.driverLinks = links;
+
     const carData = { 
         number: num, 
         tonnage: ton, 
         type: carType,
+        driverName: driverName,
+        driverPhone: driverPhone,
+        settlementMode: settlementMode,
+        driverLinkEnabled: driverLinkEnabled,
+        driverLinkId: driverLinkEnabled ? driverLinkId : '',
         logEnabled: logEnabled,
         insuranceOn: insuranceOn,
         commType: commType,
@@ -2599,19 +2854,32 @@ function saveNewCar() {
     closeCarModal(); 
     loadCarList();
     renderSubCarMenu();
+    renderLinkedDriverList();
+    updateAccountRoleUI();
     updateTransportSettingsUI(); 
 }
 
 function deleteCar(idx) {
     showConfirmModal('해당 차량을 삭제하시겠습니까?', () => {
         const settings = getUserSettings();
-        const deletedCarNum = settings.cars[idx].number;
+        const deletedCar = settings.cars[idx];
+        const deletedCarNum = deletedCar.number;
+        const linkedDriver = (settings.driverLinks || []).find(link =>
+            (deletedCar.driverLinkId && link.id === deletedCar.driverLinkId)
+            || (!deletedCar.driverLinkId && link.vehicleNumber === deletedCarNum && link.status !== 'disconnected')
+        );
+        if (linkedDriver) {
+            linkedDriver.status = 'disconnected';
+            linkedDriver.updatedAt = new Date().toISOString();
+        }
         settings.cars.splice(idx, 1);
         setUserSettings(settings);
         
         if (editingCarIndex === idx) resetCarForm();
         loadCarList();
         renderSubCarMenu(); 
+        renderLinkedDriverList();
+        updateAccountRoleUI();
         updateTransportSettingsUI(); 
         
         if(activeLogId === deletedCarNum) {
@@ -3455,6 +3723,7 @@ function renderFuelSummaryInMainModal() {
 
 function showSettings(fromPage) {
     if (fromPage) previousPage = fromPage;
+    settingsReturnLogId = activeLogId;
     loadSettings();
     hideAllPages();
     document.getElementById('settingsPage').classList.remove('hidden');
@@ -3466,7 +3735,7 @@ function goBackFromSettings() {
     if (previousPage === 'report') {
         showReport();
     } else {
-        showMain();
+        returnToLogHome(settingsReturnLogId);
     }
 }
 
@@ -4228,12 +4497,11 @@ function buildCalendar() {
     let subCarCommLabel = '기사차량 수수료';
     if (activeLogId !== 'main') {
         const currentCar = savedSettings.cars?.find(c => c.number === activeLogId);
-        if (currentCar && currentCar.logEnabled && currentCar.commission) {
-            const commPercent = parseFloat(currentCar.commission);
-            if (!isNaN(commPercent) && commPercent > 0) {
-                subCarComm = Math.floor((monthTotalFare + monthTotalPalletFare - monthTotalCommission) * (commPercent / 100));
-                subCarCommLabel = `${getShortCarNum(currentCar.number)} 차량 ${commPercent}%`;
-            }
+        if (currentCar?.commEnabled && currentCar.commission) {
+            subCarComm = calculateDriverVehicleCommission(currentCar, monthTotalFare + monthTotalPalletFare - monthTotalCommission, monthTotalWork);
+            subCarCommLabel = currentCar.commType === 'direct'
+                ? `${getShortCarNum(currentCar.number)} 차량 건당 ${parseCurrencyValue(currentCar.commission).toLocaleString()}원`
+                : `${getShortCarNum(currentCar.number)} 차량 ${parseFloat(currentCar.commission) || 0}%`;
         }
     }
 
@@ -5642,12 +5910,11 @@ function buildReportPage(isForExport = false) {
     let subCarCommLabel = '기사차량 수수료';
     if (activeLogId !== 'main') {
         const currentCar = savedSettings.cars?.find(c => c.number === activeLogId);
-        if (currentCar && currentCar.logEnabled && currentCar.commission) {
-            const commPercent = parseFloat(currentCar.commission);
-            if (!isNaN(commPercent) && commPercent > 0) {
-                subCarComm = Math.floor((totalFare + totalPalletFare - totalCommission) * (commPercent / 100));
-                subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
-            }
+        if (currentCar?.commEnabled && currentCar.commission) {
+            subCarComm = calculateDriverVehicleCommission(currentCar, totalFare + totalPalletFare - totalCommission, totalMonthWork);
+            subCarCommLabel = currentCar.commType === 'direct'
+                ? `${getShortCarNum(currentCar.number)}차량 건당 ${parseCurrencyValue(currentCar.commission).toLocaleString()}원`
+                : `${getShortCarNum(currentCar.number)}차량 ${parseFloat(currentCar.commission) || 0}%`;
         }
     }
 
@@ -5894,12 +6161,11 @@ function viewDetailReport(isForExport) {
     let subCarCommLabel = '기사차량 수수료';
     if (activeLogId !== 'main') {
         const currentCar = savedSettings.cars?.find(c => c.number === activeLogId);
-        if (currentCar && currentCar.logEnabled && currentCar.commission) {
-            const commPercent = parseFloat(currentCar.commission);
-            if (!isNaN(commPercent) && commPercent > 0) {
-                subCarComm = Math.floor((totalFare - totalCommission) * (commPercent / 100));
-                subCarCommLabel = `${getShortCarNum(currentCar.number)}차량 ${commPercent}%`;
-            }
+        if (currentCar?.commEnabled && currentCar.commission) {
+            subCarComm = calculateDriverVehicleCommission(currentCar, totalFare - totalCommission, detailsList.length);
+            subCarCommLabel = currentCar.commType === 'direct'
+                ? `${getShortCarNum(currentCar.number)}차량 건당 ${parseCurrencyValue(currentCar.commission).toLocaleString()}원`
+                : `${getShortCarNum(currentCar.number)}차량 ${parseFloat(currentCar.commission) || 0}%`;
         }
     }
 
@@ -5955,8 +6221,33 @@ function viewDetailReport(isForExport) {
 let editingCarIndex = -1;
 
 function toggleNewLogSettings() {
-    const isChecked = document.getElementById('newLogToggle').checked;
+    const logToggle = document.getElementById('newLogToggle');
+    const isChecked = logToggle.checked;
+    if (isChecked) {
+        const driverLinkToggle = document.getElementById('newDriverLinkToggle');
+        if (driverLinkToggle) driverLinkToggle.checked = false;
+        setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), false);
+    }
     setSettingsGroupExpanded(document.getElementById('newLogSettings'), isChecked);
+}
+
+function toggleNewDriverLinkSettings() {
+    const driverLinkToggle = document.getElementById('newDriverLinkToggle');
+    const isChecked = driverLinkToggle.checked;
+    if (isChecked) {
+        const settings = getUserSettings();
+        if (!isOwnerAccountType(settings.accountType)) {
+            driverLinkToggle.checked = false;
+            showConfirmModal('개인 차주 또는 운송사·운영 사장 유형에서 사용할 수 있습니다.', null);
+            setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), false);
+            return;
+        }
+        const logToggle = document.getElementById('newLogToggle');
+        if (logToggle) logToggle.checked = false;
+        setSettingsGroupExpanded(document.getElementById('newLogSettings'), false);
+        if (!document.getElementById('carLinkInviteCode').value) generateCarDriverInviteCode();
+    }
+    setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), isChecked);
 }
 
 function selectInfoType(type) {
@@ -5979,7 +6270,14 @@ function resetCarForm() {
     document.getElementById('newCarNumber').value = '';
     document.getElementById('newCarTonnage').value = '';
     document.getElementById('carModalMode').value = 'main';
+    document.getElementById('driverBasicInfoFields').style.display = 'none';
     document.getElementById('logToggleContainer').style.display = 'none';
+    document.getElementById('newDriverLinkToggle').checked = false;
+    toggleNewDriverLinkSettings();
+    document.getElementById('carLinkInviteCode').value = '';
+    document.getElementById('carLinkAssignmentStart').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('carLinkAssignmentEnd').value = '';
+    generateCarDriverInviteCode();
     document.getElementById('newLogToggle').checked = false;
     toggleNewLogSettings();
     document.getElementById('newCarInsuranceToggle').checked = false;
@@ -5996,6 +6294,9 @@ function resetCarForm() {
     document.getElementById('newUserName').value = '';
     document.getElementById('newBizNumber').value = '';
     document.getElementById('newUserPhone').value = '';
+    document.getElementById('newCarSettlementMode').value = 'default';
+    document.getElementById('newCarSettlementMode').parentElement?._dropdownSync?.();
+    updateDriverSettlementModeGuide();
     document.getElementById('newBankName').value = '';
     document.getElementById('newAccountNumber').value = '';
     editingCarIndex = -1;
@@ -6014,13 +6315,31 @@ function editCar(idx) {
     
     if (car.type === 'main') {
         document.getElementById('carModalTitle').textContent = '차량 정보 수정';
+        document.getElementById('driverBasicInfoFields').style.display = 'none';
         document.getElementById('logToggleContainer').style.display = 'none';
     } else {
         document.getElementById('carModalTitle').textContent = '기사 정보 수정';
+        document.getElementById('driverBasicInfoFields').style.display = 'block';
         document.getElementById('logToggleContainer').style.display = 'block';
     }
     
     if (car.type === 'sub') {
+        const linkedDriver = (settings.driverLinks || []).find(link =>
+            (car.driverLinkId && link.id === car.driverLinkId)
+            || (!car.driverLinkId && link.vehicleNumber === car.number && link.status !== 'disconnected')
+        );
+        const driverLinkEnabled = !!car.driverLinkEnabled || (!!linkedDriver && !car.logEnabled);
+        document.getElementById('newDriverName').value = car.driverName || linkedDriver?.driverName || car.personalInfo?.driverName || '';
+        document.getElementById('newUserPhone').value = car.driverPhone || linkedDriver?.phone || car.personalInfo?.phone || '';
+        document.getElementById('newCarSettlementMode').value = car.settlementMode || 'default';
+        document.getElementById('newCarSettlementMode').parentElement?._dropdownSync?.();
+        updateDriverSettlementModeGuide();
+        document.getElementById('carLinkInviteCode').value = linkedDriver?.inviteCode || '';
+        document.getElementById('carLinkAssignmentStart').value = linkedDriver?.assignmentStart || new Date().toISOString().slice(0, 10);
+        document.getElementById('carLinkAssignmentEnd').value = linkedDriver?.assignmentEnd || '';
+        document.getElementById('newDriverLinkToggle').checked = driverLinkEnabled;
+        toggleNewDriverLinkSettings();
+
         document.getElementById('newCarInsuranceToggle').checked = !!car.insuranceOn;
         
         if (document.getElementById('newCarCommToggle')) {
@@ -6030,16 +6349,14 @@ function editCar(idx) {
         setCarCommType(car.commType || 'percent');
         document.getElementById('newCarCommission').value = car.commission || '';
 
-        if (car.logEnabled) {
+        if (car.logEnabled && !driverLinkEnabled) {
             document.getElementById('newLogToggle').checked = true;
             toggleNewLogSettings();
             if (car.infoType === 'new') {
                 selectInfoType('new');
                 if (car.personalInfo) {
-                    document.getElementById('newDriverName').value = car.personalInfo.driverName || '';
                     document.getElementById('newUserName').value = car.personalInfo.name || '';
                     document.getElementById('newBizNumber').value = car.personalInfo.bizNumber || '';
-                    document.getElementById('newUserPhone').value = car.personalInfo.phone || '';
                     document.getElementById('newBankName').value = car.personalInfo.bank || '';
                     document.getElementById('newAccountNumber').value = car.personalInfo.account || '';
                 }
@@ -6536,6 +6853,7 @@ function closeNotificationPanel() {
 
 function openNotificationReceivables() {
     closeNotificationPanel();
+    setUtilityReturnPage('main');
     hideAllPages();
     document.getElementById('receivablesManagementPage').classList.remove('hidden');
     selectReceivableTab('due');
@@ -6769,6 +7087,7 @@ function markMonthlyReceivablesPaid(clientName, monthKey, stayOnDetail = false) 
 // ========== 세금계산서 관리 ==========
 let taxInvoiceViewMonth = '';
 let currentTaxInvoiceTab = 'draft';
+let currentTaxInvoiceFlow = 'sales';
 
 function getTaxInvoiceRecords() {
     try {
@@ -6783,61 +7102,135 @@ function saveTaxInvoiceRecords(records) {
     localStorage.setItem('taxInvoiceRecords', JSON.stringify(records));
 }
 
-function getTaxInvoiceRecordId(monthKey, clientName) {
-    return `${activeLogId}|${monthKey}|${clientName}`;
+function getTaxInvoiceFlowMeta(flow = currentTaxInvoiceFlow) {
+    const flows = {
+        sales: { label: '매출 발행', partyHeading: '공급받는 자', itemName: '화물운송료', completeLabel: '발급 완료' },
+        purchase: { label: '기사 매입', partyHeading: '공급자', itemName: '화물운송 용역', completeLabel: '수취 완료' },
+        commission: { label: '수수료 발행', partyHeading: '공급받는 자', itemName: '운송 중개 수수료', completeLabel: '발급 완료' }
+    };
+    return flows[flow] || flows.sales;
 }
 
-function getTaxInvoiceSourceGroups(monthKey) {
-    const grouped = {};
-    const taxClients = new Set((getUserSettings().clients || []).filter(client => client.taxInvoiceEnabled).map(client => client.companyName));
-    Object.keys(workData).sort().forEach(dateKey => {
-        const details = workData[dateKey]?.callDetails || [];
+function getTaxInvoiceRecordId(monthKey, partyKey, flow = currentTaxInvoiceFlow) {
+    return `${flow}|${monthKey}|${partyKey}`;
+}
+
+function readWorkDataStorage(key) {
+    try {
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        return data && typeof data === 'object' ? data : {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function getDriverCarWorkData(car, settings) {
+    if (car.driverLinkId || car.driverLinkEnabled) {
+        const link = (settings.driverLinks || []).find(item => item.id === car.driverLinkId || item.vehicleNumber === car.number);
+        if (link) return getLinkedDriverRecordData(link);
+    }
+    return readWorkDataStorage(`workData_${car.number}`);
+}
+
+function getMonthlyDriverTotals(data, monthKey) {
+    let grossAmount = 0;
+    let insuranceAmount = 0;
+    let count = 0;
+    Object.entries(data || {}).forEach(([dateKey, record]) => {
+        if (!dateKey.startsWith(monthKey) || !record || typeof record !== 'object') return;
+        const details = Array.isArray(record.callDetails) ? record.callDetails : [];
         details.forEach(detail => {
             const workDate = detail.workDate || dateKey;
             if (!workDate.startsWith(monthKey)) return;
-            const clientName = (detail.client || '').trim();
-            if (!taxClients.has(clientName)) return;
-            const supplyAmount = parseCurrencyValue(detail.fare);
-            if (!clientName || supplyAmount <= 0) return;
-            if (!grouped[clientName]) grouped[clientName] = { clientName, count: 0, supplyAmount: 0, taxAmount: 0 };
-            grouped[clientName].count += 1;
-            grouped[clientName].supplyAmount += supplyAmount;
-            grouped[clientName].taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
+            grossAmount += parseCurrencyValue(detail.fare);
+            insuranceAmount += parseCurrencyValue(detail.insuranceFee);
+            count += 1;
         });
+        const fixedFare = parseCurrencyValue(record.fare || record.fixedFare || record.totalFare);
+        if (fixedFare > 0) grossAmount += fixedFare;
+        count += Number(record.fixedCount || record.count || 0);
     });
-    return Object.values(grouped).map(group => ({ ...group, totalAmount: group.supplyAmount + group.taxAmount }));
+    return { grossAmount, insuranceAmount, count };
 }
 
-function getTaxInvoiceClientInfo(clientName) {
-    const client = (getUserSettings().clients || []).find(item => item.companyName === clientName) || {};
-    return {
-        clientBizNumber: client.bizNumber || '',
-        clientRepresentative: client.taxRepresentative || client.managerName || '',
-        clientAddress: client.taxAddress || '',
-        clientBizType: client.taxBizType || '',
-        clientBizItem: client.taxBizItem || '',
-        clientEmail: client.taxEmail || ''
-    };
+function calculateDriverVehicleCommission(car, grossAmount, count) {
+    if (!car?.commEnabled || !car.commission) return 0;
+    if (car.commType === 'direct') return parseCurrencyValue(car.commission) * Math.max(1, count || 0);
+    return Math.floor(grossAmount * (parseFloat(car.commission) || 0) / 100);
 }
 
-function buildTaxInvoiceEntry(group) {
-    const id = getTaxInvoiceRecordId(taxInvoiceViewMonth, group.clientName);
+function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
+    const settings = getUserSettings();
+    const cars = settings.cars || [];
+    if (flow === 'sales') {
+        const grouped = {};
+        const taxClients = new Set((settings.clients || []).filter(client => client.taxInvoiceEnabled).map(client => client.companyName));
+        const sources = [{ logId: 'main', data: readWorkDataStorage('workData') }];
+        cars.filter(car => car.type === 'sub').forEach(car => {
+            const mode = getEffectiveDriverSettlementMode(car, settings);
+            if (mode === 'company' || mode === 'employee') sources.push({ logId: car.number, data: getDriverCarWorkData(car, settings) });
+        });
+        sources.forEach(source => Object.entries(source.data || {}).forEach(([dateKey, record]) => {
+            (record?.callDetails || []).forEach(detail => {
+                const workDate = detail.workDate || dateKey;
+                const clientName = (detail.client || '').trim();
+                const supplyAmount = parseCurrencyValue(detail.fare);
+                if (!workDate.startsWith(monthKey) || !taxClients.has(clientName) || supplyAmount <= 0) return;
+                if (!grouped[clientName]) grouped[clientName] = { partyKey: clientName, clientName, partyType: 'client', count: 0, supplyAmount: 0, taxAmount: 0 };
+                grouped[clientName].count += 1;
+                grouped[clientName].supplyAmount += supplyAmount;
+                grouped[clientName].taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
+            });
+        }));
+        return Object.values(grouped).map(group => ({ ...group, totalAmount: group.supplyAmount + group.taxAmount }));
+    }
+
+    return cars.filter(car => car.type === 'sub').flatMap(car => {
+        const mode = getEffectiveDriverSettlementMode(car, settings);
+        if ((flow === 'purchase' && mode !== 'company') || (flow === 'commission' && mode !== 'driver_direct')) return [];
+        const totals = getMonthlyDriverTotals(getDriverCarWorkData(car, settings), monthKey);
+        if (totals.grossAmount <= 0) return [];
+        const commissionAmount = calculateDriverVehicleCommission(car, totals.grossAmount, totals.count);
+        const insuranceAmount = car.insuranceOn ? totals.insuranceAmount : 0;
+        const netAmount = Math.max(0, totals.grossAmount - commissionAmount - insuranceAmount);
+        const supplyAmount = flow === 'purchase'
+            ? (settings.driverInvoiceBasis === 'gross' ? totals.grossAmount : netAmount)
+            : commissionAmount;
+        if (supplyAmount <= 0) return [];
+        const taxAmount = Math.round(supplyAmount * .1);
+        return [{
+            partyKey: car.number,
+            clientName: car.driverName || car.personalInfo?.driverName || getShortCarNum(car.number),
+            partyType: 'driver',
+            carNumber: car.number,
+            count: totals.count,
+            grossAmount: totals.grossAmount,
+            commissionAmount,
+            insuranceAmount,
+            netAmount,
+            supplyAmount,
+            taxAmount,
+            totalAmount: supplyAmount + taxAmount
+        }];
+    });
+}
+
+function getTaxInvoicePartyInfo(group) {
+    const settings = getUserSettings();
+    if (group.partyType === 'client') {
+        const client = (settings.clients || []).find(item => item.companyName === group.clientName) || {};
+        return { clientBizNumber:client.bizNumber || '', clientRepresentative:client.taxRepresentative || client.managerName || '', clientAddress:client.taxAddress || '', clientBizType:client.taxBizType || '', clientBizItem:client.taxBizItem || '', clientEmail:client.taxEmail || '' };
+    }
+    const car = (settings.cars || []).find(item => item.number === group.carNumber) || {};
+    const info = car.personalInfo || {};
+    return { clientBizNumber:info.bizNumber || '', clientRepresentative:info.name || car.driverName || '', clientAddress:info.address || '', clientBizType:info.bizType || '', clientBizItem:info.bizItem || '', clientEmail:info.email || '', carNumber:car.number };
+}
+
+function buildTaxInvoiceEntry(group, flow = currentTaxInvoiceFlow) {
+    const id = getTaxInvoiceRecordId(taxInvoiceViewMonth, group.partyKey, flow);
     const saved = getTaxInvoiceRecords().find(item => item.id === id) || {};
-    return {
-        ...getTaxInvoiceClientInfo(group.clientName),
-        itemName: '화물운송료',
-        remark: `${parseInt(taxInvoiceViewMonth.slice(5, 7), 10)}월 운행분`,
-        ...saved,
-        id,
-        logId: activeLogId,
-        monthKey: taxInvoiceViewMonth,
-        clientName: group.clientName,
-        count: group.count,
-        supplyAmount: group.supplyAmount,
-        taxAmount: group.taxAmount,
-        totalAmount: group.totalAmount,
-        status: saved.status || 'draft'
-    };
+    const meta = getTaxInvoiceFlowMeta(flow);
+    return { ...getTaxInvoicePartyInfo(group), itemName:meta.itemName, remark:`${parseInt(taxInvoiceViewMonth.slice(5, 7), 10)}월 ${meta.itemName}`, ...saved, ...group, id, flow, logId:group.carNumber || 'fleet', monthKey:taxInvoiceViewMonth, status:saved.status || 'draft' };
 }
 
 function showTaxInvoices(returnPage = 'main') {
@@ -6865,17 +7258,41 @@ function selectTaxInvoiceTab(tab) {
     renderTaxInvoices();
 }
 
+function selectTaxInvoiceFlow(flow) {
+    currentTaxInvoiceFlow = ['sales', 'purchase', 'commission'].includes(flow) ? flow : 'sales';
+    currentTaxInvoiceTab = 'draft';
+    renderTaxInvoices();
+}
+
 function renderTaxInvoices() {
     const settings = getUserSettings();
     const issuerReady = settings.bizName && settings.bizNumber && settings.userName && settings.bizType && settings.bizItem;
     const guide = document.getElementById('taxInvoiceIssuerGuide');
+    const flowMeta = getTaxInvoiceFlowMeta();
     guide.className = `tax-invoice-guide${issuerReady ? ' ready' : ''}`;
-    guide.innerHTML = issuerReady
-        ? `<strong>${escapeDetailText(settings.bizName)}</strong><span>${escapeDetailText(settings.bizNumber)} · ${escapeDetailText(settings.bizType)} / ${escapeDetailText(settings.bizItem)}</span>`
-        : '<strong>사업자 정보가 필요합니다.</strong><span>오른쪽 위 설정에서 상호, 사업자번호, 대표자, 업태와 종목을 입력해 주세요.</span>';
+    if (currentTaxInvoiceFlow === 'purchase') {
+        guide.innerHTML = issuerReady
+            ? `<strong>기사에게 받을 매입 계산서</strong><span>${settings.driverInvoiceBasis === 'gross' ? '총 운송료' : '수수료·산재보험 차감 후 기사 정산액'} 기준 · 공급받는 자 ${escapeDetailText(settings.bizName)}</span>`
+            : '<strong>회사 사업자 정보가 필요합니다.</strong><span>오른쪽 설정에서 계산서를 받을 회사의 사업자 정보를 입력해 주세요.</span>';
+    } else {
+        guide.innerHTML = issuerReady
+            ? `<strong>${escapeDetailText(settings.bizName)}</strong><span>${escapeDetailText(settings.bizNumber)} · ${flowMeta.label} · ${escapeDetailText(settings.bizType)} / ${escapeDetailText(settings.bizItem)}</span>`
+            : '<strong>회사 사업자 정보가 필요합니다.</strong><span>오른쪽 설정에서 계산서를 발행할 회사의 사업자 정보를 입력해 주세요.</span>';
+    }
 
-    const sourceEntries = getTaxInvoiceSourceGroups(taxInvoiceViewMonth).map(buildTaxInvoiceEntry);
-    const storedIssued = getTaxInvoiceRecords().filter(item => item.logId === activeLogId && item.monthKey === taxInvoiceViewMonth && item.status === 'issued');
+    const flowGroups = {
+        sales: getTaxInvoiceSourceGroups(taxInvoiceViewMonth, 'sales'),
+        purchase: getTaxInvoiceSourceGroups(taxInvoiceViewMonth, 'purchase'),
+        commission: getTaxInvoiceSourceGroups(taxInvoiceViewMonth, 'commission')
+    };
+    ['sales', 'purchase', 'commission'].forEach(flow => {
+        const cap = flow.charAt(0).toUpperCase() + flow.slice(1);
+        document.getElementById(`taxInvoice${cap}FlowCount`).textContent = flowGroups[flow].length;
+        document.getElementById(`taxInvoice${cap}FlowTab`).classList.toggle('active', currentTaxInvoiceFlow === flow);
+    });
+
+    const sourceEntries = flowGroups[currentTaxInvoiceFlow].map(group => buildTaxInvoiceEntry(group, currentTaxInvoiceFlow));
+    const storedIssued = getTaxInvoiceRecords().filter(item => item.flow === currentTaxInvoiceFlow && item.monthKey === taxInvoiceViewMonth && item.status === 'issued');
     const issuedById = new Map(storedIssued.map(item => [item.id, item]));
     sourceEntries.forEach(item => { if (item.status === 'issued') issuedById.set(item.id, item); });
     const issuedEntries = [...issuedById.values()];
@@ -6885,6 +7302,8 @@ function renderTaxInvoices() {
     document.getElementById('taxInvoiceIssuedCount').textContent = issuedEntries.length;
     document.getElementById('taxInvoiceDraftTab').classList.toggle('active', currentTaxInvoiceTab === 'draft');
     document.getElementById('taxInvoiceIssuedTab').classList.toggle('active', currentTaxInvoiceTab === 'issued');
+    document.getElementById('taxInvoiceDraftTab').childNodes[0].nodeValue = currentTaxInvoiceFlow === 'purchase' ? '수취 전 ' : '작성 전 ';
+    document.getElementById('taxInvoiceIssuedTab').childNodes[0].nodeValue = `${flowMeta.completeLabel} `;
 
     const entries = currentTaxInvoiceTab === 'issued' ? issuedEntries : draftEntries;
     const supplyTotal = entries.reduce((sum, item) => sum + Number(item.supplyAmount || 0), 0);
@@ -6893,36 +7312,51 @@ function renderTaxInvoices() {
 
     const list = document.getElementById('taxInvoiceList');
     if (entries.length === 0) {
-        list.innerHTML = `<div class="tax-invoice-empty">${currentTaxInvoiceTab === 'issued' ? '발급 완료한 세금계산서가 없습니다.' : '이 달에 거래처가 입력된 운행내역이 없습니다.'}</div>`;
+        const emptyDraft = currentTaxInvoiceFlow === 'sales'
+            ? '계산서 발행 대상 거래처의 운행내역이 없습니다.'
+            : currentTaxInvoiceFlow === 'purchase'
+                ? '회사 매입 방식으로 설정된 기사의 운행내역이 없습니다.'
+                : '기사 직접발행 방식으로 설정된 수수료 내역이 없습니다.';
+        list.innerHTML = `<div class="tax-invoice-empty">${currentTaxInvoiceTab === 'issued' ? `${flowMeta.completeLabel} 내역이 없습니다.` : emptyDraft}</div>`;
         return;
     }
 
     list.innerHTML = entries.map(item => {
-        const clientKey = encodeURIComponent(item.clientName).replace(/'/g, '%27');
+        const partyKey = encodeURIComponent(item.partyKey || item.clientName).replace(/'/g, '%27');
         const missingInfo = !item.clientBizNumber;
+        const driverBreakdown = item.partyType === 'driver'
+            ? `<small class="tax-invoice-driver-breakdown">${escapeDetailText(item.carNumber || '')} · 운송료 ${Number(item.grossAmount || 0).toLocaleString()}원${item.commissionAmount ? ` · 수수료 ${Number(item.commissionAmount).toLocaleString()}원` : ''}${item.insuranceAmount ? ` · 산재보험 ${Number(item.insuranceAmount).toLocaleString()}원` : ''}</small>`
+            : '';
+        const draftActionLabel = currentTaxInvoiceFlow === 'purchase' ? '내용 입력' : '작성하기';
+        const cancelLabel = currentTaxInvoiceFlow === 'purchase' ? '수취 취소' : '발급 취소';
         return `<article class="tax-invoice-card">
-            <div class="tax-invoice-card-head"><div><strong>${escapeDetailText(item.clientName)}</strong><span>${item.count || 0}건 · ${missingInfo ? '사업자번호 미입력' : escapeDetailText(item.clientBizNumber)}</span></div><em class="${item.status}">${item.status === 'issued' ? '발급 완료' : '작성 전'}</em></div>
+            <div class="tax-invoice-card-head"><div><strong>${escapeDetailText(item.clientName)}</strong><span>${item.count || 0}건 · ${missingInfo ? '사업자번호 미입력' : escapeDetailText(item.clientBizNumber)}</span>${driverBreakdown}</div><em class="${item.status}">${item.status === 'issued' ? flowMeta.completeLabel : (currentTaxInvoiceFlow === 'purchase' ? '수취 전' : '작성 전')}</em></div>
             <div class="tax-invoice-card-money"><span>공급가액 <b>${Number(item.supplyAmount).toLocaleString()}원</b></span><span>세액 <b>${Number(item.taxAmount).toLocaleString()}원</b></span><strong>${Number(item.totalAmount).toLocaleString()}원</strong></div>
             <div class="tax-invoice-card-actions">
-                <button type="button" onclick="openTaxInvoiceDraft('${clientKey}')">${item.status === 'issued' ? '내용 보기' : '작성하기'}</button>
-                <button type="button" onclick="exportTaxInvoiceCsv('${clientKey}')">엑셀 저장</button>
-                ${item.status === 'issued' ? `<button type="button" onclick="changeTaxInvoiceStatus('${clientKey}', 'draft')">발급 취소</button>` : `<button type="button" class="primary" onclick="changeTaxInvoiceStatus('${clientKey}', 'issued')">발급 완료</button>`}
+                <button type="button" onclick="openTaxInvoiceDraft('${partyKey}')">${item.status === 'issued' ? '내용 보기' : draftActionLabel}</button>
+                <button type="button" onclick="exportTaxInvoiceCsv('${partyKey}')">엑셀 저장</button>
+                ${item.status === 'issued' ? `<button type="button" onclick="changeTaxInvoiceStatus('${partyKey}', 'draft')">${cancelLabel}</button>` : `<button type="button" class="primary" onclick="changeTaxInvoiceStatus('${partyKey}', 'issued')">${flowMeta.completeLabel}</button>`}
             </div>
         </article>`;
     }).join('');
 }
 
-function findCurrentTaxInvoice(clientName) {
-    const group = getTaxInvoiceSourceGroups(taxInvoiceViewMonth).find(item => item.clientName === clientName);
-    if (group) return buildTaxInvoiceEntry(group);
-    return getTaxInvoiceRecords().find(item => item.id === getTaxInvoiceRecordId(taxInvoiceViewMonth, clientName));
+function findCurrentTaxInvoice(partyKey, flow = currentTaxInvoiceFlow) {
+    const group = getTaxInvoiceSourceGroups(taxInvoiceViewMonth, flow).find(item => item.partyKey === partyKey);
+    if (group) return buildTaxInvoiceEntry(group, flow);
+    return getTaxInvoiceRecords().find(item => item.id === getTaxInvoiceRecordId(taxInvoiceViewMonth, partyKey, flow));
 }
 
-function openTaxInvoiceDraft(encodedClientName) {
-    const clientName = decodeURIComponent(encodedClientName);
-    const item = findCurrentTaxInvoice(clientName);
+function openTaxInvoiceDraft(encodedPartyKey) {
+    const partyKey = decodeURIComponent(encodedPartyKey);
+    const item = findCurrentTaxInvoice(partyKey);
     if (!item) return;
+    const meta = getTaxInvoiceFlowMeta(item.flow);
     document.getElementById('taxInvoiceRecordId').value = item.id;
+    document.getElementById('taxInvoiceRecordFlow').value = item.flow;
+    document.getElementById('taxInvoicePartyKey').value = item.partyKey || partyKey;
+    document.getElementById('taxInvoiceModalTitle').textContent = `${meta.label} 계산서`;
+    document.getElementById('taxInvoicePartyHeading').textContent = meta.partyHeading;
     document.getElementById('taxInvoiceClientName').value = item.clientName;
     document.getElementById('taxInvoiceClientBizNumber').value = item.clientBizNumber || '';
     document.getElementById('taxInvoiceClientRepresentative').value = item.clientRepresentative || '';
@@ -6931,7 +7365,7 @@ function openTaxInvoiceDraft(encodedClientName) {
     document.getElementById('taxInvoiceClientBizType').value = item.clientBizType || '';
     document.getElementById('taxInvoiceClientBizItem').value = item.clientBizItem || '';
     document.getElementById('taxInvoiceDate').value = item.issueDate || `${taxInvoiceViewMonth}-${String(new Date(Number(taxInvoiceViewMonth.slice(0,4)), Number(taxInvoiceViewMonth.slice(5,7)), 0).getDate()).padStart(2, '0')}`;
-    document.getElementById('taxInvoiceItemName').value = item.itemName || '화물운송료';
+    document.getElementById('taxInvoiceItemName').value = item.itemName || meta.itemName;
     document.getElementById('taxInvoiceRemark').value = item.remark || '';
     document.getElementById('taxInvoiceSupplyAmount').textContent = `${Number(item.supplyAmount).toLocaleString()}원`;
     document.getElementById('taxInvoiceTaxAmount').textContent = `${Number(item.taxAmount).toLocaleString()}원`;
@@ -6945,12 +7379,16 @@ function closeTaxInvoiceModal() {
 
 function collectTaxInvoiceForm() {
     const id = document.getElementById('taxInvoiceRecordId').value;
+    const flow = document.getElementById('taxInvoiceRecordFlow').value || currentTaxInvoiceFlow;
+    const partyKey = document.getElementById('taxInvoicePartyKey').value;
     const clientName = document.getElementById('taxInvoiceClientName').value;
-    const current = findCurrentTaxInvoice(clientName);
+    const current = findCurrentTaxInvoice(partyKey, flow);
     return {
         ...current,
         id,
-        logId: activeLogId,
+        flow,
+        partyKey,
+        logId: current?.carNumber || 'fleet',
         monthKey: taxInvoiceViewMonth,
         clientName,
         clientBizNumber: document.getElementById('taxInvoiceClientBizNumber').value.trim(),
@@ -6960,7 +7398,7 @@ function collectTaxInvoiceForm() {
         clientBizType: document.getElementById('taxInvoiceClientBizType').value.trim(),
         clientBizItem: document.getElementById('taxInvoiceClientBizItem').value.trim(),
         issueDate: document.getElementById('taxInvoiceDate').value,
-        itemName: document.getElementById('taxInvoiceItemName').value.trim() || '화물운송료',
+        itemName: document.getElementById('taxInvoiceItemName').value.trim() || getTaxInvoiceFlowMeta(flow).itemName,
         remark: document.getElementById('taxInvoiceRemark').value.trim(),
         status: current?.status || 'draft',
         updatedAt: new Date().toISOString()
@@ -6975,35 +7413,50 @@ function persistTaxInvoice(item) {
     saveTaxInvoiceRecords(records);
 }
 
-function saveTaxInvoiceClientInfo(item) {
+function saveTaxInvoicePartyInfo(item) {
     const settings = getUserSettings();
-    const client = (settings.clients || []).find(entry => entry.companyName === item.clientName);
-    if (!client) return;
-    client.bizNumber = item.clientBizNumber;
-    client.taxRepresentative = item.clientRepresentative;
-    client.taxEmail = item.clientEmail;
-    client.taxAddress = item.clientAddress;
-    client.taxBizType = item.clientBizType;
-    client.taxBizItem = item.clientBizItem;
+    if (item.partyType === 'driver') {
+        const car = (settings.cars || []).find(entry => entry.number === item.carNumber);
+        if (!car) return;
+        car.personalInfo = {
+            ...(car.personalInfo || {}),
+            name: item.clientRepresentative,
+            bizNumber: item.clientBizNumber,
+            email: item.clientEmail,
+            address: item.clientAddress,
+            bizType: item.clientBizType,
+            bizItem: item.clientBizItem
+        };
+    } else {
+        const client = (settings.clients || []).find(entry => entry.companyName === item.clientName);
+        if (!client) return;
+        client.bizNumber = item.clientBizNumber;
+        client.taxRepresentative = item.clientRepresentative;
+        client.taxEmail = item.clientEmail;
+        client.taxAddress = item.clientAddress;
+        client.taxBizType = item.clientBizType;
+        client.taxBizItem = item.clientBizItem;
+    }
     setUserSettings(settings);
 }
 
 function saveTaxInvoiceDraft() {
     const item = collectTaxInvoiceForm();
     if (!item.clientBizNumber || !item.issueDate) {
-        showConfirmModal('공급받는 자의 사업자등록번호와 작성일자를 입력해 주세요.', null);
+        const partyLabel = item.flow === 'purchase' ? '공급자' : '공급받는 자';
+        showConfirmModal(`${partyLabel}의 사업자등록번호와 작성일자를 입력해 주세요.`, null);
         return;
     }
     persistTaxInvoice(item);
-    saveTaxInvoiceClientInfo(item);
+    saveTaxInvoicePartyInfo(item);
     closeTaxInvoiceModal();
     renderTaxInvoices();
     showToastMessage('세금계산서 작성 내용을 저장했습니다.');
 }
 
-function changeTaxInvoiceStatus(encodedClientName, status) {
-    const clientName = decodeURIComponent(encodedClientName);
-    const item = findCurrentTaxInvoice(clientName);
+function changeTaxInvoiceStatus(encodedPartyKey, status) {
+    const partyKey = decodeURIComponent(encodedPartyKey);
+    const item = findCurrentTaxInvoice(partyKey);
     if (!item) return;
     if (status === 'issued') {
         const settings = getUserSettings();
@@ -7012,8 +7465,8 @@ function changeTaxInvoiceStatus(encodedClientName, status) {
             return;
         }
         if (!item.clientBizNumber) {
-            openTaxInvoiceDraft(encodedClientName);
-            showToastMessage('거래처 사업자등록번호를 먼저 입력해 주세요.');
+            openTaxInvoiceDraft(encodedPartyKey);
+            showToastMessage(`${item.partyType === 'driver' ? '기사' : '거래처'} 사업자등록번호를 먼저 입력해 주세요.`);
             return;
         }
     }
@@ -7021,7 +7474,7 @@ function changeTaxInvoiceStatus(encodedClientName, status) {
     item.issuedAt = status === 'issued' ? new Date().toISOString() : '';
     persistTaxInvoice(item);
     renderTaxInvoices();
-    showToastMessage(status === 'issued' ? '발급 완료로 표시했습니다.' : '작성 전 상태로 되돌렸습니다.');
+    showToastMessage(status === 'issued' ? `${getTaxInvoiceFlowMeta(item.flow).completeLabel}로 표시했습니다.` : '처리 전 상태로 되돌렸습니다.');
 }
 
 function csvCell(value) {
@@ -7046,23 +7499,33 @@ function loadTaxInvoiceExcelLibrary() {
     });
 }
 
-async function exportTaxInvoiceCsv(encodedClientName) {
-    const clientName = decodeURIComponent(encodedClientName);
-    const item = findCurrentTaxInvoice(clientName);
+async function exportTaxInvoiceCsv(encodedPartyKey) {
+    const partyKey = decodeURIComponent(encodedPartyKey);
+    const item = findCurrentTaxInvoice(partyKey);
     const settings = getUserSettings();
     if (!item || !settings.bizNumber || !item.clientBizNumber) {
         showConfirmModal('공급자와 공급받는 자의 사업자등록번호를 먼저 입력해 주세요.', null);
         return;
     }
+    const companyParty = {
+        bizNumber: settings.bizNumber || '', name: settings.bizName || '', representative: settings.userName || '',
+        address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || ''
+    };
+    const otherParty = {
+        bizNumber: item.clientBizNumber || '', name: item.clientName || '', representative: item.clientRepresentative || '',
+        address: item.clientAddress || '', bizType: item.clientBizType || '', bizItem: item.clientBizItem || '', email: item.clientEmail || ''
+    };
+    const supplier = item.flow === 'purchase' ? otherParty : companyParty;
+    const buyer = item.flow === 'purchase' ? companyParty : otherParty;
     const issueDate = item.issueDate || `${taxInvoiceViewMonth}-01`;
-    const filename = `${taxInvoiceViewMonth}_${item.clientName}_세금계산서.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+    const filename = `${taxInvoiceViewMonth}_${item.clientName}_${getTaxInvoiceFlowMeta(item.flow).label}_계산서.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
 
     try {
         const ExcelJS = await loadTaxInvoiceExcelLibrary();
         const workbook = new ExcelJS.Workbook();
         workbook.creator = settings.bizName || '운행일지';
         workbook.created = new Date();
-        workbook.subject = `${taxInvoiceViewMonth} 화물운송료`;
+        workbook.subject = `${taxInvoiceViewMonth} ${item.itemName || getTaxInvoiceFlowMeta(item.flow).itemName}`;
 
         const sheet = workbook.addWorksheet('세금계산서', {
             pageSetup:{ paperSize:9, orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:1, margins:{left:.25,right:.25,top:.35,bottom:.35,header:.1,footer:.1} },
@@ -7113,23 +7576,23 @@ async function exportTaxInvoiceCsv(encodedClientName) {
             ['G','I'].forEach(col => setTaxCell(`${col}${row}`,'',buyerLabelFill,true));
             ['H','J'].forEach(col => setTaxCell(`${col}${row}`,'',buyerFill));
         });
-        setTaxCell('B3','등록번호',supplierLabelFill,true); setTaxCell('C3',settings.bizNumber || '',supplierFill);
+        setTaxCell('B3','등록번호',supplierLabelFill,true); setTaxCell('C3',supplier.bizNumber,supplierFill);
         setTaxCell('D3','종사업자\n번호',supplierLabelFill,true); setTaxCell('E3','',supplierFill);
-        setTaxCell('B4','상호\n(법인명)',supplierLabelFill,true); setTaxCell('C4',settings.bizName || '',supplierFill);
-        setTaxCell('D4','대표자',supplierLabelFill,true); setTaxCell('E4',settings.userName || '',supplierFill);
-        setTaxCell('B5','사업장 주소',supplierLabelFill,true); sheet.mergeCells('C5:E5'); setTaxCell('C5',settings.bizAddress || '',supplierFill);
-        setTaxCell('B6','업태',supplierLabelFill,true); setTaxCell('C6',settings.bizType || '',supplierFill);
-        setTaxCell('D6','종목',supplierLabelFill,true); setTaxCell('E6',settings.bizItem || '',supplierFill);
-        setTaxCell('B7','이메일',supplierLabelFill,true); sheet.mergeCells('C7:E7'); setTaxCell('C7',settings.bizEmail || '',supplierFill);
+        setTaxCell('B4','상호\n(법인명)',supplierLabelFill,true); setTaxCell('C4',supplier.name,supplierFill);
+        setTaxCell('D4','대표자',supplierLabelFill,true); setTaxCell('E4',supplier.representative,supplierFill);
+        setTaxCell('B5','사업장 주소',supplierLabelFill,true); sheet.mergeCells('C5:E5'); setTaxCell('C5',supplier.address,supplierFill);
+        setTaxCell('B6','업태',supplierLabelFill,true); setTaxCell('C6',supplier.bizType,supplierFill);
+        setTaxCell('D6','종목',supplierLabelFill,true); setTaxCell('E6',supplier.bizItem,supplierFill);
+        setTaxCell('B7','이메일',supplierLabelFill,true); sheet.mergeCells('C7:E7'); setTaxCell('C7',supplier.email,supplierFill);
 
-        setTaxCell('G3','등록번호',buyerLabelFill,true); setTaxCell('H3',item.clientBizNumber || '',buyerFill);
+        setTaxCell('G3','등록번호',buyerLabelFill,true); setTaxCell('H3',buyer.bizNumber,buyerFill);
         setTaxCell('I3','종사업자\n번호',buyerLabelFill,true); setTaxCell('J3','',buyerFill);
-        setTaxCell('G4','상호\n(법인명)',buyerLabelFill,true); setTaxCell('H4',item.clientName || '',buyerFill);
-        setTaxCell('I4','대표자',buyerLabelFill,true); setTaxCell('J4',item.clientRepresentative || '',buyerFill);
-        setTaxCell('G5','사업장 주소',buyerLabelFill,true); sheet.mergeCells('H5:J5'); setTaxCell('H5',item.clientAddress || '',buyerFill);
-        setTaxCell('G6','업태',buyerLabelFill,true); setTaxCell('H6',item.clientBizType || '',buyerFill);
-        setTaxCell('I6','종목',buyerLabelFill,true); setTaxCell('J6',item.clientBizItem || '',buyerFill);
-        setTaxCell('G7','이메일',buyerLabelFill,true); sheet.mergeCells('H7:J7'); setTaxCell('H7',item.clientEmail || '',buyerFill);
+        setTaxCell('G4','상호\n(법인명)',buyerLabelFill,true); setTaxCell('H4',buyer.name,buyerFill);
+        setTaxCell('I4','대표자',buyerLabelFill,true); setTaxCell('J4',buyer.representative,buyerFill);
+        setTaxCell('G5','사업장 주소',buyerLabelFill,true); sheet.mergeCells('H5:J5'); setTaxCell('H5',buyer.address,buyerFill);
+        setTaxCell('G6','업태',buyerLabelFill,true); setTaxCell('H6',buyer.bizType,buyerFill);
+        setTaxCell('I6','종목',buyerLabelFill,true); setTaxCell('J6',buyer.bizItem,buyerFill);
+        setTaxCell('G7','이메일',buyerLabelFill,true); sheet.mergeCells('H7:J7'); setTaxCell('H7',buyer.email,buyerFill);
         sheet.mergeCells('A8:B8'); sheet.getCell('A8').value='작성일자';
         sheet.mergeCells('C8:D8'); sheet.getCell('C8').value='공급가액';
         sheet.mergeCells('E8:F8'); sheet.getCell('E8').value='세액';
@@ -7139,9 +7602,9 @@ async function exportTaxInvoiceCsv(encodedClientName) {
         sheet.mergeCells('E9:F9'); sheet.getCell('E9').value=Number(item.taxAmount);
         sheet.mergeCells('G9:J9'); sheet.getCell('G9').value='';
         sheet.mergeCells('A10:B10'); sheet.getCell('A10').value='비고';
-        const invoiceCar = activeLogId === 'main'
-            ? (settings.cars || []).find(car => car.type === 'main')
-            : (settings.cars || []).find(car => car.number === activeLogId);
+        const invoiceCar = item.carNumber
+            ? (settings.cars || []).find(car => car.number === item.carNumber)
+            : (settings.cars || []).find(car => car.type === 'main');
         const accountMemo = `${settings.bankName || '-'} ${settings.accountNumber || '-'} / ${settings.userName || '-'} / ${invoiceCar?.number || '-'}`;
         sheet.mergeCells('C10:J10'); sheet.getCell('C10').value=accountMemo;
 
@@ -7232,7 +7695,7 @@ async function exportTaxInvoiceCsv(encodedClientName) {
 
         const uploadSheet = workbook.addWorksheet('입력자료', {views:[{state:'frozen',ySplit:1}]});
         const uploadHeaders = ['작성일자','공급자등록번호','공급자상호','공급자대표자','공급자주소','공급자업태','공급자종목','공급자이메일','공급받는자등록번호','공급받는자상호','공급받는자대표자','공급받는자주소','공급받는자업태','공급받는자종목','공급받는자이메일','품목','수량','공급가액','세액','합계금액','비고'];
-        const uploadRow = [issueDate,settings.bizNumber,settings.bizName,settings.userName,settings.bizAddress,settings.bizType,settings.bizItem,settings.bizEmail,item.clientBizNumber,item.clientName,item.clientRepresentative,item.clientAddress,item.clientBizType,item.clientBizItem,item.clientEmail,item.itemName || '화물운송료',1,Number(item.supplyAmount),Number(item.taxAmount),Number(item.totalAmount),item.remark];
+        const uploadRow = [issueDate,supplier.bizNumber,supplier.name,supplier.representative,supplier.address,supplier.bizType,supplier.bizItem,supplier.email,buyer.bizNumber,buyer.name,buyer.representative,buyer.address,buyer.bizType,buyer.bizItem,buyer.email,item.itemName || getTaxInvoiceFlowMeta(item.flow).itemName,1,Number(item.supplyAmount),Number(item.taxAmount),Number(item.totalAmount),item.remark];
         uploadSheet.addRow(uploadHeaders); uploadSheet.addRow(uploadRow);
         uploadSheet.getRow(1).font={name:'맑은 고딕',size:10,bold:true,color:{argb:'FFFFFFFF'}};
         uploadSheet.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF365B9D'}};

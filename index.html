@@ -130,10 +130,6 @@
                 </svg>
                 정비/주유
             </button>
-            <button id="driverConnectionMenuBtn" class="dropdown-item hidden" onclick="showDriverConnectionManagement()" style="align-items: center; gap: 10px;">
-                <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M16 11h6"></path></svg>
-                기사 연동 관리
-            </button>
             <div id="linkedDriverMenuContainer" class="sub-car-menu-list"></div>
             <div id="subCarLogMenuContainer" class="sub-car-menu-list"></div>
             </section>
@@ -405,6 +401,11 @@
                 <input type="month" id="taxInvoiceMonth" class="input-box" onchange="changeTaxInvoiceMonth(this.value)">
             </section>
             <div class="tax-invoice-guide" id="taxInvoiceIssuerGuide"></div>
+            <div class="tax-invoice-flow-tabs" role="tablist" aria-label="계산서 흐름">
+                <button type="button" id="taxInvoiceSalesFlowTab" class="active" onclick="selectTaxInvoiceFlow('sales')">매출 발행 <span id="taxInvoiceSalesFlowCount">0</span></button>
+                <button type="button" id="taxInvoicePurchaseFlowTab" onclick="selectTaxInvoiceFlow('purchase')">기사 매입 <span id="taxInvoicePurchaseFlowCount">0</span></button>
+                <button type="button" id="taxInvoiceCommissionFlowTab" onclick="selectTaxInvoiceFlow('commission')">수수료 발행 <span id="taxInvoiceCommissionFlowCount">0</span></button>
+            </div>
             <div class="tax-invoice-tabs">
                 <button type="button" id="taxInvoiceDraftTab" class="active" onclick="selectTaxInvoiceTab('draft')">작성 전 <span id="taxInvoiceDraftCount">0</span></button>
                 <button type="button" id="taxInvoiceIssuedTab" onclick="selectTaxInvoiceTab('issued')">발급 완료 <span id="taxInvoiceIssuedCount">0</span></button>
@@ -416,7 +417,7 @@
         <!-- [마이페이지 홈] -->
         <div id="myPage" class="page hidden">
             <div class="settings-header">
-                <button class="icon-btn" onclick="showMain()" title="뒤로가기">
+                <button class="icon-btn" onclick="goBackFromMyPage()" title="뒤로가기">
                     <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 </button>
                 <div class="settings-title">마이페이지</div>
@@ -468,6 +469,14 @@
             </section>
 
             <div class="mypage-notice-area">
+                <button id="myPageDriverConnectionLink" type="button" class="mypage-notice-link hidden" onclick="showDriverConnectionManagement('myPage')">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M16 11h6"></path></svg>
+                    <span>기사연동관리</span>
+                </button>
+                <button type="button" class="mypage-notice-link" onclick="showBillingSettingsPage()">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2z"></path><path d="M9 7h6M9 11h6M9 15h4"></path></svg>
+                    <span>정산·계산서 설정</span>
+                </button>
                 <button type="button" class="mypage-notice-link mypage-message-settings-link" onclick="showMessageSettingsPage()">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path><path d="M8 9h8M8 13h5"></path></svg>
                     <span>문자 문구 설정</span>
@@ -477,6 +486,38 @@
                     <span>공지사항</span>
                 </button>
             </div>
+        </div>
+
+        <!-- [정산·계산서 기본 설정 페이지] -->
+        <div id="billingSettingsPage" class="page hidden">
+            <div class="settings-header">
+                <button class="icon-btn" onclick="showMyPage()" title="뒤로가기"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                <div class="settings-title">정산·계산서 설정</div>
+                <span class="mypage-header-spacer" aria-hidden="true"></span>
+            </div>
+            <section class="billing-settings-hero">
+                <span>BILLING FLOW</span>
+                <strong>기사차량의 기본 정산 방식을 선택하세요.</strong>
+                <p>기사차량마다 다른 경우 차량 정보에서 개별 방식을 선택할 수 있습니다.</p>
+            </section>
+            <section class="billing-settings-card">
+                <label for="defaultDriverSettlementMode">기본 계산서 처리 방식</label>
+                <select id="defaultDriverSettlementMode" class="input-box" data-app-dropdown onchange="saveBillingSettings(); updateBillingSettingsGuide();">
+                    <option value="company">회사 정산</option>
+                    <option value="driver_direct">기사 직접 정산</option>
+                    <option value="employee">직원 기사</option>
+                    <option value="none">계산서 미사용</option>
+                </select>
+                <div id="billingSettingsModeGuide" class="billing-settings-guide"></div>
+            </section>
+            <section class="billing-settings-card">
+                <label for="driverInvoiceBasis">기사 매입 계산서 기준</label>
+                <select id="driverInvoiceBasis" class="input-box" data-app-dropdown onchange="saveBillingSettings(); updateBillingSettingsGuide();">
+                    <option value="net">공제 후 지급액</option>
+                    <option value="gross">공제 전 운송료</option>
+                </select>
+                <p class="billing-settings-note">세무 처리 기준은 거래 형태에 따라 다를 수 있으므로 실제 발급 전 확인해 주세요.</p>
+            </section>
         </div>
 
         <!-- [공지사항 페이지] -->
@@ -556,21 +597,9 @@
             </div>
 
             <div class="personal-card-grid">
-                <section class="setting-section personal-card personal-role-card">
-                    <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">01</span>
-                        <div><h3>사용자 유형</h3><p>현재 이용 방식과 연결 권한</p></div>
-                    </div>
-                    <div class="personal-role-summary">
-                        <span id="personalAccountTypeIcon" class="personal-role-summary-icon" aria-hidden="true"></span>
-                        <span><strong id="personalAccountTypeLabel">유형 미선택</strong><small id="personalAccountTypeDescription">사용자 유형을 선택해 주세요.</small></span>
-                    </div>
-                    <button type="button" class="personal-role-change-btn" onclick="requestAccountTypeChange()">사용자 유형 변경</button>
-                </section>
-
                 <section class="setting-section personal-card">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">02</span>
+                        <span class="personal-card-icon" aria-hidden="true">01</span>
                         <div><h3>사업자 정보</h3><p>내역서에 표시되는 업체 정보</p></div>
                     </div>
                     <div class="form-group">
@@ -597,7 +626,7 @@
 
                 <section class="setting-section personal-card">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">03</span>
+                        <span class="personal-card-icon" aria-hidden="true">02</span>
                         <div><h3>대표자 · 연락처</h3><p>대표자 기본 정보</p></div>
                     </div>
                     <div class="form-group">
@@ -612,7 +641,7 @@
 
                 <section class="setting-section personal-card">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">04</span>
+                        <span class="personal-card-icon" aria-hidden="true">03</span>
                         <div><h3>정산 계좌</h3><p>운송료를 입금받을 계좌</p></div>
                     </div>
                     <div class="form-group">
@@ -625,18 +654,9 @@
                     </div>
                 </section>
 
-                <section id="ownerDriverLinkSummaryCard" class="setting-section personal-card hidden">
-                    <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">05</span>
-                        <div><h3>기사 연동</h3><p>초대와 차량 할당 관리</p></div>
-                    </div>
-                    <div class="personal-link-status-row"><span>연결된 기사</span><strong id="personalLinkedDriverCount">0명</strong></div>
-                    <button type="button" class="personal-role-change-btn primary" onclick="showDriverConnectionManagement('personal')">기사 연동 관리</button>
-                </section>
-
                 <section id="employedDriverLinkCard" class="setting-section personal-card hidden">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">05</span>
+                        <span class="personal-card-icon" aria-hidden="true">04</span>
                         <div><h3>소속 연결</h3><p>초대 코드 또는 사장님 전화번호로 연결</p></div>
                     </div>
                     <div id="employedDriverDisconnectedPanel" class="employer-link-form">
@@ -655,7 +675,7 @@
 
                 <section class="setting-section personal-card personal-account-card">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">06</span>
+                        <span id="personalAccountCardNumber" class="personal-card-icon" aria-hidden="true">04</span>
                         <div><h3>계정</h3><p>로그인 상태와 계정 연결 관리</p></div>
                     </div>
                     <div class="personal-account-actions">
@@ -1525,7 +1545,50 @@
                 <input type="text" id="newCarTonnage" class="input-box" placeholder="예: 5톤, 11톤, 25톤">
             </div>
 
+            <div id="driverBasicInfoFields" style="display: none;">
+                <div class="form-group">
+                    <label for="newDriverName">기사명</label>
+                    <input type="text" id="newDriverName" class="input-box" placeholder="기사명을 입력하세요">
+                </div>
+                <div class="form-group">
+                    <label for="newUserPhone">연락처</label>
+                    <input type="tel" id="newUserPhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this)">
+                </div>
+                <div class="form-group">
+                    <label for="newCarSettlementMode">계산서 처리 방식</label>
+                    <select id="newCarSettlementMode" class="input-box" data-app-dropdown onchange="updateDriverSettlementModeGuide()">
+                        <option value="default">사용자 기본 설정 사용</option>
+                        <option value="company">회사 정산</option>
+                        <option value="driver_direct">기사 직접 정산</option>
+                        <option value="employee">직원 기사</option>
+                        <option value="none">계산서 미사용</option>
+                    </select>
+                    <p id="newCarSettlementModeGuide" class="car-settlement-mode-guide"></p>
+                </div>
+            </div>
+
             <div id="logToggleContainer" style="display: none;">
+                <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
+
+                <div class="setting-item">
+                    <div style="text-align: left;">
+                        <label for="newDriverLinkToggle">기사연동</label>
+                        <p style="font-size: 0.75rem; color: var(--sub-text-color); margin-top: 4px;">기사를 초대하고 이 차량에 할당합니다.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="newDriverLinkToggle" onchange="toggleNewDriverLinkSettings()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div id="newDriverLinkSettings" class="sub-setting-group car-driver-link-settings" style="display: none;">
+                    <div class="driver-form-grid">
+                        <div class="form-group driver-form-wide"><label for="carLinkInviteCode">초대 코드</label><div class="driver-code-input"><input type="text" id="carLinkInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateCarDriverInviteCode()">코드 생성</button></div></div>
+                        <div class="form-group"><label for="carLinkAssignmentStart">할당 시작일</label><input type="date" id="carLinkAssignmentStart" class="input-box"></div>
+                        <div class="form-group"><label for="carLinkAssignmentEnd">할당 종료일</label><input type="date" id="carLinkAssignmentEnd" class="input-box"><small>종료일이 없으면 계속 할당됩니다.</small></div>
+                    </div>
+                </div>
+
                 <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
 
                 <div class="setting-item">
@@ -1540,34 +1603,7 @@
                 </div>
 
                 <div id="newLogSettings" class="sub-setting-group" style="display: none;">
-                    <div class="setting-item" style="margin-bottom: 10px;">
-                        <label for="newCarInsuranceToggle">산재보험 적용</label>
-                        <label class="switch">
-                            <input type="checkbox" id="newCarInsuranceToggle">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item" style="margin-bottom: 10px;">
-                        <label for="newCarCommToggle">수수료 적용</label>
-                        <label class="switch">
-                            <input type="checkbox" id="newCarCommToggle" onchange="toggleNewCarCommSettings()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div id="newCarCommSettings" class="commission-settings-panel" style="display: none;">
-                        <div class="btn-group-toggle commission-type-toggle">
-                            <button type="button" id="btnCarCommPercent" class="toggle-btn active-work" onclick="setCarCommType('percent')">퍼센트 (%)</button>
-                            <button type="button" id="btnCarCommDirect" class="toggle-btn" onclick="setCarCommType('direct')">직접입력 (원)</button>
-                        </div>
-                        <div class="commission-value-row">
-                            <div id="carCommLabel" style="font-weight: 700; font-size: 0.9rem; white-space: nowrap;">수수료율 (%)</div>
-                            <input type="text" id="newCarCommission" class="input-box" inputmode="numeric" placeholder="비율(%) 입력" oninput="formatCarCommInput(this)" style="flex: 1; margin-top: 0;">
-                        </div>
-                    </div>
-                    <input type="hidden" id="newCarCommType" value="percent">
-
-                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--sub-text-color); margin-bottom: 8px; display: block;">개인정보 설정</label>
+                    <label style="font-size: 0.85rem; font-weight: 600; color: var(--sub-text-color); margin-bottom: 8px; display: block;">추가 정산 정보</label>
                     <div class="btn-group-toggle">
                         <button type="button" id="btnUseExistingInfo" class="toggle-btn active-work" onclick="selectInfoType('existing')">기존 정보 사용</button>
                         <button type="button" id="btnUseNewInfo" class="toggle-btn" onclick="selectInfoType('new')">새 정보 입력</button>
@@ -1575,20 +1611,12 @@
 
                     <div id="newPersonalInfoForm" style="display: none; margin-top: 10px;">
                         <div class="form-group">
-                            <label for="newDriverName">기사명</label>
-                            <input type="text" id="newDriverName" class="input-box" placeholder="기사명을 입력하세요">
-                        </div>
-                        <div class="form-group">
                             <label for="newUserName">성명 (대표자)</label>
                             <input type="text" id="newUserName" class="input-box" placeholder="성명을 입력하세요">
                         </div>
                         <div class="form-group">
                             <label for="newBizNumber">사업자번호</label>
                             <input type="text" id="newBizNumber" class="input-box" placeholder="사업자번호 입력">
-                        </div>
-                        <div class="form-group">
-                            <label for="newUserPhone">연락처</label>
-                            <input type="tel" id="newUserPhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this)">
                         </div>
                         <div class="form-group">
                             <label for="newBankName">입금 은행</label>
@@ -1599,6 +1627,51 @@
                             <input type="text" id="newAccountNumber" class="input-box" inputmode="numeric" placeholder="계좌번호 입력">
                         </div>
                     </div>
+                </div>
+
+                <hr class="car-modal-option-divider">
+
+                <div class="car-independent-options">
+                    <div class="setting-item">
+                        <div class="car-option-copy">
+                            <label for="newCarInsuranceToggle">산재보험 적용</label>
+                            <p>기사차량의 산재보험 정산에 반영합니다.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="newCarInsuranceToggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="car-option-copy">
+                            <label for="newCarCommToggle">수수료 적용</label>
+                            <p>운송료에서 공제할 수수료를 설정합니다.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="newCarCommToggle" onchange="toggleNewCarCommSettings()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="newCarCommSettings" class="car-commission-panel" style="display: none;">
+                        <div class="car-commission-heading">
+                            <strong>수수료 입력</strong>
+                            <span>정산 시 설정한 방식으로 자동 계산됩니다.</span>
+                        </div>
+                        <div class="car-commission-type" role="group" aria-label="수수료 입력 방식">
+                            <button type="button" id="btnCarCommPercent" class="active" onclick="setCarCommType('percent')" aria-pressed="true"><span>%</span> 비율</button>
+                            <button type="button" id="btnCarCommDirect" onclick="setCarCommType('direct')" aria-pressed="false"><span>₩</span> 금액</button>
+                        </div>
+                        <label class="car-commission-value" for="newCarCommission">
+                            <span id="carCommLabel">수수료율</span>
+                            <span class="car-commission-input">
+                                <input type="text" id="newCarCommission" inputmode="decimal" placeholder="0" oninput="formatCarCommInput(this)">
+                                <b id="carCommUnit">%</b>
+                            </span>
+                        </label>
+                    </div>
+                    <input type="hidden" id="newCarCommType" value="percent">
                 </div>
             </div>
 
@@ -1754,10 +1827,12 @@
     <!-- 세금계산서 작성 모달 -->
     <div id="taxInvoiceModal" class="modal-overlay hidden">
         <div class="modal-content tax-invoice-modal-content">
-            <div class="modal-title">세금계산서 작성</div>
+            <div id="taxInvoiceModalTitle" class="modal-title">세금계산서 작성</div>
             <input type="hidden" id="taxInvoiceRecordId">
+            <input type="hidden" id="taxInvoiceRecordFlow" value="sales">
+            <input type="hidden" id="taxInvoicePartyKey">
             <div class="tax-invoice-form-section">
-                <h3>공급받는 자</h3>
+                <h3 id="taxInvoicePartyHeading">공급받는 자</h3>
                 <div class="form-group"><label for="taxInvoiceClientName">상호</label><input id="taxInvoiceClientName" class="input-box" readonly></div>
                 <div class="form-group"><label for="taxInvoiceClientBizNumber">사업자등록번호</label><input id="taxInvoiceClientBizNumber" class="input-box" placeholder="000-00-00000"></div>
                 <div class="personal-inline-fields">
@@ -1844,6 +1919,6 @@
     </div>
 
     <!-- 외부 JS 연결 -->
-    <script src="script.js?v=20260816-account-roles"></script>
+    <script src="script.js?v=20260816-navigation-back"></script>
 </body>
 </html>
