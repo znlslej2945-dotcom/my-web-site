@@ -2,6 +2,66 @@
 @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
 
 :root {
+    /* 0.7rem 미만이던 작은 폰트 크기들을 읽기 편한 수준으로 통일하는 하한선. 새로 작은
+       텍스트를 추가할 때도 0.7rem 미만 값 대신 이 변수를 재사용한다. */
+    --fs-floor: 0.72rem;
+    /* 2단계: 0.72rem 이상 폰트 크기 60여 종을 8단계로 정리. 매핑 로그(원본값 -> 채택 변수):
+       .7rem -> --fs-floor (0.72rem)  (x19)
+       .71rem -> --fs-floor (0.72rem)  (x1)
+       .72rem -> --fs-floor (0.72rem)  (x23)
+       .73rem -> --fs-floor (0.72rem)  (x2)
+       .74rem -> --fs-floor (0.72rem)  (x12)
+       .75rem -> --fs-floor (0.72rem)  (x4)
+       0.75rem -> --fs-floor (0.72rem)  (x5)
+       .76rem -> --fs-2 (0.78rem)  (x28)
+       0.76rem -> --fs-2 (0.78rem)  (x1)
+       .78rem -> --fs-2 (0.78rem)  (x26)
+       0.78rem -> --fs-2 (0.78rem)  (x2)
+       .79rem -> --fs-2 (0.78rem)  (x1)
+       .8rem -> --fs-2 (0.78rem)  (x17)
+       0.8rem -> --fs-2 (0.78rem)  (x2)
+       .82rem -> --fs-3 (0.85rem)  (x22)
+       0.82rem -> --fs-3 (0.85rem)  (x1)
+       .84rem -> --fs-3 (0.85rem)  (x12)
+       0.84rem -> --fs-3 (0.85rem)  (x2)
+       0.85rem -> --fs-3 (0.85rem)  (x11)
+       .86rem -> --fs-3 (0.85rem)  (x15)
+       .875rem -> --fs-3 (0.85rem)  (x3)
+       .88rem -> --fs-3 (0.85rem)  (x8)
+       0.88rem -> --fs-3 (0.85rem)  (x3)
+       .9rem -> --fs-4 (0.92rem)  (x14)
+       0.9rem -> --fs-4 (0.92rem)  (x8)
+       .92rem -> --fs-4 (0.92rem)  (x4)
+       0.92rem -> --fs-4 (0.92rem)  (x3)
+       0.94rem -> --fs-4 (0.92rem)  (x2)
+       .94rem -> --fs-4 (0.92rem)  (x4)
+       0.95rem -> --fs-4 (0.92rem)  (x10)
+       .95rem -> --fs-4 (0.92rem)  (x1)
+       .96rem -> --fs-4 (0.92rem)  (x3)
+       .98rem -> --fs-5 (1rem)  (x1)
+       1rem -> --fs-5 (1rem)  (x15)
+       1.02rem -> --fs-5 (1rem)  (x2)
+       1.03rem -> --fs-5 (1rem)  (x1)
+       1.05rem -> --fs-6 (1.08rem)  (x8)
+       1.08rem -> --fs-6 (1.08rem)  (x4)
+       1.1rem -> --fs-6 (1.08rem)  (x3)
+       1.12rem -> --fs-6 (1.08rem)  (x1)
+       1.15rem -> --fs-7 (1.18rem)  (x3)
+       1.18rem -> --fs-7 (1.18rem)  (x3)
+       1.2rem -> --fs-7 (1.18rem)  (x2)
+       1.25rem -> --fs-8 (1.3rem)  (x1)
+       1.28rem -> --fs-8 (1.3rem)  (x1)
+       1.3rem -> --fs-8 (1.3rem)  (x1)
+       1.35rem -> --fs-8 (1.3rem)  (x1)
+       예외(값을 그대로 둔 것): 0.57rem·0.61rem(1단계부터의 세금계산서 카운트 배지),
+       1.45rem·1.7rem·1.88rem·2.2rem(각 1곳뿐인 독립적인 큰 아이콘/헤딩/브랜드 텍스트) */
+    --fs-2: 0.78rem;
+    --fs-3: 0.85rem;
+    --fs-4: 0.92rem;
+    --fs-5: 1rem;
+    --fs-6: 1.08rem;
+    --fs-7: 1.18rem;
+    --fs-8: 1.3rem;
     --bg-color: #f4f7f6;
     --text-color: #2d3748;
     --sub-text-color: #718096;
@@ -124,7 +184,7 @@ body {
     border-radius:999px;
     background:var(--sunday-color);
     color:#fff;
-    font-size:.62rem;
+    font-size:var(--fs-floor);
     font-weight:900;
     line-height:1;
     box-sizing:border-box;
@@ -178,13 +238,13 @@ body {
 .notification-panel-header h2 {
     margin:0;
     color:var(--text-color);
-    font-size:1.05rem;
+    font-size:var(--fs-6);
 }
 
 .notification-panel-header p {
     margin:6px 0 0;
     color:var(--sub-text-color);
-    font-size:.72rem;
+    font-size:var(--fs-floor);
 }
 
 .notification-panel-close { flex:0 0 38px; }
@@ -208,7 +268,7 @@ body {
     border-radius:15px;
     background:var(--sunday-color);
     color:#fff;
-    font-size:.72rem;
+    font-size:var(--fs-floor);
     font-weight:850;
     opacity:0;
     transition:opacity .16s ease;
@@ -246,12 +306,12 @@ body {
     gap:10px;
 }
 
-.notification-panel-item-head strong { font-size:.82rem; }
-.notification-panel-item-head span { color:var(--sunday-color); font-size:.68rem; font-weight:800; }
-.notification-panel-item-message { margin:8px 0; color:var(--sub-text-color); font-size:.72rem; line-height:1.45; }
-.notification-panel-item-meta { color:var(--sub-text-color); font-size:.68rem; }
-.notification-panel-item-meta b { color:var(--primary-color); font-size:.78rem; }
-.notification-panel-empty { padding:42px 12px; color:var(--sub-text-color); font-size:.78rem; text-align:center; line-height:1.6; }
+.notification-panel-item-head strong { font-size:var(--fs-3); }
+.notification-panel-item-head span { color:var(--sunday-color); font-size:var(--fs-floor); font-weight:800; }
+.notification-panel-item-message { margin:8px 0; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; }
+.notification-panel-item-meta { color:var(--sub-text-color); font-size:var(--fs-floor); }
+.notification-panel-item-meta b { color:var(--primary-color); font-size:var(--fs-2); }
+.notification-panel-empty { padding:42px 12px; color:var(--sub-text-color); font-size:var(--fs-2); text-align:center; line-height:1.6; }
 
 .notification-swipe-shell.swiping .notification-panel-item {
     transition:none;
@@ -402,27 +462,27 @@ body {
 /* 고객센터 */
 #customerCenterPage { padding-bottom: 110px; }
 .support-tabs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 4px 0 14px; padding: 5px; border-radius: 14px; background: var(--input-bg); }
-.support-tab { min-height: 44px; padding: 7px 4px; border: 0; border-radius: 10px; background: transparent; color: var(--sub-text-color); font-size: .78rem; font-weight: 750; cursor: pointer; }
+.support-tab { min-height: 44px; padding: 7px 4px; border: 0; border-radius: 10px; background: transparent; color: var(--sub-text-color); font-size: var(--fs-2); font-weight: 750; cursor: pointer; }
 .support-tab.active { color: #fff; background: var(--primary-color); box-shadow: 0 4px 12px rgba(56, 115, 220, .22); }
 .support-panel { display: grid; gap: 9px; }
 .support-panel.hidden { display: none; }
 .support-card { padding: 22px 20px; border: 1px solid var(--border-color); border-radius: 22px; background: linear-gradient(145deg, var(--card-bg), var(--input-bg)); }
-.support-card-label { margin-bottom: 9px; color: var(--primary-color); font-size: .68rem; font-weight: 850; letter-spacing: .12em; }
-.support-card h3 { margin: 0 0 7px; font-size: 1.1rem; }
-.support-card p { margin: 0; color: var(--sub-text-color); font-size: .82rem; line-height: 1.55; }
+.support-card-label { margin-bottom: 9px; color: var(--primary-color); font-size: var(--fs-floor); font-weight: 850; letter-spacing: .12em; }
+.support-card h3 { margin: 0 0 7px; font-size: var(--fs-6); }
+.support-card p { margin: 0; color: var(--sub-text-color); font-size: var(--fs-3); line-height: 1.55; }
 .support-list-item, .faq-item { position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; width: 100%; padding: 17px 16px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 16px; color: var(--text-color); background: var(--card-bg); text-align: left; cursor: pointer; }
-.support-list-item span, .faq-item span { font-size: .9rem; font-weight: 700; }
-.support-list-item b { margin-right: 6px; color: var(--primary-color); font-size: .7rem; }
-.support-list-item small { color: var(--sub-text-color); font-size: .67rem; }
-.faq-item i { color: var(--primary-color); font-size: 1.2rem; font-style: normal; }
-.support-detail { display: none; grid-column: 1 / -1; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-color); color: var(--sub-text-color); font-size: .82rem; font-weight: 500; line-height: 1.6; }
+.support-list-item span, .faq-item span { font-size: var(--fs-4); font-weight: 700; }
+.support-list-item b { margin-right: 6px; color: var(--primary-color); font-size: var(--fs-floor); }
+.support-list-item small { color: var(--sub-text-color); font-size: var(--fs-floor); }
+.faq-item i { color: var(--primary-color); font-size: var(--fs-7); font-style: normal; }
+.support-detail { display: none; grid-column: 1 / -1; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-color); color: var(--sub-text-color); font-size: var(--fs-3); font-weight: 500; line-height: 1.6; }
 .support-list-item.open .support-detail, .faq-item.open .support-detail { display: block; }
 .inquiry-form { display: grid; gap: 14px; padding: 20px; border: 1px solid var(--border-color); border-radius: 22px; background: var(--card-bg); }
-.inquiry-form label { display: grid; gap: 8px; font-size: .82rem; font-weight: 750; }
+.inquiry-form label { display: grid; gap: 8px; font-size: var(--fs-3); font-weight: 750; }
 .inquiry-form .input-box { width: 100%; margin: 0; box-sizing: border-box; }
 .inquiry-form textarea { resize: vertical; line-height: 1.5; }
 .support-submit-btn { min-height: 48px; border: 0; border-radius: 14px; color: #fff; background: var(--primary-color); font-weight: 800; cursor: pointer; }
-.withdraw-link { display: block; margin: 30px auto 0; padding: 5px 10px; border: 0; color: var(--sub-text-color); background: transparent; font-size: .68rem; text-decoration: underline; opacity: .72; cursor: pointer; }
+.withdraw-link { display: block; margin: 30px auto 0; padding: 5px 10px; border: 0; color: var(--sub-text-color); background: transparent; font-size: var(--fs-floor); text-decoration: underline; opacity: .72; cursor: pointer; }
 
 .side-menu-section-title {
     display: flex;
@@ -430,7 +490,7 @@ body {
     gap: 8px;
     margin: 0 4px 7px;
     color: var(--sub-text-color);
-    font-size: .75rem;
+    font-size: var(--fs-floor);
     font-weight: 850;
     letter-spacing: .12em;
 }
@@ -480,7 +540,7 @@ body {
     border-radius: 15px;
     margin: 4px 0;
     color: var(--text-color);
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 600;
     cursor: pointer;
     display: flex;
@@ -579,14 +639,14 @@ body {
 
 .car-info-text {
     font-weight: 700;
-    font-size: 1rem;
+    font-size: var(--fs-5);
     display: flex;
     align-items: center;
 }
 
 .car-sub-text {
     color: var(--sub-text-color);
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     font-weight: 500;
     margin-top: 4px;
 }
@@ -730,7 +790,7 @@ body {
     background: var(--input-bg);
     color: var(--text-color);
     font: inherit;
-    font-size: .82rem;
+    font-size: var(--fs-3);
     line-height: 1.25;
     text-align: left;
     cursor: pointer;
@@ -778,7 +838,7 @@ body {
     background: transparent;
     color: var(--text-color);
     font: inherit;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     line-height: 1.25;
     text-align: left;
     cursor: pointer;
@@ -866,7 +926,7 @@ body {
     background: var(--input-bg);
     color: var(--text-color);
     font: inherit;
-    font-size: .82rem;
+    font-size: var(--fs-3);
     text-align: left;
 }
 
@@ -927,7 +987,7 @@ body {
     background: transparent;
     color: var(--text-color);
     font: inherit;
-    font-size: .78rem;
+    font-size: var(--fs-2);
     text-align: center;
 }
 
@@ -965,7 +1025,7 @@ body {
     background: transparent;
     color: var(--text-color);
     font: inherit;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     line-height: 38px;
     text-align: left;
     text-overflow: ellipsis;
@@ -1017,7 +1077,7 @@ body {
 }
 
 .date-select {
-    font-size: 1.1rem;
+    font-size: var(--fs-6);
     font-weight: 700;
     color: var(--text-color);
     background-color: transparent;
@@ -1079,7 +1139,7 @@ body {
 .day-header {
     width: 100%;
     text-align: center;
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     font-weight: 700;
     color: var(--sub-text-color);
     padding-bottom: 8px;
@@ -1093,7 +1153,7 @@ body {
     align-items: center;
     justify-content: flex-start;
     padding: 6px 2px;
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 600;
     border-radius: 16px;
     cursor: pointer;
@@ -1132,7 +1192,7 @@ body {
 }
 
 .work-badge {
-    font-size: 0.75rem;
+    font-size: var(--fs-floor);
     background-color: var(--work-badge-bg);
     color: var(--work-badge-text);
     white-space: nowrap;
@@ -1140,7 +1200,7 @@ body {
     overflow-wrap: normal;
 }
 .off-badge {
-    font-size: 0.75rem;
+    font-size: var(--fs-floor);
     background-color: var(--off-badge-bg);
     color: var(--off-badge-text);
     white-space: nowrap;
@@ -1149,7 +1209,7 @@ body {
 }
 
 .maint-badge {
-    font-size: 0.75rem;
+    font-size: var(--fs-floor);
     background-color: var(--maint-badge-bg);
     color: var(--maint-badge-text);
     margin-top: 4px;
@@ -1170,7 +1230,7 @@ body {
 }
 
 .summary-title {
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 700;
     color: var(--sub-text-color);
     margin-bottom: 14px;
@@ -1183,14 +1243,14 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
 }
 
 .summary-row.total {
     margin-top: 14px;
     padding-top: 12px;
     border-top: 1px dashed var(--border-color);
-    font-size: 1.15rem;
+    font-size: var(--fs-7);
     font-weight: 800;
     color: var(--primary-color);
 }
@@ -1216,7 +1276,7 @@ body {
     margin-left: 10px;
     padding-left: 15px;
     color: var(--sub-text-color);
-    font-size: .9rem;
+    font-size: var(--fs-4);
     line-height: 1.35;
 }
 
@@ -1244,7 +1304,7 @@ body {
 }
 
 .settings-title {
-    font-size: 1.2rem;
+    font-size: var(--fs-7);
     font-weight: 700;
 }
 
@@ -1256,7 +1316,7 @@ body {
 }
 
 .autosave-status {
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 600;
     color: var(--sub-text-color);
     height: 20px;
@@ -1330,14 +1390,14 @@ body {
 }
 
 .mypage-profile-copy strong {
-    font-size: .98rem;
+    font-size: var(--fs-5);
     font-weight: 850;
 }
 
 .mypage-profile-copy > span {
     overflow: hidden;
     color: var(--sub-text-color);
-    font-size: .73rem;
+    font-size: var(--fs-floor);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -1378,14 +1438,14 @@ body {
 
 .mypage-section-heading h3 {
     color: var(--text-color);
-    font-size: .9rem;
+    font-size: var(--fs-4);
     font-weight: 850;
 }
 
 .mypage-section-heading p {
     margin-top: 4px;
     color: var(--sub-text-color);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
 }
 
 .mypage-shortcut-grid {
@@ -1425,14 +1485,14 @@ body {
 }
 
 .mypage-shortcut strong {
-    font-size: .78rem;
+    font-size: var(--fs-2);
     font-weight: 800;
     line-height: 1.25;
 }
 
 .mypage-shortcut small {
     color: var(--sub-text-color);
-    font-size: .64rem;
+    font-size: var(--fs-floor);
     line-height: 1.35;
 }
 
@@ -1468,7 +1528,7 @@ body {
     color: var(--text-color);
     box-shadow: none;
     font: inherit;
-    font-size: .84rem;
+    font-size: var(--fs-3);
     font-weight: 800;
     text-align: left;
     cursor: pointer;
@@ -1500,15 +1560,15 @@ body {
     background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color) 13%, var(--card-bg)), var(--card-bg));
     box-shadow: var(--shadow-sm);
 }
-.billing-settings-hero span { color:var(--primary-color); font-size:.61rem; font-weight:900; letter-spacing:.12em; }
-.billing-settings-hero strong { display:block; margin-top:7px; color:var(--text-color); font-size:.96rem; line-height:1.4; }
-.billing-settings-hero p { margin:6px 0 0; color:var(--sub-text-color); font-size:.68rem; line-height:1.5; }
+.billing-settings-hero span { color:var(--primary-color); font-size:var(--fs-floor); font-weight:900; letter-spacing:.12em; }
+.billing-settings-hero strong { display:block; margin-top:7px; color:var(--text-color); font-size:var(--fs-4); line-height:1.4; }
+.billing-settings-hero p { margin:6px 0 0; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.5; }
 .billing-settings-card { margin-bottom:10px; padding:14px; border:1px solid var(--border-color); border-radius:16px; background:var(--card-bg); }
-.billing-settings-card > label { display:block; margin-bottom:8px; color:var(--text-color); font-size:.78rem; font-weight:850; }
+.billing-settings-card > label { display:block; margin-bottom:8px; color:var(--text-color); font-size:var(--fs-2); font-weight:850; }
 .billing-settings-card .input-box { width:100%; margin:0; }
-.billing-settings-guide { margin-top:10px; padding:10px 11px; border-radius:11px; background:var(--input-bg); color:var(--sub-text-color); font-size:.66rem; line-height:1.5; }
-.billing-settings-note { margin:10px 0 0; color:var(--sub-text-color); font-size:.64rem; line-height:1.5; }
-.car-settlement-mode-guide { margin:7px 0 0; color:var(--sub-text-color); font-size:.66rem; line-height:1.45; }
+.billing-settings-guide { margin-top:10px; padding:10px 11px; border-radius:11px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.5; }
+.billing-settings-note { margin:10px 0 0; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.5; }
+.car-settlement-mode-guide { margin:7px 0 0; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; }
 
 .side-menu-car-icon {
     width: 22px;
@@ -1553,14 +1613,14 @@ body {
 
 .message-settings-heading h3 {
     color: var(--text-color);
-    font-size: .84rem;
+    font-size: var(--fs-3);
     font-weight: 850;
 }
 
 .message-settings-heading p {
     margin-top: 4px;
     color: var(--sub-text-color);
-    font-size: .66rem;
+    font-size: var(--fs-floor);
     line-height: 1.45;
 }
 
@@ -1577,7 +1637,7 @@ body {
     background: var(--input-bg);
     color: var(--text-color);
     font: inherit;
-    font-size: .76rem;
+    font-size: var(--fs-2);
     font-weight: 500;
     line-height: 1.55;
 }
@@ -1585,7 +1645,7 @@ body {
 .message-settings-variables {
     margin-top: 8px;
     color: var(--sub-text-color);
-    font-size: .65rem;
+    font-size: var(--fs-floor);
     line-height: 1.4;
 }
 
@@ -1604,7 +1664,7 @@ body {
     margin: 0;
     border-radius: 12px;
     font: inherit;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
     font-weight: 850;
     cursor: pointer;
 }
@@ -1702,7 +1762,7 @@ body.account-flow-active #sideMenuOverlay {
     width: max-content;
     margin: 0 0 42px;
     color: var(--primary-color);
-    font-size: 1.05rem;
+    font-size: var(--fs-6);
     font-weight: 900;
     letter-spacing: -.03em;
 }
@@ -1725,7 +1785,7 @@ body.account-flow-active #sideMenuOverlay {
 
 .account-flow-heading > span {
     color: var(--primary-color);
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 900;
     letter-spacing: .15em;
 }
@@ -1741,7 +1801,7 @@ body.account-flow-active #sideMenuOverlay {
 .account-flow-heading p {
     margin: 0;
     color: var(--sub-text-color);
-    font-size: .88rem;
+    font-size: var(--fs-3);
     line-height: 1.6;
 }
 
@@ -1804,8 +1864,8 @@ body.account-flow-active #sideMenuOverlay {
     min-width: 0;
 }
 
-.account-type-option strong { color: var(--text-color); font-size: 1rem; font-weight: 850; }
-.account-type-option small { color: var(--sub-text-color); font-size: .78rem; line-height: 1.45; }
+.account-type-option strong { color: var(--text-color); font-size: var(--fs-5); font-weight: 850; }
+.account-type-option small { color: var(--sub-text-color); font-size: var(--fs-2); line-height: 1.45; }
 
 .account-flow-primary {
     width: 100%;
@@ -1816,7 +1876,7 @@ body.account-flow-active #sideMenuOverlay {
     background: var(--primary-color);
     color: #fff;
     font: inherit;
-    font-size: 1rem;
+    font-size: var(--fs-5);
     font-weight: 850;
     cursor: pointer;
 }
@@ -1853,8 +1913,8 @@ body.account-flow-active #sideMenuOverlay {
     background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
 }
 
-.login-selected-account-type strong { color: var(--text-color); font-size: .96rem; }
-.login-selected-account-type small { color: var(--sub-text-color); font-size: .75rem; line-height: 1.45; }
+.login-selected-account-type strong { color: var(--text-color); font-size: var(--fs-4); }
+.login-selected-account-type small { color: var(--sub-text-color); font-size: var(--fs-floor); line-height: 1.45; }
 
 .login-local-form {
     display: grid;
@@ -1865,7 +1925,7 @@ body.account-flow-active #sideMenuOverlay {
 .login-local-form label {
     margin: 7px 0 2px;
     color: var(--text-color);
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 850;
 }
 
@@ -1879,7 +1939,7 @@ body.account-flow-active #sideMenuOverlay {
     border-radius: 22px;
     background: var(--input-bg);
     color: var(--text-color);
-    font-size: .92rem;
+    font-size: var(--fs-4);
 }
 
 .login-local-form .input-box::placeholder { color: var(--sub-text-color); }
@@ -1895,8 +1955,8 @@ body.account-flow-active #sideMenuOverlay {
 
 .login-invite-field.hidden { display: none !important; }
 .login-invite-field > span { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.login-invite-field strong { color: var(--text-color); font-size: .8rem; font-weight: 850; }
-.login-invite-field small { color: var(--sub-text-color); font-size: .7rem; line-height: 1.45; }
+.login-invite-field strong { color: var(--text-color); font-size: var(--fs-2); font-weight: 850; }
+.login-invite-field small { color: var(--sub-text-color); font-size: var(--fs-floor); line-height: 1.45; }
 .login-invite-field .input-box { min-width: 0; text-align: center; letter-spacing: .16em; }
 .personal-role-change-btn {
     width: 100%;
@@ -1907,7 +1967,7 @@ body.account-flow-active #sideMenuOverlay {
     background: var(--input-bg);
     color: var(--text-color);
     font: inherit;
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     font-weight: 850;
     cursor: pointer;
 }
@@ -1915,12 +1975,12 @@ body.account-flow-active #sideMenuOverlay {
 .personal-role-change-btn.primary { border-color: var(--primary-color); background: var(--primary-color); color: #fff; }
 .personal-role-change-btn.danger { border-color: color-mix(in srgb, var(--sunday-color) 36%, var(--border-color)); color: var(--sunday-color); background: transparent; }
 .employer-link-form .form-group { margin-bottom: 8px; }
-.employer-link-divider { display:flex; align-items:center; gap:8px; margin:4px 0; color:var(--sub-text-color); font-size:.62rem; }
+.employer-link-divider { display:flex; align-items:center; gap:8px; margin:4px 0; color:var(--sub-text-color); font-size:var(--fs-floor); }
 .employer-link-divider::before,.employer-link-divider::after { content:""; flex:1; height:1px; background:var(--border-color); }
 .employer-linked-panel { display:flex; flex-direction:column; align-items:flex-start; padding:13px; border:1px solid color-mix(in srgb,var(--primary-color) 24%,var(--border-color)); border-radius:14px; background:color-mix(in srgb,var(--primary-color) 6%,var(--card-bg)); }
-.employer-linked-panel > strong { margin-top:8px; color:var(--text-color); font-size:.86rem; }
-.employer-linked-panel > span { margin-top:4px; color:var(--sub-text-color); font-size:.66rem; }
-.employer-linked-badge { padding:4px 7px; border-radius:999px; background:color-mix(in srgb,var(--primary-color) 14%,var(--card-bg)); color:var(--primary-color); font-size:.61rem; font-weight:850; }
+.employer-linked-panel > strong { margin-top:8px; color:var(--text-color); font-size:var(--fs-3); }
+.employer-linked-panel > span { margin-top:4px; color:var(--sub-text-color); font-size:var(--fs-floor); }
+.employer-linked-badge { padding:4px 7px; border-radius:999px; background:color-mix(in srgb,var(--primary-color) 14%,var(--card-bg)); color:var(--primary-color); font-size:var(--fs-floor); font-weight:850; }
 
 /* 기사 연동 관리 */
 #driverConnectionManagementPage,
@@ -1937,12 +1997,12 @@ body.account-flow-active #sideMenuOverlay {
     box-shadow: var(--shadow-sm);
 }
 
-.driver-management-hero > span { color:var(--primary-color); font-size:.61rem; font-weight:900; letter-spacing:.11em; }
-.driver-management-hero > strong { display:block; margin-top:7px; color:var(--text-color); font-size:1rem; }
-.driver-management-hero > p { margin:5px 0 13px; color:var(--sub-text-color); font-size:.67rem; line-height:1.45; }
+.driver-management-hero > span { color:var(--primary-color); font-size:var(--fs-floor); font-weight:900; letter-spacing:.11em; }
+.driver-management-hero > strong { display:block; margin-top:7px; color:var(--text-color); font-size:var(--fs-5); }
+.driver-management-hero > p { margin:5px 0 13px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; }
 .driver-management-counts { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-.driver-management-counts span { display:flex; justify-content:space-between; padding:9px 10px; border-radius:11px; background:var(--input-bg); color:var(--sub-text-color); font-size:.67rem; }
-.driver-management-counts b { color:var(--primary-color); font-size:.78rem; }
+.driver-management-counts span { display:flex; justify-content:space-between; padding:9px 10px; border-radius:11px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); }
+.driver-management-counts b { color:var(--primary-color); font-size:var(--fs-2); }
 
 .driver-invite-card,
 .driver-list-section {
@@ -1956,18 +2016,18 @@ body.account-flow-active #sideMenuOverlay {
 
 .driver-section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:12px; }
 .driver-section-heading h3,.driver-section-heading p { margin:0; }
-.driver-section-heading h3 { color:var(--text-color); font-size:.84rem; }
-.driver-section-heading p { margin-top:4px; color:var(--sub-text-color); font-size:.63rem; line-height:1.4; }
-.driver-invite-reset { flex:none; min-height:32px; padding:5px 8px; border:1px solid var(--border-color); border-radius:9px; background:var(--input-bg); color:var(--sub-text-color); font-size:.62rem; font-weight:800; }
+.driver-section-heading h3 { color:var(--text-color); font-size:var(--fs-3); }
+.driver-section-heading p { margin-top:4px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.4; }
+.driver-invite-reset { flex:none; min-height:32px; padding:5px 8px; border:1px solid var(--border-color); border-radius:9px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:800; }
 .driver-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .driver-form-grid .form-group { min-width:0; margin:0; }
-.driver-form-grid label { font-size:.68rem; }
-.driver-form-grid .input-box { width:100%; min-height:40px; margin:0; padding:8px 9px; box-sizing:border-box; font-size:.7rem; }
-.driver-form-grid small { display:block; margin-top:4px; color:var(--sub-text-color); font-size:.58rem; line-height:1.35; }
+.driver-form-grid label { font-size:var(--fs-floor); }
+.driver-form-grid .input-box { width:100%; min-height:40px; margin:0; padding:8px 9px; box-sizing:border-box; font-size:var(--fs-floor); }
+.driver-form-grid small { display:block; margin-top:4px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.35; }
 .driver-form-wide { grid-column:1/-1; }
 .driver-code-input { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
-.driver-code-input button { min-width:74px; border:1px solid var(--primary-color); border-radius:10px; background:transparent; color:var(--primary-color); font-size:.64rem; font-weight:850; }
-.driver-form-save { width:100%; min-height:42px; margin-top:11px; border:1px solid var(--primary-color); border-radius:12px; background:var(--primary-color); color:#fff; font-size:.73rem; font-weight:850; }
+.driver-code-input button { min-width:74px; border:1px solid var(--primary-color); border-radius:10px; background:transparent; color:var(--primary-color); font-size:var(--fs-floor); font-weight:850; }
+.driver-form-save { width:100%; min-height:42px; margin-top:11px; border:1px solid var(--primary-color); border-radius:12px; background:var(--primary-color); color:#fff; font-size:var(--fs-floor); font-weight:850; }
 
 .car-driver-link-settings {
     margin: 2px 0 12px;
@@ -2001,14 +2061,14 @@ body.account-flow-active #sideMenuOverlay {
 
 .car-option-copy label {
     color: var(--text-color);
-    font-size: .9rem;
+    font-size: var(--fs-4);
     font-weight: 750;
 }
 
 .car-option-copy p {
     margin: 4px 0 0;
     color: var(--sub-text-color);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     line-height: 1.4;
 }
 
@@ -2029,13 +2089,13 @@ body.account-flow-active #sideMenuOverlay {
 
 .car-commission-heading strong {
     color: var(--text-color);
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 850;
 }
 
 .car-commission-heading span {
     color: var(--sub-text-color);
-    font-size: .64rem;
+    font-size: var(--fs-floor);
     line-height: 1.4;
 }
 
@@ -2054,7 +2114,7 @@ body.account-flow-active #sideMenuOverlay {
     border-radius: 9px;
     background: transparent;
     color: var(--sub-text-color);
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 800;
     transition: background .2s ease, color .2s ease, box-shadow .2s ease;
 }
@@ -2067,7 +2127,7 @@ body.account-flow-active #sideMenuOverlay {
     margin-right: 4px;
     border-radius: 7px;
     background: color-mix(in srgb, var(--sub-text-color) 10%, transparent);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
 }
 
 .car-commission-type button.active {
@@ -2087,7 +2147,7 @@ body.account-flow-active #sideMenuOverlay {
     gap: 12px;
     margin-top: 12px;
     color: var(--text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
     font-weight: 800;
 }
 
@@ -2116,7 +2176,7 @@ body.account-flow-active #sideMenuOverlay {
     background: transparent;
     color: var(--text-color);
     font: inherit;
-    font-size: .9rem;
+    font-size: var(--fs-4);
     font-weight: 800;
     text-align: right;
 }
@@ -2125,30 +2185,30 @@ body.account-flow-active #sideMenuOverlay {
     min-width: 18px;
     margin-left: 7px;
     color: var(--primary-color);
-    font-size: .78rem;
+    font-size: var(--fs-2);
     text-align: center;
 }
 .linked-driver-list { display:grid; gap:8px; }
-.linked-driver-empty { padding:34px 10px; color:var(--sub-text-color); font-size:.7rem; line-height:1.55; text-align:center; }
+.linked-driver-empty { padding:34px 10px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.55; text-align:center; }
 .linked-driver-card { padding:12px; border:1px solid var(--border-color); border-radius:14px; background:var(--input-bg); }
 .linked-driver-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:9px; }
 .linked-driver-card-head > div { display:flex; flex-direction:column; gap:3px; min-width:0; }
-.linked-driver-card-head strong { color:var(--text-color); font-size:.79rem; }
-.linked-driver-card-head span { overflow:hidden; color:var(--sub-text-color); font-size:.6rem; text-overflow:ellipsis; white-space:nowrap; }
-.linked-driver-card-head em { flex:none; padding:4px 7px; border-radius:999px; font-size:.57rem; font-style:normal; font-weight:850; }
+.linked-driver-card-head strong { color:var(--text-color); font-size:var(--fs-2); }
+.linked-driver-card-head span { overflow:hidden; color:var(--sub-text-color); font-size:var(--fs-floor); text-overflow:ellipsis; white-space:nowrap; }
+.linked-driver-card-head em { flex:none; padding:4px 7px; border-radius:999px; font-size:var(--fs-floor); font-style:normal; font-weight:850; }
 .linked-driver-card-head em.linked { background:color-mix(in srgb,var(--primary-color) 13%,var(--card-bg)); color:var(--primary-color); }
 .linked-driver-card-head em.pending { background:color-mix(in srgb,#d89b2b 14%,var(--card-bg)); color:#b17613; }
 .linked-driver-card-head em.disconnected { background:var(--hover-bg); color:var(--sub-text-color); }
 .linked-driver-assignment { display:grid; grid-template-columns:1fr 1.35fr; gap:6px; margin-top:10px; }
 .linked-driver-assignment > span { display:flex; flex-direction:column; gap:3px; padding:8px; border-radius:10px; background:var(--card-bg); }
-.linked-driver-assignment small { color:var(--sub-text-color); font-size:.55rem; }
-.linked-driver-assignment b { overflow:hidden; color:var(--text-color); font-size:.65rem; text-overflow:ellipsis; white-space:nowrap; }
-.linked-driver-state { display:inline-flex; margin-top:8px; padding:4px 7px; border-radius:999px; font-size:.57rem; font-weight:850; }
+.linked-driver-assignment small { color:var(--sub-text-color); font-size:var(--fs-floor); }
+.linked-driver-assignment b { overflow:hidden; color:var(--text-color); font-size:var(--fs-floor); text-overflow:ellipsis; white-space:nowrap; }
+.linked-driver-state { display:inline-flex; margin-top:8px; padding:4px 7px; border-radius:999px; font-size:var(--fs-floor); font-weight:850; }
 .linked-driver-state.active { background:color-mix(in srgb,#40a36f 14%,var(--card-bg)); color:#268a57; }
 .linked-driver-state.scheduled { background:color-mix(in srgb,var(--primary-color) 12%,var(--card-bg)); color:var(--primary-color); }
 .linked-driver-state.ended { background:var(--card-bg); color:var(--sub-text-color); }
 .linked-driver-card-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:9px; }
-.linked-driver-card-actions button { min-height:33px; padding:4px; border:1px solid var(--border-color); border-radius:9px; background:var(--card-bg); color:var(--sub-text-color); font-size:.58rem; font-weight:800; }
+.linked-driver-card-actions button { min-height:33px; padding:4px; border:1px solid var(--border-color); border-radius:9px; background:var(--card-bg); color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:800; }
 .linked-driver-card-actions button.primary { border-color:var(--primary-color); background:var(--primary-color); color:#fff; }
 .linked-driver-card-actions button.danger { color:var(--sunday-color); }
 .linked-driver-menu-item { display:flex; align-items:center; gap:10px; color:var(--primary-color); }
@@ -2157,30 +2217,30 @@ body.account-flow-active #sideMenuOverlay {
 .linked-driver-profile-card { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px; border:1px solid var(--border-color); border-radius:17px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
 .linked-driver-profile-card > div { display:flex; align-items:center; gap:9px; min-width:0; }
 .linked-driver-profile-card > div:first-child > span:last-child { display:flex; flex-direction:column; gap:3px; min-width:0; }
-.linked-driver-profile-card strong { color:var(--text-color); font-size:.82rem; }
-.linked-driver-profile-card small { color:var(--sub-text-color); font-size:.62rem; }
+.linked-driver-profile-card strong { color:var(--text-color); font-size:var(--fs-3); }
+.linked-driver-profile-card small { color:var(--sub-text-color); font-size:var(--fs-floor); }
 .linked-driver-profile-card > div:last-child { flex-direction:column; align-items:flex-end; }
-.linked-driver-profile-card > div:last-child > span { color:var(--text-color); font-size:.67rem; font-weight:800; }
-.linked-driver-profile-card em { padding:4px 7px; border-radius:999px; background:var(--input-bg); color:var(--sub-text-color); font-size:.57rem; font-style:normal; font-weight:850; }
+.linked-driver-profile-card > div:last-child > span { color:var(--text-color); font-size:var(--fs-floor); font-weight:800; }
+.linked-driver-profile-card em { padding:4px 7px; border-radius:999px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); font-style:normal; font-weight:850; }
 .linked-driver-profile-card em.active { background:color-mix(in srgb,#40a36f 14%,var(--card-bg)); color:#268a57; }
 .linked-driver-profile-card em.scheduled { color:var(--primary-color); }
-.linked-driver-avatar { display:grid; place-items:center; width:42px; height:42px; border-radius:13px; background:color-mix(in srgb,var(--primary-color) 13%,var(--input-bg)); color:var(--primary-color); font-size:.88rem; font-weight:900; }
-.linked-driver-readonly-notice { display:flex; align-items:flex-start; gap:8px; margin-top:9px; padding:10px 11px; border-radius:12px; background:var(--input-bg); color:var(--sub-text-color); font-size:.63rem; line-height:1.45; }
+.linked-driver-avatar { display:grid; place-items:center; width:42px; height:42px; border-radius:13px; background:color-mix(in srgb,var(--primary-color) 13%,var(--input-bg)); color:var(--primary-color); font-size:var(--fs-3); font-weight:900; }
+.linked-driver-readonly-notice { display:flex; align-items:flex-start; gap:8px; margin-top:9px; padding:10px 11px; border-radius:12px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; }
 .linked-driver-readonly-notice svg { flex:none; width:17px; height:17px; fill:none; stroke:var(--primary-color); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .linked-driver-month-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:13px; background:var(--card-bg); }
-.linked-driver-month-row label { color:var(--sub-text-color); font-size:.67rem; font-weight:800; }
-.linked-driver-month-row .input-box { width:145px; min-height:36px; margin:0; padding:6px 8px; font-size:.68rem; }
+.linked-driver-month-row label { color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:800; }
+.linked-driver-month-row .input-box { width:145px; min-height:36px; margin:0; padding:6px 8px; font-size:var(--fs-floor); }
 .linked-driver-record-summary { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:9px; }
 .linked-driver-record-summary > span { display:flex; flex-direction:column; gap:5px; padding:11px; border-radius:12px; background:color-mix(in srgb,var(--primary-color) 6%,var(--card-bg)); }
-.linked-driver-record-summary small { color:var(--sub-text-color); font-size:.58rem; }
-.linked-driver-record-summary strong { color:var(--primary-color); font-size:.86rem; text-align:right; }
+.linked-driver-record-summary small { color:var(--sub-text-color); font-size:var(--fs-floor); }
+.linked-driver-record-summary strong { color:var(--primary-color); font-size:var(--fs-3); text-align:right; }
 .linked-driver-record-list { display:grid; gap:7px; margin-top:9px; }
 .linked-driver-record-card { display:grid; grid-template-columns:1fr auto; gap:7px 10px; padding:12px; border:1px solid var(--border-color); border-radius:13px; background:var(--card-bg); }
 .linked-driver-record-card > div { display:flex; flex-direction:column; gap:3px; }
-.linked-driver-record-card strong { color:var(--text-color); font-size:.74rem; }
-.linked-driver-record-card span,.linked-driver-record-card p { color:var(--sub-text-color); font-size:.61rem; line-height:1.45; }
+.linked-driver-record-card strong { color:var(--text-color); font-size:var(--fs-floor); }
+.linked-driver-record-card span,.linked-driver-record-card p { color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; }
 .linked-driver-record-card p { grid-column:1/-1; margin:0; }
-.linked-driver-record-card > b { color:var(--primary-color); font-size:.76rem; }
+.linked-driver-record-card > b { color:var(--primary-color); font-size:var(--fs-2); }
 .personal-intro {
     position: relative;
     overflow: hidden;
@@ -2208,14 +2268,14 @@ body.account-flow-active #sideMenuOverlay {
     display: block;
     margin-bottom: 5px;
     color: var(--primary-color);
-    font-size: 0.68rem;
+    font-size: var(--fs-floor);
     font-weight: 800;
     letter-spacing: 0.12em;
 }
 
 .personal-intro strong {
     display: block;
-    font-size: 1.12rem;
+    font-size: var(--fs-6);
     line-height: 1.38;
     letter-spacing: -0.025em;
 }
@@ -2223,7 +2283,7 @@ body.account-flow-active #sideMenuOverlay {
 .personal-intro p {
     margin-top: 5px;
     color: var(--sub-text-color);
-    font-size: 0.75rem;
+    font-size: var(--fs-floor);
     line-height: 1.45;
 }
 
@@ -2253,7 +2313,7 @@ body.account-flow-active #sideMenuOverlay {
     border-radius: 10px;
     background: color-mix(in srgb, var(--primary-color) 10%, var(--input-bg));
     color: color-mix(in srgb, var(--primary-color) 78%, var(--sub-text-color));
-    font-size: 0.64rem;
+    font-size: var(--fs-floor);
     font-weight: 700;
     letter-spacing: 0.02em;
 }
@@ -2261,7 +2321,7 @@ body.account-flow-active #sideMenuOverlay {
 #personalInfoPage .personal-card-heading h3 {
     margin: 0 0 2px;
     color: var(--text-color);
-    font-size: 0.94rem;
+    font-size: var(--fs-4);
     font-weight: 800;
     letter-spacing: -0.01em;
     text-transform: none;
@@ -2269,7 +2329,7 @@ body.account-flow-active #sideMenuOverlay {
 
 .personal-card-heading p {
     color: color-mix(in srgb, var(--sub-text-color) 82%, transparent);
-    font-size: 0.68rem;
+    font-size: var(--fs-floor);
     line-height: 1.3;
 }
 
@@ -2284,7 +2344,7 @@ body.account-flow-active #sideMenuOverlay {
 
 #personalInfoPage .form-group label {
     padding-left: 2px;
-    font-size: 0.76rem;
+    font-size: var(--fs-2);
     font-weight: 700;
 }
 
@@ -2292,7 +2352,7 @@ body.account-flow-active #sideMenuOverlay {
     min-height: 44px;
     padding: 10px 14px;
     border-radius: 14px;
-    font-size: 0.88rem;
+    font-size: var(--fs-3);
 }
 
 .personal-account-card {
@@ -2310,7 +2370,7 @@ body.account-flow-active #sideMenuOverlay {
     margin: 0;
     padding: 10px 16px;
     border-radius: 14px;
-    font-size: 0.88rem;
+    font-size: var(--fs-3);
 }
 
 .personal-logout-btn {
@@ -2321,7 +2381,7 @@ body.account-flow-active #sideMenuOverlay {
     background: var(--input-bg);
     color: var(--sub-text-color);
     font-family: inherit;
-    font-size: 0.78rem;
+    font-size: var(--fs-2);
     font-weight: 700;
     cursor: pointer;
 }
@@ -2336,7 +2396,7 @@ body.account-flow-active #sideMenuOverlay {
     min-height: 44px;
     margin: 14px 0 0 auto;
     padding: 10px 2px;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
     opacity: .82;
 }
 
@@ -2351,7 +2411,7 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 .setting-section h3 {
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
     margin-bottom: 14px;
     color: var(--sub-text-color);
     text-transform: uppercase;
@@ -2372,7 +2432,7 @@ body.account-flow-active #sideMenuOverlay {
 
 .setting-item label {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
 }
 
 /* 종속 관계 수직선 트리 디자인 적용 (부드러운 곡선) */
@@ -2451,7 +2511,7 @@ input:checked + .slider:before {
 }
 
 .form-group label {
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     font-weight: 600;
     color: var(--sub-text-color);
     padding-left: 4px;
@@ -2464,7 +2524,7 @@ input:checked + .slider:before {
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--text-color);
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     outline: none;
     font-family: inherit;
 }
@@ -2473,7 +2533,7 @@ input:checked + .slider:before {
 .date-input::placeholder,
 textarea::placeholder {
     color: var(--sub-text-color);
-    font-size: .82rem;
+    font-size: var(--fs-3);
     opacity: 1;
 }
 
@@ -2501,7 +2561,7 @@ textarea::placeholder {
     color: var(--text-color);
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -2514,7 +2574,7 @@ textarea::placeholder {
     color: #ffffff;
     border: none;
     border-radius: 24px;
-    font-size: 1rem;
+    font-size: var(--fs-5);
     font-weight: 700;
     cursor: pointer;
     margin-top: 8px;
@@ -2538,7 +2598,7 @@ textarea::placeholder {
     background-color: var(--input-bg);
     color: var(--text-color);
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -2561,7 +2621,7 @@ textarea::placeholder {
 }
 
 .report-title {
-    font-size: 1.3rem;
+    font-size: var(--fs-8);
     font-weight: 800;
     text-align: center;
     margin-bottom: 18px;
@@ -2573,7 +2633,7 @@ textarea::placeholder {
     border-collapse: separate;
     border-spacing: 0;
     margin-bottom: 16px;
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     table-layout: fixed;
     background-color: var(--card-bg);
     border-radius: 16px;
@@ -2713,7 +2773,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 .modal-title {
-    font-size: 1.35rem;
+    font-size: var(--fs-8);
     font-weight: 800;
     margin-bottom: 20px;
     text-align: center;
@@ -2733,7 +2793,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 .modal-section-title {
-    font-size: 1rem;
+    font-size: var(--fs-5);
     font-weight: 800;
     color: var(--primary-color);
     margin-bottom: 14px;
@@ -2758,7 +2818,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--text-color);
     padding: 6px 14px;
     border-radius: 16px;
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     font-weight: 700;
     cursor: pointer;
     transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
@@ -2826,7 +2886,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
     min-height: 44px;
 }
 
@@ -2849,7 +2909,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     font-weight: 700;
     cursor: pointer;
     text-align: center;
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
 }
 
 .toggle-btn.active-off {
@@ -2879,7 +2939,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 #workModal #btnOffToggle {
     min-height: 44px;
     border-radius: 14px;
-    font-size: .86rem;
+    font-size: var(--fs-3);
     background: var(--input-bg);
     box-shadow: var(--shadow-sm);
 }
@@ -2896,7 +2956,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .fixed-route-section .modal-section-title {
     margin-bottom: 11px;
-    font-size: .94rem;
+    font-size: var(--fs-4);
 }
 
 .fixed-route-section .modal-section-title::before {
@@ -2910,7 +2970,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 .fixed-route-group > label {
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 750;
 }
 
@@ -2926,13 +2986,13 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     padding: 9px 14px;
     border-radius: 12px;
     text-align: center;
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 .fixed-route-unit {
     min-width: 46px;
     color: var(--text-color);
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 800;
     white-space: nowrap;
 }
@@ -2954,7 +3014,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--text-color);
     box-shadow: var(--shadow-sm);
     font: inherit;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 800;
     cursor: pointer;
 }
@@ -3000,9 +3060,9 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
 }
-.call-detail-modal-title { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid var(--border-color); color: var(--primary-color); font-size: 1.28rem; font-weight: 800; }
+.call-detail-modal-title { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid var(--border-color); color: var(--primary-color); font-size: var(--fs-8); font-weight: 800; }
 .call-detail-panel { margin-bottom: 9px; padding: 12px; border-radius: 22px; background: var(--card-bg); box-shadow: 0 3px 7px rgba(0, 0, 0, .32); text-align: left; }
-.call-detail-panel > label, .call-detail-panel .form-group > label, .call-inline-field > label { color: var(--sub-text-color); font-size: .86rem; font-weight: 750; }
+.call-detail-panel > label, .call-detail-panel .form-group > label, .call-inline-field > label { color: var(--sub-text-color); font-size: var(--fs-3); font-weight: 750; }
 .call-route-panel, .call-two-column-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .call-route-panel .form-group, .call-two-column-panel .form-group { min-width: 0; margin: 0; }
 .call-route-panel .load-label { color: var(--primary-color); }
@@ -3011,13 +3071,13 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .location-chip { display: inline-flex; align-items: stretch; max-width: 100%; overflow: hidden; border: 1px solid var(--border-color); border-radius: 999px; background: var(--input-bg); }
 .location-chip.pinned { border-color: var(--primary-color); }
 .location-chip button { min-height: 44px; border: 0; background: transparent; color: var(--sub-text-color); cursor: pointer; }
-.location-chip-select { max-width: 112px; padding: 5px 4px 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; }
-.location-chip-pin { width: 28px; padding: 4px 7px 4px 3px; color: var(--primary-color) !important; font-size: .82rem; }
+.location-chip-select { max-width: 112px; padding: 5px 4px 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2); }
+.location-chip-pin { width: 28px; padding: 4px 7px 4px 3px; color: var(--primary-color) !important; font-size: var(--fs-3); }
 .call-detail-panel .input-box { min-width: 0; min-height: 44px; padding: 10px 13px; border-color: var(--border-color); background: var(--input-bg); text-align: center; }
 .call-inline-field { display: grid; grid-template-columns: minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 10px; }
 .call-inline-field:last-child { margin-bottom: 0; }
 .call-inline-field > span { font-weight: 750; }
-.call-money-panel #callDetailFare { color: var(--primary-color); font-size: 1.05rem; font-weight: 800; }
+.call-money-panel #callDetailFare { color: var(--primary-color); font-size: var(--fs-6); font-weight: 800; }
 .call-two-column-panel .input-with-suffix .input-box { padding-right: 34px; }
 .call-detail-panel .input-error { border-color: var(--sunday-color); color: var(--sunday-color); }
 /* 거래처/차량/연동기사 등록 폼 등 .call-detail-panel 밖에서도 쓰는 범용 필수입력 오류 표시 */
@@ -3026,7 +3086,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .call-platform-quick-list, .call-client-shortcuts { justify-content: flex-start; gap: 7px; margin-top: 8px; }
 .call-platform-quick-list .dark-pill-btn, .call-client-shortcuts .dark-pill-btn { flex: 0 0 auto; min-height: 44px; padding: 7px 11px; border-radius: 999px; }
 #callReceiptGroup { flex-wrap: nowrap; width: 100%; gap: 6px; }
-#callReceiptGroup .dark-pill-btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 8px 4px; border-radius: 999px; font-size: .88rem; }
+#callReceiptGroup .dark-pill-btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 8px 4px; border-radius: 999px; font-size: var(--fs-3); }
 .call-client-panel > label { display: block; margin: 0 0 8px 4px; }
 .call-client-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .call-client-add-btn { min-width: 64px; border: 1px solid var(--border-color); border-radius: 999px; background: var(--input-bg); color: var(--text-color); font-weight: 750; cursor: pointer; }
@@ -3047,7 +3107,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 #modalCallDetailSection > .modal-section-title {
-    font-size: 1.18rem;
+    font-size: var(--fs-7);
     margin-bottom: 12px !important;
 }
 
@@ -3099,7 +3159,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     gap: 7px;
     min-width: 0;
     color: var(--primary-color);
-    font-size: 1.18rem;
+    font-size: var(--fs-7);
     line-height: 1.2;
 }
 
@@ -3120,7 +3180,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .detail-meta-line {
     margin-top: 4px;
     color: var(--sub-text-color);
-    font-size: .88rem;
+    font-size: var(--fs-3);
     line-height: 1.35;
 }
 
@@ -3131,7 +3191,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border-radius: 999px;
     background: #f5e6bd;
     color: #a66c1e;
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 800;
 }
 
@@ -3177,14 +3237,14 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     min-width: 58px;
     min-height: 44px;
     border-radius: 999px;
-    font-size: .9rem;
+    font-size: var(--fs-4);
 }
 
 .call-detail-daily-summary {
     padding: 10px 8px 4px;
     border-top: 1px dashed var(--border-color);
     color: var(--sub-text-color);
-    font-size: .9rem;
+    font-size: var(--fs-4);
     text-align: left;
 }
 
@@ -3200,7 +3260,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .call-detail-daily-summary .summary-grand-total,
 .call-detail-daily-summary .summary-grand-total strong {
     color: var(--primary-color);
-    font-size: 1.03rem;
+    font-size: var(--fs-5);
 }
 
 .call-detail-add-row {
@@ -3298,7 +3358,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     background: var(--input-bg) !important;
     color: var(--text-color);
     text-align: left;
-    font-size: 1.05rem;
+    font-size: var(--fs-6);
     font-weight: 800;
 }
 #modalMaintSection {
@@ -3307,7 +3367,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 #modalMaintSection > .modal-section-title {
-    font-size: 1.18rem;
+    font-size: var(--fs-7);
     margin-bottom: 12px !important;
 }
 
@@ -3356,7 +3416,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     gap: 8px;
     min-width: 0;
     color: var(--text-color);
-    font-size: 1rem;
+    font-size: var(--fs-5);
 }
 
 .maint-fuel-icon {
@@ -3411,7 +3471,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .maint-fuel-info > strong {
     flex-shrink: 0;
     color: var(--text-color);
-    font-size: 1.02rem;
+    font-size: var(--fs-5);
 }
 
 .maint-payment-badge {
@@ -3420,20 +3480,20 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border-radius: 7px;
     background: var(--input-bg);
     color: var(--sub-text-color);
-    font-size: .78rem;
+    font-size: var(--fs-2);
     box-shadow: var(--shadow-sm);
 }
 
 .maint-fuel-note {
     color: var(--sub-text-color);
-    font-size: .82rem;
+    font-size: var(--fs-3);
 }
 
 .maint-fuel-total {
     padding: 10px 2px 1px;
     margin-top: 9px;
     border-top: 1px dashed var(--border-color);
-    font-size: 1rem;
+    font-size: var(--fs-5);
 }
 
 .maint-fuel-add-row {
@@ -3488,11 +3548,11 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
-    font-size: 1rem;
+    font-size: var(--fs-5);
 }
 
 .management-list-card .car-sub-text {
-    font-size: .8rem;
+    font-size: var(--fs-2);
     line-height: 1.35;
 }
 
@@ -3515,7 +3575,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     min-height: 22px;
     padding: 2px 6px;
     border-radius: 5px;
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 800;
     line-height: 1;
 }
@@ -3566,7 +3626,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--sub-text-color);
     box-shadow: var(--shadow-md);
     font: inherit;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 800;
     cursor: pointer;
 }
@@ -3592,7 +3652,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     background: transparent;
     color: var(--text-color);
     font: inherit;
-    font-size: .84rem;
+    font-size: var(--fs-3);
     font-weight: 700;
     cursor: pointer;
     text-align: left;
@@ -3612,7 +3672,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 :is(#settingsPage, #subCarSettingsPage) .settings-title {
-    font-size: 1.08rem;
+    font-size: var(--fs-6);
     letter-spacing: -.025em;
 }
 
@@ -3626,7 +3686,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 :is(#settingsPage, #subCarSettingsPage) .setting-section h3 {
     margin-bottom: 10px;
     color: var(--text-color);
-    font-size: .875rem;
+    font-size: var(--fs-3);
     font-weight: 800;
     letter-spacing: -.015em;
 }
@@ -3641,7 +3701,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 #settingsPage .settings-theme-card .setting-item > label {
-    font-size: .875rem;
+    font-size: var(--fs-3);
     font-weight: 800;
 }
 
@@ -3649,7 +3709,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     min-height: 44px;
     padding: 6px 10px;
     border-radius: 13px;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 750;
 }
 
@@ -3666,7 +3726,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 :is(#settingsPage, #subCarSettingsPage) .settings-main-card .setting-item > label {
     color: var(--sub-text-color);
-    font-size: .74rem;
+    font-size: var(--fs-floor);
     font-weight: 700;
 }
 
@@ -3686,7 +3746,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     padding: 5px 10px;
     border: 0;
     border-radius: 8px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
     white-space: nowrap;
 }
 
@@ -3701,7 +3761,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 :is(#settingsPage, #subCarSettingsPage) :is(.settings-detail-card, .settings-fixed-card) > .setting-item:first-child > label:first-of-type {
     color: var(--text-color);
-    font-size: .875rem;
+    font-size: var(--fs-3);
     font-weight: 800;
 }
 
@@ -3734,7 +3794,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 :is(#settingsPage, #subCarSettingsPage) .tree-line-group .setting-item > label:first-child {
     color: var(--text-color);
-    font-size: .78rem;
+    font-size: var(--fs-2);
     font-weight: 700;
 }
 
@@ -3795,7 +3855,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border: 1px solid var(--border-color);
     border-radius: 12px;
     background: var(--input-bg);
-    font-size: .82rem;
+    font-size: var(--fs-3);
     text-align: right;
 }
 
@@ -3818,14 +3878,14 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .run-count-preset-copy label {
     display: block;
     color: var(--text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
     font-weight: 750;
 }
 
 .run-count-preset-copy p {
     margin: 4px 0 0;
     color: var(--sub-text-color);
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     line-height: 1.45;
 }
 
@@ -3850,7 +3910,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     background: var(--input-bg);
     color: var(--text-color);
     font: inherit;
-    font-size: .76rem;
+    font-size: var(--fs-2);
     font-weight: 750;
     text-align: center;
     appearance: textfield;
@@ -3867,11 +3927,11 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 
 :is(#settingsPage, #subCarSettingsPage) .settings-backup-card h3 {
-    font-size: .84rem;
+    font-size: var(--fs-3);
 }
 
 :is(#settingsPage, #subCarSettingsPage) .settings-backup-card p {
-    font-size: .71rem;
+    font-size: var(--fs-floor);
     line-height: 1.45;
 }
 
@@ -3883,7 +3943,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     min-height: 44px;
     padding: 8px 9px;
     border-radius: 12px;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 750;
 }
 
@@ -3893,7 +3953,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border-radius: 10px;
     background: color-mix(in srgb, var(--primary-color) 8%, var(--input-bg));
     color: var(--sub-text-color);
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     line-height: 1.45;
 }
 
@@ -3931,7 +3991,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 #maintManagementPage .date-select {
     background: transparent;
-    font-size: 1rem;
+    font-size: var(--fs-5);
     font-weight: 800;
 }
 
@@ -3962,14 +4022,14 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .management-day-head > strong {
     color: var(--primary-color);
-    font-size: 1rem;
+    font-size: var(--fs-5);
 }
 
 .management-day-head > div {
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 .management-day-head > div span,
@@ -4047,7 +4107,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .management-record-info > div span {
     color: var(--sub-text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .management-record-info > div span:first-child {
@@ -4061,7 +4121,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .management-record-info > strong {
     flex-shrink: 0;
     color: var(--text-color);
-    font-size: .92rem;
+    font-size: var(--fs-4);
 }
 
 .maint-management-dock {
@@ -4113,7 +4173,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--sub-text-color);
     box-shadow: var(--shadow-sm);
     font: inherit;
-    font-size: .8rem;
+    font-size: var(--fs-2);
     font-weight: 800;
     cursor: pointer;
 }
@@ -4129,7 +4189,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     box-shadow: var(--shadow-sm);
     font: inherit;
     font-weight: 800;
-    font-size: .86rem;
+    font-size: var(--fs-3);
     cursor: pointer;
 }
 
@@ -4153,7 +4213,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     padding: 12px;
     border-radius: 24px;
     border: none;
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 700;
     cursor: pointer;
     min-height: 44px;
@@ -4185,7 +4245,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: #ffffff;
     padding: 14px 24px;
     border-radius: 30px;
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 700;
     z-index: 2000;
     opacity: 0;
@@ -4217,7 +4277,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     background:rgba(255,255,255,.14);
     color:#fff;
     font:inherit;
-    font-size:.76rem;
+    font-size:var(--fs-2);
     font-weight:850;
     cursor:pointer;
 }
@@ -4231,7 +4291,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border-radius: 16px;
     padding: 16px;
     margin-top: 12px;
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
 }
 
 .car-action-btns {
@@ -4254,7 +4314,7 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
     position: absolute;
     right: 14px;
     color: var(--text-color);
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     pointer-events: none;
 }
 
@@ -4270,7 +4330,7 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
     border: 1px solid var(--border-color);
     background-color: transparent;
     color: var(--text-color);
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     cursor: pointer;
     text-align: center;
 }
@@ -4288,7 +4348,7 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
     border: none;
     background: transparent;
     color: var(--text-color);
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
     font-weight: 600;
     cursor: pointer;
 }
@@ -4305,7 +4365,7 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
     border: 1px solid var(--border-color);
     background-color: var(--input-bg);
     color: var(--sub-text-color);
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     font-weight: 600;
     cursor: pointer;
     text-align: center;
@@ -4470,7 +4530,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .nav-item span {
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 700;
 }
 
@@ -4537,7 +4597,7 @@ body.pdf-export-mode .summary-row.total {
 
 .detail-badge {
     display: inline-block;
-    font-size: 0.75rem;
+    font-size: var(--fs-floor);
     color: var(--sub-text-color);
     background-color: var(--input-bg);
     border: 1px solid var(--border-color);
@@ -4551,7 +4611,7 @@ body.pdf-export-mode .summary-row.total {
     border: none;
     padding: 4px 10px;
     border-radius: 12px;
-    font-size: 0.8rem;
+    font-size: var(--fs-2);
     font-weight: 700;
     cursor: pointer;
     transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
@@ -4584,7 +4644,7 @@ body.pdf-export-mode .summary-row.total {
     border-radius: 12px;
     padding: 10px 16px;
     margin: -10px auto 16px auto;
-    font-size: 0.95rem;
+    font-size: var(--fs-4);
     font-weight: 700;
     text-align: center;
     box-shadow: var(--shadow-sm);
@@ -4605,7 +4665,7 @@ body.pdf-export-mode .summary-row.total {
 .payment-term-guide {
     margin: 8px 0 0;
     color: var(--sub-text-color);
-    font-size: 0.82rem;
+    font-size: var(--fs-3);
     line-height: 1.45;
 }
 
@@ -4630,7 +4690,7 @@ body.pdf-export-mode .summary-row.total {
 .commission-value-row > :first-child {
     flex:0 0 auto;
     color:var(--text-color);
-    font-size:.9rem;
+    font-size:var(--fs-4);
     font-weight:700;
     white-space:nowrap;
 }
@@ -4666,7 +4726,7 @@ body.pdf-export-mode .summary-row.total {
     color: var(--sub-text-color);
     border-radius: 10px;
     padding: 11px 8px;
-    font-size: 0.88rem;
+    font-size: var(--fs-3);
     font-weight: 700;
     cursor: pointer;
 }
@@ -4689,14 +4749,14 @@ body.pdf-export-mode .summary-row.total {
 
 .receivable-group-title {
     color: var(--primary-color);
-    font-size: 1rem;
+    font-size: var(--fs-5);
     font-weight: 800;
     margin-bottom: 7px;
 }
 
 .receivable-group-summary {
     color: var(--text-color);
-    font-size: 0.92rem;
+    font-size: var(--fs-4);
     font-weight: 700;
     line-height: 1.5;
 }
@@ -4709,7 +4769,7 @@ body.pdf-export-mode .summary-row.total {
     background-color: var(--primary-color);
     color: #ffffff;
     padding: 11px;
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
     font-weight: 700;
     cursor: pointer;
 }
@@ -4729,14 +4789,14 @@ body.pdf-export-mode .summary-row.total {
 
 .receivable-item-info {
     color: var(--sub-text-color);
-    font-size: 0.84rem;
+    font-size: var(--fs-3);
     line-height: 1.5;
 }
 
 .receivable-item-amount {
     flex-shrink: 0;
     color: var(--text-color);
-    font-size: 0.94rem;
+    font-size: var(--fs-4);
     font-weight: 800;
     text-align: right;
 }
@@ -4744,7 +4804,7 @@ body.pdf-export-mode .summary-row.total {
 .receivable-dday {
     margin-top: 6px;
     color: var(--sunday-color);
-    font-size: 0.84rem;
+    font-size: var(--fs-3);
     font-weight: 800;
 }
 
@@ -4767,7 +4827,7 @@ body.pdf-export-mode .summary-row.total {
     color: var(--sub-text-color);
     text-align: center;
     padding: 30px 12px;
-    font-size: 0.9rem;
+    font-size: var(--fs-4);
 }
 
 /* 상단 버튼과 페이지 헤더의 공통 기준선 */
@@ -4794,17 +4854,17 @@ body.pdf-export-mode .summary-row.total {
 
 .management-list-card .car-info-text {
     gap: 4px;
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 .management-list-card .car-sub-text {
-    font-size: .72rem;
+    font-size: var(--fs-floor);
 }
 
 .management-badge {
     min-height: 19px;
     padding: 2px 5px;
-    font-size: .64rem;
+    font-size: var(--fs-floor);
 }
 
 .management-list-card .action-icon-btn,
@@ -4832,7 +4892,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #maintManagementPage .date-select {
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 .management-day-card {
@@ -4846,12 +4906,12 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .management-day-head > strong {
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 .management-day-head > div {
     gap: 6px;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
 }
 
 .management-record-item {
@@ -4863,7 +4923,7 @@ body.pdf-export-mode .summary-row.total {
 
 .management-record-title,
 .management-record-info > strong {
-    font-size: .82rem;
+    font-size: var(--fs-3);
 }
 
 .management-record-title svg,
@@ -4873,7 +4933,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .management-record-info > div span {
-    font-size: .69rem;
+    font-size: var(--fs-floor);
 }
 
 .maint-management-dock {
@@ -4886,12 +4946,12 @@ body.pdf-export-mode .summary-row.total {
 
 .maint-month-summary {
     padding-bottom: 7px;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
 }
 
 .maint-month-summary button {
     padding: 5px 9px;
-    font-size: .7rem;
+    font-size: var(--fs-floor);
 }
 
 .maint-management-tabs {
@@ -4901,7 +4961,7 @@ body.pdf-export-mode .summary-row.total {
 .maint-management-tabs .toggle-btn {
     min-height: 44px;
     border-radius: 12px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .receivable-tabs {
@@ -4913,13 +4973,13 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     padding: 7px 6px;
     border-radius: 10px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .unpaid-summary-card {
     margin: -4px auto 10px;
     padding: 8px 12px;
-    font-size: .78rem;
+    font-size: var(--fs-2);
 }
 
 .receivable-group-card,
@@ -4930,24 +4990,24 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .receivable-group-title {
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 .receivable-group-summary,
 .receivable-item-amount {
-    font-size: .8rem;
+    font-size: var(--fs-2);
 }
 
 .receivable-item-info,
 .receivable-dday {
-    font-size: .72rem;
+    font-size: var(--fs-floor);
 }
 
 .receivable-complete-btn {
     min-height: 44px;
     margin-top: 10px;
     padding: 8px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .report-page {
@@ -4958,12 +5018,12 @@ body.pdf-export-mode .summary-row.total {
 
 .report-title {
     margin-bottom: 12px;
-    font-size: 1.05rem;
+    font-size: var(--fs-6);
 }
 
 .info-table,
 .report-table {
-    font-size: .68rem;
+    font-size: var(--fs-floor);
 }
 
 .info-table th,
@@ -4980,7 +5040,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .report-summary-box .summary-row {
-    font-size: .78rem;
+    font-size: var(--fs-2);
 }
 
 /* 일일운행과 공통 입력 모달 */
@@ -4992,7 +5052,7 @@ body.pdf-export-mode .summary-row.total {
 
 .modal-title {
     margin-bottom: 14px;
-    font-size: 1.05rem;
+    font-size: var(--fs-6);
 }
 
 .modal-section {
@@ -5003,7 +5063,7 @@ body.pdf-export-mode .summary-row.total {
 
 .modal-section-title {
     margin-bottom: 10px;
-    font-size: .88rem;
+    font-size: var(--fs-3);
 }
 
 .modal-section-title::before {
@@ -5017,7 +5077,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .modal-content .form-group > label {
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .modal-content .input-box,
@@ -5025,7 +5085,7 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     padding: 8px 11px;
     border-radius: 12px;
-    font-size: .82rem;
+    font-size: var(--fs-3);
 }
 
 .modal-btns {
@@ -5037,7 +5097,7 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     padding: 9px;
     border-radius: 13px;
-    font-size: .8rem;
+    font-size: var(--fs-2);
 }
 
 .modal-content .toggle-btn,
@@ -5046,13 +5106,13 @@ body.pdf-export-mode .summary-row.total {
 .modal-content .segment-btn {
     min-height: 44px;
     border-radius: 12px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .call-detail-modal-title {
     margin-bottom: 9px;
     padding-bottom: 9px;
-    font-size: 1rem;
+    font-size: var(--fs-5);
 }
 
 .call-detail-panel {
@@ -5063,7 +5123,7 @@ body.pdf-export-mode .summary-row.total {
 .call-detail-panel > label,
 .call-detail-panel .form-group > label,
 .call-inline-field > label {
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 .call-detail-panel .input-box {
@@ -5086,7 +5146,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal #modalWorkDetails > .modal-section > .modal-section-title,
 #workModal #modalMaintSection > .modal-section-title {
     margin-bottom: 9px;
-    font-size: .9rem;
+    font-size: var(--fs-4);
     font-weight: 800;
 }
 
@@ -5134,7 +5194,7 @@ body.pdf-export-mode .summary-row.total {
 
 #workModal .call-detail-route {
     gap: 5px;
-    font-size: .94rem;
+    font-size: var(--fs-4);
     font-weight: 800;
 }
 
@@ -5154,7 +5214,7 @@ body.pdf-export-mode .summary-row.total {
 
 #workModal .detail-meta-line {
     margin-top: 3px;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
     line-height: 1.4;
 }
 
@@ -5162,7 +5222,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal .detail-badge,
 #workModal .maint-payment-badge {
     padding: 3px 7px;
-    font-size: .66rem;
+    font-size: var(--fs-floor);
 }
 
 #workModal .call-detail-card-foot {
@@ -5174,7 +5234,7 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     padding-inline: 10px;
     border-radius: 12px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 #workModal .detail-call-phone {
@@ -5189,7 +5249,7 @@ body.pdf-export-mode .summary-row.total {
     border-radius: 12px;
     background: color-mix(in srgb, var(--primary-color) 4%, var(--input-bg));
     color: var(--sub-text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 #workModal .call-detail-daily-summary > div {
@@ -5200,7 +5260,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal .call-detail-daily-summary .summary-grand-total strong {
     padding-top: 4px;
     color: var(--primary-color);
-    font-size: .9rem;
+    font-size: var(--fs-4);
     font-weight: 850;
 }
 
@@ -5215,7 +5275,7 @@ body.pdf-export-mode .summary-row.total {
     padding: 8px 12px;
     border-radius: 12px;
     box-shadow: var(--shadow-sm);
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 #workModal .maint-fuel-add-row {
@@ -5230,7 +5290,7 @@ body.pdf-export-mode .summary-row.total {
 
 #workModal .maint-fuel-title {
     gap: 6px;
-    font-size: .84rem;
+    font-size: var(--fs-3);
 }
 
 #workModal .maint-fuel-icon {
@@ -5243,17 +5303,17 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #workModal .maint-fuel-info > strong {
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 #workModal .maint-fuel-note {
-    font-size: .72rem;
+    font-size: var(--fs-floor);
 }
 
 #workModal .maint-fuel-total {
     margin-top: 7px;
     padding-top: 8px;
-    font-size: .86rem;
+    font-size: var(--fs-3);
 }
 
 /* 일일운행 안에서 펼쳐지는 세부 입력 폼만 정리 */
@@ -5273,7 +5333,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #workModal .call-detail-modal-title {
-    font-size: .94rem;
+    font-size: var(--fs-4);
 }
 
 #workModal .call-detail-panel .input-box {
@@ -5304,7 +5364,7 @@ body.pdf-export-mode .summary-row.total {
     padding: 0 2px 11px;
     border-bottom: 0;
     color: var(--primary-color);
-    font-size: .9rem;
+    font-size: var(--fs-4);
     text-align: left;
 }
 
@@ -5344,7 +5404,7 @@ body.pdf-export-mode .summary-row.total {
     border: 1px solid var(--border-color);
     border-radius: 11px;
     background: var(--input-bg);
-    font-size: .78rem;
+    font-size: var(--fs-2);
 }
 
 #workModal .call-detail-inline-host .call-route-panel .input-box,
@@ -5360,13 +5420,13 @@ body.pdf-export-mode .summary-row.total {
 
 #workModal .call-detail-inline-host .call-inline-field > label {
     color: var(--text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
     font-weight: 750;
 }
 
 #workModal .call-detail-inline-host .call-inline-field > span {
     color: var(--sub-text-color);
-    font-size: .74rem;
+    font-size: var(--fs-floor);
     text-align: center;
 }
 
@@ -5393,7 +5453,7 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     padding: 6px 4px;
     border-radius: 10px;
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     line-height: 1.15;
 }
 
@@ -5402,7 +5462,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal .call-detail-inline-host .call-remarks-panel > label {
     margin: 0 0 7px 1px;
     color: var(--text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
     font-weight: 800;
 }
 
@@ -5414,7 +5474,7 @@ body.pdf-export-mode .summary-row.total {
     min-width: 56px;
     min-height: 44px;
     border-radius: 11px;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
 }
 
 #workModal .call-detail-inline-host #callReceiptGroup {
@@ -5425,7 +5485,7 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     padding: 7px 2px;
     border-radius: 10px;
-    font-size: .72rem;
+    font-size: var(--fs-floor);
 }
 
 #workModal .call-detail-inline-host .call-vat-row {
@@ -5436,7 +5496,7 @@ body.pdf-export-mode .summary-row.total {
 
 #workModal .call-detail-inline-host .call-vat-row > label:first-child {
     color: var(--text-color);
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 
 #workModal .call-detail-inline-host .call-vat-row .switch {
@@ -5468,7 +5528,7 @@ body.pdf-export-mode .summary-row.total {
 
 #workModal .call-detail-inline-host .payment-term-guide {
     margin-top: 5px;
-    font-size: .68rem;
+    font-size: var(--fs-floor);
     line-height: 1.4;
 }
 
@@ -5492,7 +5552,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal .call-detail-inline-host .call-detail-form-actions .modal-btn {
     min-height: 44px;
     border-radius: 12px;
-    font-size: .78rem;
+    font-size: var(--fs-2);
 }
 /* 사이드 메뉴 최종 밀도 정리 */
 .side-menu {
@@ -5533,7 +5593,7 @@ body.pdf-export-mode .summary-row.total {
 .side-menu-section-title {
     gap: 6px;
     margin: 0 4px 5px;
-    font-size: .68rem;
+    font-size: var(--fs-floor);
     letter-spacing: .1em;
 }
 
@@ -5548,7 +5608,7 @@ body.pdf-export-mode .summary-row.total {
     padding: 8px 11px;
     gap: 9px !important;
     border-radius: 12px;
-    font-size: .84rem;
+    font-size: var(--fs-3);
     font-weight: 650;
     box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
 }
@@ -5597,7 +5657,7 @@ body.pdf-export-mode .summary-row.total {
     overflow: hidden;
     transform: translate(-50%, -50%);
     color: var(--text-color);
-    font-size: 1.08rem;
+    font-size: var(--fs-6);
     font-weight: 800;
     line-height: 1.2;
     letter-spacing: -.025em;
@@ -5670,7 +5730,7 @@ body.pdf-export-mode .summary-row.total {
     border-radius: 9px;
     background: transparent;
     color: var(--sub-text-color);
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 750;
     line-height: 1.2;
     box-shadow: none;
@@ -5700,7 +5760,7 @@ body.pdf-export-mode .summary-row.total {
     margin: 0;
     overflow: hidden;
     color: var(--text-color);
-    font-size: .86rem;
+    font-size: var(--fs-3);
     font-weight: 800;
     line-height: 1.35;
     text-overflow: ellipsis;
@@ -5710,7 +5770,7 @@ body.pdf-export-mode .summary-row.total {
 #receivablesManagementPage .receivable-group-period {
     margin-top: 2px;
     color: var(--sub-text-color);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     font-weight: 650;
     line-height: 1.4;
 }
@@ -5729,20 +5789,20 @@ body.pdf-export-mode .summary-row.total {
 #receivablesManagementPage .receivable-summary-label,
 #receivablesManagementPage .receivable-summary-count {
     color: var(--sub-text-color);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     font-weight: 700;
 }
 
 #receivablesManagementPage .receivable-summary-amount {
     color: var(--primary-color);
-    font-size: .96rem;
+    font-size: var(--fs-4);
     font-weight: 850;
     letter-spacing: -.02em;
 }
 
 #receivablesManagementPage .receivable-summary-separator {
     color: var(--border-color);
-    font-size: .75rem;
+    font-size: var(--fs-floor);
 }
 
 #receivablesManagementPage .receivable-card-actions {
@@ -5763,7 +5823,7 @@ body.pdf-export-mode .summary-row.total {
     border-radius: 9px;
     background: transparent;
     color: var(--primary-color);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     font-weight: 800;
 }
 
@@ -5780,7 +5840,7 @@ body.pdf-export-mode .summary-row.total {
     border-radius: 9px;
     background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
     color: var(--primary-color);
-    font-size: .7rem;
+    font-size: var(--fs-floor);
     font-weight: 800;
 }
 
@@ -5794,49 +5854,49 @@ body.pdf-export-mode .summary-row.total {
     box-shadow: var(--shadow-sm);
 }
 
-.receivable-detail-eyebrow { color: var(--sub-text-color); font-size: .72rem; font-weight: 700; }
-#receivableDetailClient { margin: 5px 0 15px; color: var(--text-color); font-size: 1.15rem; }
+.receivable-detail-eyebrow { color: var(--sub-text-color); font-size: var(--fs-floor); font-weight: 700; }
+#receivableDetailClient { margin: 5px 0 15px; color: var(--text-color); font-size: var(--fs-7); }
 .receivable-detail-total { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
-.receivable-detail-total span { color:var(--sub-text-color); font-size:.76rem; font-weight:700; }
-.receivable-detail-total strong { color:var(--primary-color); font-size:1.25rem; font-weight:900; }
-.receivable-detail-meta { margin-top:8px; color:var(--sub-text-color); font-size:.7rem; text-align:right; }
-.receivable-detail-list-head { display:flex; justify-content:space-between; margin:0 2px 9px; color:var(--text-color); font-size:.78rem; }
+.receivable-detail-total span { color:var(--sub-text-color); font-size:var(--fs-2); font-weight:700; }
+.receivable-detail-total strong { color:var(--primary-color); font-size:var(--fs-8); font-weight:900; }
+.receivable-detail-meta { margin-top:8px; color:var(--sub-text-color); font-size:var(--fs-floor); text-align:right; }
+.receivable-detail-list-head { display:flex; justify-content:space-between; margin:0 2px 9px; color:var(--text-color); font-size:var(--fs-2); }
 .receivable-detail-list-head span { color:var(--sub-text-color); }
 .receivable-detail-item { margin-bottom:9px; padding:14px; border:1px solid var(--border-color); border-radius:15px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
 .receivable-detail-item-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.receivable-detail-item-top time { color:var(--sub-text-color); font-size:.7rem; font-weight:700; }
-.receivable-detail-item-top strong { color:var(--primary-color); font-size:.92rem; }
-.receivable-detail-route { margin-top:9px; color:var(--text-color); font-size:.76rem; font-weight:750; }
+.receivable-detail-item-top time { color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:700; }
+.receivable-detail-item-top strong { color:var(--primary-color); font-size:var(--fs-4); }
+.receivable-detail-route { margin-top:9px; color:var(--text-color); font-size:var(--fs-2); font-weight:750; }
 .receivable-detail-route span { margin:0 4px; color:var(--sub-text-color); }
-.receivable-detail-due { display:flex; align-items:center; gap:6px; margin-top:7px; color:var(--sub-text-color); font-size:.68rem; }
+.receivable-detail-due { display:flex; align-items:center; gap:6px; margin-top:7px; color:var(--sub-text-color); font-size:var(--fs-floor); }
 .receivable-detail-due b { color:var(--primary-color); }
-.receivable-detail-remarks { margin:7px 0 0; color:var(--sub-text-color); font-size:.68rem; }
+.receivable-detail-remarks { margin:7px 0 0; color:var(--sub-text-color); font-size:var(--fs-floor); }
 
-.receivable-payment-status { margin-top:9px; color:var(--sunday-color); font-size:.72rem; font-weight:750; }
+.receivable-payment-status { margin-top:9px; color:var(--sunday-color); font-size:var(--fs-floor); font-weight:750; }
 .receivable-payment-status.partial { color:#d97706; }
 .receivable-payment-status .receivable-original-fare { color:var(--sub-text-color); font-weight:600; }
 
-.receivable-history-toggle-btn { display:block; margin-top:6px; padding:0; border:none; background:none; color:var(--primary-color); font-size:.68rem; font-weight:700; text-decoration:underline; cursor:pointer; }
+.receivable-history-toggle-btn { display:block; margin-top:6px; padding:0; border:none; background:none; color:var(--primary-color); font-size:var(--fs-floor); font-weight:700; text-decoration:underline; cursor:pointer; }
 .receivable-payment-history { margin-top:6px; padding:8px 10px; border-radius:10px; background:var(--input-bg); }
 .receivable-payment-history.hidden { display:none; }
-.receivable-payment-history-row { display:flex; justify-content:space-between; gap:10px; font-size:.68rem; color:var(--sub-text-color); padding:2px 0; }
+.receivable-payment-history-row { display:flex; justify-content:space-between; gap:10px; font-size:var(--fs-floor); color:var(--sub-text-color); padding:2px 0; }
 
 .receivable-item-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin-top:11px; }
 .receivable-item-actions .receivable-item-paid-btn,
 .receivable-item-actions .receivable-item-partial-btn,
 .receivable-item-actions .receivable-item-undo-btn {
-    display:inline-block; width:auto; margin:0; min-height:30px; padding:5px 10px; border-radius:9px; font-size:.7rem; font-weight:800; background:transparent;
+    display:inline-block; width:auto; margin:0; min-height:30px; padding:5px 10px; border-radius:9px; font-size:var(--fs-floor); font-weight:800; background:transparent;
 }
 .receivable-item-partial-btn { border:1px solid var(--border-color); color:var(--text-color); }
 .receivable-item-undo-btn { border:1px solid color-mix(in srgb, var(--sunday-color) 38%, transparent); color:var(--sunday-color); }
 
 .receivable-partial-input-row { display:flex; gap:6px; margin-top:8px; }
 .receivable-partial-input-row.hidden { display:none; }
-.receivable-partial-input-row .input-box { flex:1; min-height:36px; padding:6px 10px; font-size:.78rem; }
-.receivable-partial-confirm-btn { min-height:36px; padding:0 14px; border:none; border-radius:9px; background:var(--primary-color); color:#fff; font-size:.72rem; font-weight:800; }
+.receivable-partial-input-row .input-box { flex:1; min-height:36px; padding:6px 10px; font-size:var(--fs-2); }
+.receivable-partial-confirm-btn { min-height:36px; padding:0 14px; border:none; border-radius:9px; background:var(--primary-color); color:#fff; font-size:var(--fs-floor); font-weight:800; }
 
 .receivable-detail-footer { position:sticky; bottom:10px; padding-top:8px; }
-.receivable-detail-all-paid { width:100%; min-height:46px; border:0; border-radius:14px; background:var(--primary-color); color:#fff; font-size:.82rem; font-weight:850; box-shadow:0 5px 16px color-mix(in srgb, var(--primary-color) 28%, transparent); }
+.receivable-detail-all-paid { width:100%; min-height:46px; border:0; border-radius:14px; background:var(--primary-color); color:#fff; font-size:var(--fs-3); font-weight:850; box-shadow:0 5px 16px color-mix(in srgb, var(--primary-color) 28%, transparent); }
 .receivable-detail-all-paid:disabled { opacity:.45; }
 
 #receivablesManagementPage .receivable-item-row {
@@ -5846,24 +5906,24 @@ body.pdf-export-mode .summary-row.total {
 
 #receivablesManagementPage .receivable-item-info {
     margin-top: 2px;
-    font-size: .68rem;
+    font-size: var(--fs-floor);
     line-height: 1.4;
 }
 
 #receivablesManagementPage .receivable-item-amount {
     color: var(--primary-color);
-    font-size: .88rem;
+    font-size: var(--fs-3);
     font-weight: 850;
 }
 
 #receivablesManagementPage .receivable-dday {
     margin-top: 5px;
-    font-size: .68rem;
+    font-size: var(--fs-floor);
 }
 
 #receivablesManagementPage .receivable-empty {
     padding: 26px 12px;
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 /* 일지 세부 입력 전용 선택형 UI와 360px 입력 폭 정리 */
 #callDetailModal :where(.call-detail-panel, .form-group, .call-inline-field, .input-with-suffix, .app-temporal),
@@ -5954,7 +6014,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal .call-detail-inline-host .app-temporal-option {
     min-height: 44px;
     padding: 5px 4px;
-    font-size: .72rem;
+    font-size: var(--fs-floor);
 }
 
 #callDetailModal :where(.call-inline-field, .platform-main-row, .call-client-row) > *,
@@ -5977,14 +6037,14 @@ body.pdf-export-mode .summary-row.total {
     right: 10px;
     max-width: 26px;
     overflow: hidden;
-    font-size: .74rem;
+    font-size: var(--fs-floor);
     white-space: nowrap;
 }
 /* 일지 세부입력의 모든 입력 안내 문구를 동일한 타이포그래피로 표시한다. */
 #callDetailModal input::placeholder,
 #callDetailModal textarea::placeholder {
     color: var(--sub-text-color);
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 500;
     opacity: 1;
 }
@@ -5993,7 +6053,7 @@ body.pdf-export-mode .summary-row.total {
 #callDetailModal .input-with-suffix .suffix {
     color: var(--sub-text-color);
     font-family: inherit;
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 500;
 }
 
@@ -6027,7 +6087,7 @@ body.pdf-export-mode .summary-row.total {
 #fuelDetailModal :where(.input-box, .date-input) {
     color: var(--text-color);
     font-family: inherit;
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 500;
     text-align: center;
 }
@@ -6036,7 +6096,7 @@ body.pdf-export-mode .summary-row.total {
 #fuelDetailModal :where(input, textarea)::placeholder {
     color: var(--sub-text-color);
     font-family: inherit;
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 500;
     opacity: 1;
     text-align: center;
@@ -6054,7 +6114,7 @@ body.pdf-export-mode .summary-row.total {
 #fuelDetailModal .input-with-suffix .suffix {
     color: var(--sub-text-color);
     font-family: inherit;
-    font-size: .82rem;
+    font-size: var(--fs-3);
     font-weight: 500;
 }
 
@@ -6076,7 +6136,7 @@ body.pdf-export-mode .summary-row.total {
 #maintRecordModal :where(.pill-btn, .segment-btn),
 #fuelDetailModal :where(.pill-btn, .segment-btn) {
     font-family: inherit;
-    font-size: .72rem;
+    font-size: var(--fs-floor);
     font-weight: 600;
     line-height: 1.2;
     text-align: center;
@@ -6085,7 +6145,7 @@ body.pdf-export-mode .summary-row.total {
 /* 정비·주유 제목을 일지 세부입력 제목 크기에 맞춘다. */
 #maintRecordModal .modal-title,
 #fuelDetailModal .modal-title {
-    font-size: .9rem;
+    font-size: var(--fs-4);
     font-weight: 800;
 }
 
@@ -6097,17 +6157,17 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #maintRecordModal #maintPaymentGroup .segment-btn {
-    font-size: .7rem;
+    font-size: var(--fs-floor);
 }
 
 #maintRecordModal .form-group:has(#maintPaymentGroup) > label {
-    font-size: .76rem;
+    font-size: var(--fs-2);
 }
 /* 운행 세부 카드: 메인 달력과 같은 정보 위계 */
 #workModal .call-detail-card { padding:14px; border:1px solid color-mix(in srgb,var(--primary-color) 14%,var(--border-color)); border-radius:18px; background:var(--card-bg); }
 #workModal .call-detail-card-head { padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--border-color); }
-#workModal .call-detail-route { font-size:1.08rem; line-height:1.35; }
-#workModal .detail-meta-line { margin-top:6px; color:var(--sub-text-color); font-size:.8rem; line-height:1.5; }
+#workModal .call-detail-route { font-size:var(--fs-6); line-height:1.35; }
+#workModal .detail-meta-line { margin-top:6px; color:var(--sub-text-color); font-size:var(--fs-2); line-height:1.5; }
 #workModal .call-detail-card-foot { align-items:center; padding-top:10px; margin-top:0; }
 #workModal .detail-payment-actions { margin-left:auto; }
 #workModal .detail-call-phone,#workModal .detail-message-btn { width:40px; height:40px; border-radius:12px; }
@@ -6117,15 +6177,15 @@ body.pdf-export-mode .summary-row.total {
 .message-template-sheet { width:min(100%,430px); max-height:calc(100dvh - 32px - env(safe-area-inset-bottom)); padding:18px 18px calc(18px + env(safe-area-inset-bottom)); overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; border:1px solid var(--border-color); border-radius:22px 22px 16px 16px; background:var(--card-bg); box-shadow:0 -12px 40px rgba(0,0,0,.24); }
 .message-template-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
 .message-template-head strong,.message-template-head span { display:block; }
-.message-template-head strong { font-size:1.05rem; }
-.message-template-head span { margin-top:3px; color:var(--sub-text-color); font-size:.78rem; }
+.message-template-head strong { font-size:var(--fs-6); }
+.message-template-head span { margin-top:3px; color:var(--sub-text-color); font-size:var(--fs-2); }
 .message-template-head button { border:0; background:transparent; color:var(--sub-text-color); font-size:1.7rem; line-height:1; cursor:pointer; }
-.message-template-help { margin:12px 0; color:var(--sub-text-color); font-size:.8rem; line-height:1.45; }
+.message-template-help { margin:12px 0; color:var(--sub-text-color); font-size:var(--fs-2); line-height:1.45; }
 .message-template-list { display:grid; gap:8px; }
 .message-template-list button { padding:12px; border:1px solid var(--border-color); border-radius:13px; background:var(--input-bg); color:var(--text-color); text-align:left; cursor:pointer; }
 .message-template-list button strong,.message-template-list button span { display:block; }
-.message-template-list button strong { margin-bottom:4px; color:var(--primary-color); font-size:.88rem; }
-.message-template-list button span { color:var(--sub-text-color); font-size:.76rem; line-height:1.4; }
+.message-template-list button strong { margin-bottom:4px; color:var(--primary-color); font-size:var(--fs-3); }
+.message-template-list button span { color:var(--sub-text-color); font-size:var(--fs-2); line-height:1.4; }
 /* 개별 카드에는 운송료만, 정산 상세는 하단 통합 카드 한 곳에 표시 */
 #workModal .call-detail-fare-line {
     display:flex;
@@ -6136,12 +6196,12 @@ body.pdf-export-mode .summary-row.total {
     margin-top:11px;
     border-top:1px dashed var(--border-color);
     color:var(--sub-text-color);
-    font-size:.8rem;
+    font-size:var(--fs-2);
 }
 
 #workModal .call-detail-fare-line strong {
     color:var(--text-color);
-    font-size:1rem;
+    font-size:var(--fs-5);
     font-weight:850;
 }
 
@@ -6174,14 +6234,14 @@ body.pdf-export-mode .summary-row.total {
     border-radius:13px;
     background:color-mix(in srgb,var(--primary-color) 13%,var(--input-bg));
     color:var(--primary-color);
-    font-size:1.15rem;
+    font-size:var(--fs-7);
     font-weight:850;
 }
 
 #reportCarSelectModal .modal-title {
     margin:0;
     color:var(--text-color);
-    font-size:1.08rem;
+    font-size:var(--fs-6);
     line-height:1.25;
     text-align:left;
     letter-spacing:-.02em;
@@ -6190,7 +6250,7 @@ body.pdf-export-mode .summary-row.total {
 #reportCarSelectModal .report-car-select-head p {
     margin:4px 0 0;
     color:var(--sub-text-color);
-    font-size:.78rem;
+    font-size:var(--fs-2);
 }
 
 #reportCarSelectModal .report-car-select-list {
@@ -6226,28 +6286,28 @@ body.pdf-export-mode .summary-row.total {
 #reportCarSelectModal .report-car-option:active { transform:scale(.985); }
 #reportCarSelectModal .report-car-option-mark { width:10px; height:10px; border:2px solid var(--primary-color); border-radius:50%; box-shadow:0 0 0 4px color-mix(in srgb,var(--primary-color) 10%,transparent); }
 #reportCarSelectModal .report-car-option-copy { display:flex; flex-direction:column; gap:3px; min-width:0; }
-#reportCarSelectModal .report-car-option-copy strong { color:var(--text-color); font-size:.9rem; font-weight:800; }
-#reportCarSelectModal .report-car-option-copy small { overflow:hidden; color:var(--sub-text-color); font-size:.76rem; text-overflow:ellipsis; white-space:nowrap; }
+#reportCarSelectModal .report-car-option-copy strong { color:var(--text-color); font-size:var(--fs-4); font-weight:800; }
+#reportCarSelectModal .report-car-option-copy small { overflow:hidden; color:var(--sub-text-color); font-size:var(--fs-2); text-overflow:ellipsis; white-space:nowrap; }
 #reportCarSelectModal .report-car-option-arrow { color:var(--primary-color); font-size:1.45rem; line-height:1; }
 #reportCarSelectModal .modal-btns { margin-top:14px; }
-#reportCarSelectModal .modal-btn.cancel { min-height:44px; border-radius:13px; background:transparent; color:var(--sub-text-color); font-size:.84rem; }
+#reportCarSelectModal .modal-btn.cancel { min-height:44px; border-radius:13px; background:transparent; color:var(--sub-text-color); font-size:var(--fs-3); }
 #reportShareModal .report-share-content { width:min(calc(100% - 32px),390px); padding:22px; border-radius:22px; }
-#reportShareModal .report-share-head strong { display:block; font-size:1.05rem; }
-#reportShareModal .report-share-head p { margin:5px 0 16px; color:var(--sub-text-color); font-size:.78rem; }
+#reportShareModal .report-share-head strong { display:block; font-size:var(--fs-6); }
+#reportShareModal .report-share-head p { margin:5px 0 16px; color:var(--sub-text-color); font-size:var(--fs-2); }
 #reportShareModal .report-share-options { display:grid; gap:8px; }
 #reportShareModal .report-share-channel { padding:12px; border:1px solid var(--border-color); border-radius:16px; background:var(--input-bg); }
 #reportShareModal .report-share-channel-title { display:grid; grid-template-columns:42px minmax(0,1fr); align-items:center; gap:11px; }
 #reportShareModal .report-share-channel-title > span:last-child { min-width:0; }
 #reportShareModal .report-share-channel-title strong,#reportShareModal .report-share-channel-title small { display:block; }
-#reportShareModal .report-share-channel-title strong { font-size:.88rem; }
-#reportShareModal .report-share-channel-title small { margin-top:3px; color:var(--sub-text-color); font-size:.72rem; }
+#reportShareModal .report-share-channel-title strong { font-size:var(--fs-3); }
+#reportShareModal .report-share-channel-title small { margin-top:3px; color:var(--sub-text-color); font-size:var(--fs-floor); }
 #reportShareModal .report-share-format-buttons { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:11px; }
 #reportShareModal .report-share-format-buttons button { min-height:42px; padding:9px 6px; border:1px solid color-mix(in srgb,var(--primary-color) 28%,var(--border-color)); border-radius:11px; background:var(--card-bg); color:var(--primary-color); text-align:center; cursor:pointer; touch-action:manipulation; }
-#reportShareModal .report-share-format-buttons button strong { font-size:.76rem; }
-#reportShareModal .report-share-file-icon { display:grid; place-items:center; width:42px; height:42px; border-radius:12px; background:color-mix(in srgb,var(--primary-color) 14%,var(--card-bg)); color:var(--primary-color); font-size:.66rem; font-weight:900; }
+#reportShareModal .report-share-format-buttons button strong { font-size:var(--fs-2); }
+#reportShareModal .report-share-file-icon { display:grid; place-items:center; width:42px; height:42px; border-radius:12px; background:color-mix(in srgb,var(--primary-color) 14%,var(--card-bg)); color:var(--primary-color); font-size:var(--fs-floor); font-weight:900; }
 #reportShareModal .report-share-file-icon.image { background:color-mix(in srgb,#40a36f 14%,var(--card-bg)); color:#40a36f; }
-#reportShareModal .report-share-file-icon.kakao { background:#fee500; color:#191919; font-size:.78rem; }
-#reportShareModal .report-share-file-icon.sms { background:color-mix(in srgb,#40a36f 16%,var(--card-bg)); color:#268a57; font-size:.7rem; }
+#reportShareModal .report-share-file-icon.kakao { background:#fee500; color:#191919; font-size:var(--fs-2); }
+#reportShareModal .report-share-file-icon.sms { background:color-mix(in srgb,#40a36f 16%,var(--card-bg)); color:#268a57; font-size:var(--fs-floor); }
 /* 선택 칩과 입력 컨트롤의 단일 상태 기준 */
 :is(.pill-btn, .segment-btn, .dark-pill-btn).active,
 .toggle-btn.active-work,
@@ -6305,59 +6365,59 @@ body.pdf-export-mode .summary-row.total {
 .tax-invoice-month-navigator .arrow-btn { flex:0 0 36px; width:36px; height:36px; }
 .tax-invoice-month-navigator .arrow-btn svg { width:20px; height:20px; }
 .tax-invoice-month-picker { display:flex; align-items:center; gap:9px; min-height:44px; padding:5px 12px; border:1px solid var(--border-color); border-radius:30px; background:var(--input-bg); box-shadow:var(--shadow-sm); cursor:pointer; }
-.tax-invoice-month-picker > span { color:var(--sub-text-color); font-size:.65rem; font-weight:800; white-space:nowrap; }
-.tax-invoice-month-picker input { width:128px; min-width:0; padding:3px 0; border:0; outline:0; background:transparent; color:var(--text-color); font-family:inherit; font-size:.94rem; font-weight:800; text-align:center; color-scheme:light dark; }
+.tax-invoice-month-picker > span { color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:800; white-space:nowrap; }
+.tax-invoice-month-picker input { width:128px; min-width:0; padding:3px 0; border:0; outline:0; background:transparent; color:var(--text-color); font-family:inherit; font-size:var(--fs-4); font-weight:800; text-align:center; color-scheme:light dark; }
 .tax-invoice-month-picker input::-webkit-calendar-picker-indicator { margin-left:4px; opacity:.68; cursor:pointer; }
 .tax-invoice-guide { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; padding:12px 14px; border:1px solid color-mix(in srgb,var(--sunday-color) 28%,var(--border-color)); border-radius:16px; background:color-mix(in srgb,var(--sunday-color) 5%,var(--card-bg)); }
 .tax-invoice-guide.ready { border-color:color-mix(in srgb,var(--primary-color) 25%,var(--border-color)); background:color-mix(in srgb,var(--primary-color) 5%,var(--card-bg)); }
-.tax-invoice-guide strong { color:var(--text-color); font-size:.78rem; }
-.tax-invoice-guide span { color:var(--sub-text-color); font-size:.65rem; line-height:1.5; }
+.tax-invoice-guide strong { color:var(--text-color); font-size:var(--fs-2); }
+.tax-invoice-guide span { color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.5; }
 .tax-invoice-flow-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border-color); }
-.tax-invoice-flow-tabs button { min-height:42px; padding:6px 3px; border:0; border-radius:13px; background:var(--input-bg); color:var(--sub-text-color); font-size:.66rem; font-weight:850; transition:background-color .18s,color .18s,transform .18s; }
+.tax-invoice-flow-tabs button { min-height:42px; padding:6px 3px; border:0; border-radius:13px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:850; transition:background-color .18s,color .18s,transform .18s; }
 .tax-invoice-flow-tabs button.active { background:var(--primary-color); color:#fff; box-shadow:0 4px 10px color-mix(in srgb,var(--primary-color) 24%,transparent); }
 .tax-invoice-flow-tabs button:active { transform:scale(.98); }
 .tax-invoice-flow-tabs span { display:inline-grid; place-items:center; min-width:17px; height:17px; margin-left:2px; padding:0 4px; border-radius:999px; background:var(--card-bg); color:var(--sub-text-color); font-size:.57rem; }
 .tax-invoice-flow-tabs button.active span { background:rgba(255,255,255,.2); color:#fff; }
 .tax-invoice-tabs { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin:0 0 10px; padding:4px; border:1px solid var(--border-color); border-radius:14px; background:var(--input-bg); }
-.tax-invoice-tabs button { min-height:36px; border:0; border-radius:10px; background:transparent; color:var(--sub-text-color); font-size:.72rem; font-weight:800; }
+.tax-invoice-tabs button { min-height:36px; border:0; border-radius:10px; background:transparent; color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:800; }
 .tax-invoice-tabs button.active { background:var(--card-bg); color:var(--primary-color); box-shadow:var(--shadow-sm); }
 .tax-invoice-tabs span { display:inline-grid; place-items:center; min-width:18px; height:18px; margin-left:3px; padding:0 5px; border-radius:999px; background:var(--hover-bg); font-size:.61rem; }
 .tax-invoice-summary { width:100%; margin-bottom:10px; padding:18px; border:1px solid var(--border-color); border-radius:24px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
 .tax-invoice-summary .summary-title { margin-bottom:14px; }
-.tax-invoice-summary .summary-row { margin-bottom:9px; font-size:.82rem; }
-.tax-invoice-summary .summary-row.total { margin-bottom:0; margin-top:12px; padding-top:11px; font-size:1rem; }
+.tax-invoice-summary .summary-row { margin-bottom:9px; font-size:var(--fs-3); }
+.tax-invoice-summary .summary-row.total { margin-bottom:0; margin-top:12px; padding-top:11px; font-size:var(--fs-5); }
 .tax-invoice-card { margin-bottom:10px; padding:15px; border:1px solid var(--border-color); border-radius:20px; background:var(--card-bg); box-shadow:var(--shadow-sm); }
 .tax-invoice-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .tax-invoice-card-head > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.tax-invoice-card-head strong { color:var(--text-color); font-size:.86rem; }
-.tax-invoice-card-head span { color:var(--sub-text-color); font-size:.64rem; }
-.tax-invoice-card-head .tax-invoice-driver-breakdown { display:block; max-width:240px; color:var(--sub-text-color); font-size:.59rem; line-height:1.45; overflow-wrap:anywhere; }
-.tax-invoice-card-head em { flex:none; padding:4px 7px; border-radius:999px; background:var(--input-bg); color:var(--sub-text-color); font-size:.6rem; font-style:normal; font-weight:850; }
+.tax-invoice-card-head strong { color:var(--text-color); font-size:var(--fs-3); }
+.tax-invoice-card-head span { color:var(--sub-text-color); font-size:var(--fs-floor); }
+.tax-invoice-card-head .tax-invoice-driver-breakdown { display:block; max-width:240px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; overflow-wrap:anywhere; }
+.tax-invoice-card-head em { flex:none; padding:4px 7px; border-radius:999px; background:var(--input-bg); color:var(--sub-text-color); font-size:var(--fs-floor); font-style:normal; font-weight:850; }
 .tax-invoice-card-head em.issued { background:color-mix(in srgb,var(--primary-color) 12%,var(--card-bg)); color:var(--primary-color); }
 .tax-invoice-card-money { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin:13px 0; padding:12px; border-radius:14px; background:var(--input-bg); }
-.tax-invoice-card-money span { display:flex; justify-content:space-between; color:var(--sub-text-color); font-size:.64rem; }
+.tax-invoice-card-money span { display:flex; justify-content:space-between; color:var(--sub-text-color); font-size:var(--fs-floor); }
 .tax-invoice-card-money b { color:var(--text-color); }
-.tax-invoice-card-money > strong { display:flex; grid-column:1/-1; align-items:center; justify-content:space-between; padding-top:8px; border-top:1px dashed var(--border-color); color:var(--primary-color); font-size:.92rem; text-align:right; }
-.tax-invoice-card-money > strong small { color:var(--sub-text-color); font-size:.65rem; }
+.tax-invoice-card-money > strong { display:flex; grid-column:1/-1; align-items:center; justify-content:space-between; padding-top:8px; border-top:1px dashed var(--border-color); color:var(--primary-color); font-size:var(--fs-4); text-align:right; }
+.tax-invoice-card-money > strong small { color:var(--sub-text-color); font-size:var(--fs-floor); }
 .tax-invoice-card-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-.tax-invoice-card-actions button { min-height:36px; padding:5px; border:1px solid var(--border-color); border-radius:11px; background:transparent; color:var(--sub-text-color); font-size:.65rem; font-weight:800; }
+.tax-invoice-card-actions button { min-height:36px; padding:5px; border:1px solid var(--border-color); border-radius:11px; background:transparent; color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:800; }
 .tax-invoice-card-actions button.primary { border-color:var(--primary-color); background:var(--primary-color); color:#fff; }
 .tax-invoice-empty { display:flex; flex-direction:column; align-items:center; gap:5px; padding:34px 14px; border:1px dashed var(--border-color); border-radius:20px; background:var(--card-bg); color:var(--sub-text-color); text-align:center; }
-.tax-invoice-empty-mark { display:grid; place-items:center; width:34px; height:34px; margin-bottom:3px; border-radius:50%; background:var(--input-bg); color:var(--primary-color); font-size:1.1rem; font-weight:800; }
-.tax-invoice-empty strong { color:var(--text-color); font-size:.75rem; line-height:1.45; }
-.tax-invoice-empty small { color:var(--sub-text-color); font-size:.62rem; }
+.tax-invoice-empty-mark { display:grid; place-items:center; width:34px; height:34px; margin-bottom:3px; border-radius:50%; background:var(--input-bg); color:var(--primary-color); font-size:var(--fs-6); font-weight:800; }
+.tax-invoice-empty strong { color:var(--text-color); font-size:var(--fs-floor); line-height:1.45; }
+.tax-invoice-empty small { color:var(--sub-text-color); font-size:var(--fs-floor); }
 .tax-invoice-modal-content { max-height:min(88vh,760px); overflow-y:auto; }
 .tax-invoice-form-section { margin-bottom:12px; padding:12px; border:1px solid var(--border-color); border-radius:14px; background:var(--card-bg); }
-.tax-invoice-form-section h3 { margin:0 0 10px; color:var(--text-color); font-size:.78rem; text-align:left; }
+.tax-invoice-form-section h3 { margin:0 0 10px; color:var(--text-color); font-size:var(--fs-2); text-align:left; }
 .tax-invoice-form-section .form-group { margin-bottom:9px; text-align:left; }
-.tax-invoice-form-section .input-box,.tax-invoice-form-section .date-input { min-height:38px; margin:0; padding:7px 9px; font-size:.74rem; }
+.tax-invoice-form-section .input-box,.tax-invoice-form-section .date-input { min-height:38px; margin:0; padding:7px 9px; font-size:var(--fs-floor); }
 .tax-invoice-amount-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-bottom:10px; }
 .tax-invoice-amount-grid div { display:flex; flex-direction:column; gap:4px; padding:9px; border-radius:10px; background:var(--input-bg); }
-.tax-invoice-amount-grid span { color:var(--sub-text-color); font-size:.62rem; }
-.tax-invoice-amount-grid strong { color:var(--text-color); font-size:.78rem; text-align:right; }
+.tax-invoice-amount-grid span { color:var(--sub-text-color); font-size:var(--fs-floor); }
+.tax-invoice-amount-grid strong { color:var(--text-color); font-size:var(--fs-2); text-align:right; }
 .tax-invoice-amount-grid .total { grid-column:1/-1; flex-direction:row; justify-content:space-between; }
-.tax-invoice-amount-grid .total strong { color:var(--primary-color); font-size:.9rem; }
-.tax-invoice-caution { margin:0 3px 12px; color:var(--sub-text-color); font-size:.62rem; line-height:1.45; text-align:left; }
+.tax-invoice-amount-grid .total strong { color:var(--primary-color); font-size:var(--fs-4); }
+.tax-invoice-caution { margin:0 3px 12px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; text-align:left; }
 /* 거래처 목록과 세금계산서 사용 설정 */
 #clientModal .client-tax-settings {
     margin:12px 0;
@@ -6369,21 +6429,21 @@ body.pdf-export-mode .summary-row.total {
 
 #clientModal .client-tax-settings > .setting-item { min-height:42px; margin:0; }
 .client-tax-toggle-copy { display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; }
-.client-tax-toggle-copy strong { color:var(--text-color); font-size:.78rem; }
-.client-tax-toggle-copy span { color:var(--sub-text-color); font-size:.61rem; }
+.client-tax-toggle-copy strong { color:var(--text-color); font-size:var(--fs-2); }
+.client-tax-toggle-copy span { color:var(--sub-text-color); font-size:var(--fs-floor); }
 #clientTaxInvoiceSubSettings { margin-top:9px; padding-top:10px; border-top:1px solid var(--border-color); }
 #clientTaxInvoiceSubSettings .form-group { margin-bottom:8px; text-align:left; }
-#clientTaxInvoiceSubSettings .input-box { min-height:36px; margin:0; padding:7px 9px; font-size:.72rem; }
-#clientTaxInvoiceSubSettings p { margin:2px 0 0; color:var(--sub-text-color); font-size:.6rem; line-height:1.4; text-align:left; }
+#clientTaxInvoiceSubSettings .input-box { min-height:36px; margin:0; padding:7px 9px; font-size:var(--fs-floor); }
+#clientTaxInvoiceSubSettings p { margin:2px 0 0; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.4; text-align:left; }
 
 #clientManagementPage .client-list-card { padding:13px 14px; }
 #clientManagementPage .management-card-copy { display:flex; flex-direction:column; gap:5px; text-align:left; }
 #clientManagementPage .client-card-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
-#clientManagementPage .client-card-title strong { color:var(--text-color); font-size:.84rem; font-weight:850; }
-#clientManagementPage .client-card-title span { color:var(--sub-text-color); font-size:.64rem; font-weight:650; }
+#clientManagementPage .client-card-title strong { color:var(--text-color); font-size:var(--fs-3); font-weight:850; }
+#clientManagementPage .client-card-title span { color:var(--sub-text-color); font-size:var(--fs-floor); font-weight:650; }
 #clientManagementPage .client-card-badges { display:flex; flex-wrap:wrap; gap:4px; min-height:0; }
-#clientManagementPage .car-sub-text { display:flex; flex-wrap:wrap; gap:3px 10px; margin:0; color:var(--sub-text-color); font-size:.65rem; }
-#clientManagementPage .car-sub-text + .car-sub-text { font-size:.62rem; }
+#clientManagementPage .car-sub-text { display:flex; flex-wrap:wrap; gap:3px 10px; margin:0; color:var(--sub-text-color); font-size:var(--fs-floor); }
+#clientManagementPage .car-sub-text + .car-sub-text { font-size:var(--fs-floor); }
 .management-badge.tax-invoice { border:1px solid color-mix(in srgb,var(--primary-color) 32%,transparent); background:color-mix(in srgb,var(--primary-color) 10%,var(--card-bg)); color:var(--primary-color); }
 
 /* 비동기 저장 동작 */
@@ -6451,7 +6511,7 @@ button.save-action-loading::after {
 }
 
 .onboarding-step-label {
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
     font-weight: 700;
     color: var(--sub-text-color);
 }
@@ -6460,7 +6520,7 @@ button.save-action-loading::after {
     margin: -10px 0 18px;
     text-align: center;
     color: var(--sub-text-color);
-    font-size: 0.85rem;
+    font-size: var(--fs-3);
 }
 
 .onboarding-option-group {
@@ -6478,7 +6538,7 @@ button.save-action-loading::after {
     background-color: var(--input-bg);
     color: var(--text-color);
     font: inherit;
-    font-size: 0.92rem;
+    font-size: var(--fs-4);
     font-weight: 600;
     line-height: 1.4;
     text-align: left;
@@ -6498,14 +6558,14 @@ button.save-action-loading::after {
 
 .wizard-option strong {
     display: block;
-    font-size: 0.92rem;
+    font-size: var(--fs-4);
     font-weight: 700;
 }
 
 .wizard-option small {
     display: block;
     margin-top: 4px;
-    font-size: 0.8rem;
+    font-size: var(--fs-2);
     font-weight: 500;
     line-height: 1.4;
     opacity: 0.72;
@@ -6530,7 +6590,7 @@ button.save-action-loading::after {
 .onboarding-hint {
     margin-top: 4px;
     color: var(--sub-text-color);
-    font-size: 0.78rem;
+    font-size: var(--fs-2);
     line-height: 1.5;
 }
 
@@ -6544,8 +6604,8 @@ button.save-action-loading::after {
     .mypage-shortcut-section { padding-inline: 10px; }
     .mypage-shortcut { grid-template-columns: 32px minmax(0, 1fr); gap: 7px; padding-inline: 9px; }
     .mypage-shortcut-icon { width: 32px; height: 32px; }
-    .mypage-shortcut strong { font-size: .74rem; }
-    .mypage-shortcut small { font-size: .61rem; }
+    .mypage-shortcut strong { font-size: var(--fs-floor); }
+    .mypage-shortcut small { font-size: var(--fs-floor); }
 }
 
 @media (max-width: 350px) {
@@ -6557,7 +6617,7 @@ button.save-action-loading::after {
 @media (max-width: 360px) {
     .account-flow-page { padding-inline: 0; }
     .account-flow-heading h1 { font-size: 1.88rem; }
-    .account-flow-heading p { font-size: .8rem; }
+    .account-flow-heading p { font-size: var(--fs-2); }
     .account-type-options { margin-top: 36px; }
     .account-type-option { grid-template-columns: 52px minmax(0, 1fr); min-height: 94px; padding: 15px; }
     .account-type-icon { width: 52px; height: 52px; }
@@ -6566,14 +6626,14 @@ button.save-action-loading::after {
     .login-invite-field { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
 
     .maint-fuel-info { align-items: flex-start; }
-    .maint-fuel-info > strong { font-size: .95rem; }
+    .maint-fuel-info > strong { font-size: var(--fs-4); }
 
     .management-list-card { padding-inline: 15px; }
     .management-list-card .car-action-btns { margin-left: 5px; }
 
     .management-day-card { padding-inline: 10px; }
-    .management-day-head > div { gap: 6px; font-size: .78rem; }
-    .management-record-info > strong { font-size: .84rem; }
+    .management-day-head > div { gap: 6px; font-size: var(--fs-2); }
+    .management-record-info > strong { font-size: var(--fs-3); }
 
     #workModal .call-detail-inline-host .call-inline-field {
         grid-template-columns: 64px minmax(0, 1fr) 20px;
@@ -6649,7 +6709,7 @@ button.save-action-loading::after {
     .call-detail-panel { padding-inline: 10px; }
     .call-inline-field { grid-template-columns: 74px minmax(0, 1fr) auto; gap: 7px; }
     .platform-main-row { grid-template-columns: 74px minmax(0, 1fr); }
-    .call-detail-panel .input-box { padding-inline: 9px; font-size: .84rem; }
+    .call-detail-panel .input-box { padding-inline: 9px; font-size: var(--fs-3); }
 
     :is(#settingsPage, #subCarSettingsPage) .setting-section {
         padding-inline: 14px;
@@ -6677,13 +6737,13 @@ button.save-action-loading::after {
     .tax-invoice-month-navigator { gap:3px; }
     .tax-invoice-month-navigator .arrow-btn { flex-basis:30px; width:30px; }
     .tax-invoice-month-picker { gap:6px; padding-right:9px; padding-left:9px; }
-    .tax-invoice-month-picker input { width:116px; font-size:.84rem; }
-    .tax-invoice-flow-tabs button { font-size:.62rem; }
+    .tax-invoice-month-picker input { width:116px; font-size:var(--fs-3); }
+    .tax-invoice-flow-tabs button { font-size:var(--fs-floor); }
     .tax-invoice-card-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 
 @media (max-width: 390px) {
-    .call-detail-route { font-size: 1.02rem; }
+    .call-detail-route { font-size: var(--fs-5); }
 
  #workModal .call-detail-card-foot { align-items:flex-end; } .message-template-overlay { padding:8px; }
 }
