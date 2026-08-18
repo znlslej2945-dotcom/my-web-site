@@ -27,7 +27,7 @@
 }
 
 [data-theme="dark"] {
-    --bg-color: #121212; 
+    --bg-color: #121212;
     --text-color: #f5f5f5;
     --sub-text-color: #a0a0a0;
     --card-bg: #1e1e1e;
@@ -38,7 +38,7 @@
     --saturday-color: #63b3ed;
     --sunday-color: #fc8181;
     --hover-bg: #383838;
-    --primary-color: #4299e1; 
+    --primary-color: #4299e1;
     --primary-hover: #3182ce;
     --icon-color: #cccccc;
     --work-badge-bg: #4a4a4a;
@@ -334,26 +334,12 @@ body {
     box-shadow: var(--shadow-md);
     border-radius: 30px;
 }
-
-/* 작은 화면의 기사차량 일지에서는 뒤로가기를 위에, 알림을 그 아래에 배치한다. */
-@media (max-width: 380px) {
-    body.sub-car-log-active #subCarBackBtn {
-        top: 29px;
-        left: 15px;
-    }
-
-    body.sub-car-log-active #notificationBtn {
-        top: 81px;
-        left: 15px;
-    }
-}
-
 /* 사이드 메뉴 */
 .side-menu-overlay {
     position: fixed;
-    top: 0; 
-    left: 0; 
-    width: 100%; 
+    top: 0;
+    left: 0;
+    width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(2px);
@@ -366,9 +352,9 @@ body {
 
 .side-menu {
     position: fixed;
-    top: 0; 
-    right: -280px; 
-    width: 280px; 
+    top: 0;
+    right: -280px;
+    width: 280px;
     height: 100vh;
     background-color: var(--card-bg);
     box-shadow: -4px 0 20px rgba(0,0,0,0.15);
@@ -644,13 +630,6 @@ body {
     78% { transform: scale(1.015); }
     100% { transform: scale(1.018); }
 }
-
-@media (prefers-reduced-motion: reduce) {
-    .client-list-card {
-        transition-duration: .01ms;
-    }
-}
-
 .empty-state {
     padding: 36px 20px;
     color: var(--sub-text-color);
@@ -685,7 +664,7 @@ body {
 }
 
 .banner-logo {
-    height: 52px; 
+    height: 52px;
     object-fit: contain;
     pointer-events: none;
     position: relative;
@@ -693,7 +672,7 @@ body {
 }
 
 .banner-text {
-    font-family: 'Jua', sans-serif; 
+    font-family: 'Jua', sans-serif;
     font-size: 2.2rem;
     font-weight: 400;
     letter-spacing: -0.5px;
@@ -722,14 +701,6 @@ body {
     right: calc(50% + 82px);
     transform: translateY(-50%);
 }
-
-@media (max-width: 380px) {
-    #mainPage #mainBannerImage {
-        right: calc(50% + 76px);
-        height: 42px;
-    }
-}
-
 /* 앱 공통 단순 선택 드롭다운 */
 .app-dropdown {
     position: relative;
@@ -1168,20 +1139,6 @@ body {
     word-break: keep-all;
     overflow-wrap: normal;
 }
-
-/* 작은 화면에서도 휴무 배지는 한 줄을 유지한다. */
-@media (max-width: 380px) {
-    #mainPage .off-badge {
-        max-width: 100%;
-        padding: 3px 2px;
-        font-size: clamp(0.52rem, 2.7vw, 0.68rem);
-        letter-spacing: -0.4px;
-        white-space: nowrap;
-        word-break: keep-all;
-        overflow-wrap: normal;
-    }
-}
-
 .off-badge {
     font-size: 0.75rem;
     background-color: var(--off-badge-bg);
@@ -1663,15 +1620,6 @@ body {
     background: var(--primary-color);
     color: #ffffff;
 }
-
-@media (max-width: 340px) {
-    .mypage-shortcut-section { padding-inline: 10px; }
-    .mypage-shortcut { grid-template-columns: 32px minmax(0, 1fr); gap: 7px; padding-inline: 9px; }
-    .mypage-shortcut-icon { width: 32px; height: 32px; }
-    .mypage-shortcut strong { font-size: .74rem; }
-    .mypage-shortcut small { font-size: .61rem; }
-}
-
 /* 개인정보 페이지 전용 UI */
 #personalInfoPage {
     padding-bottom: 10px;
@@ -1950,19 +1898,6 @@ body.account-flow-active #sideMenuOverlay {
 .login-invite-field strong { color: var(--text-color); font-size: .8rem; font-weight: 850; }
 .login-invite-field small { color: var(--sub-text-color); font-size: .7rem; line-height: 1.45; }
 .login-invite-field .input-box { min-width: 0; text-align: center; letter-spacing: .16em; }
-
-@media (max-width: 360px) {
-    .account-flow-page { padding-inline: 0; }
-    .account-flow-heading h1 { font-size: 1.88rem; }
-    .account-flow-heading p { font-size: .8rem; }
-    .account-type-options { margin-top: 36px; }
-    .account-type-option { grid-template-columns: 52px minmax(0, 1fr); min-height: 94px; padding: 15px; }
-    .account-type-icon { width: 52px; height: 52px; }
-    .login-flow-shell .account-flow-heading { margin-bottom: 32px; }
-    .login-selected-account-type { margin-bottom: 24px; }
-    .login-invite-field { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
-}
-
 .personal-role-change-btn {
     width: 100%;
     min-height: 44px;
@@ -2246,13 +2181,6 @@ body.account-flow-active #sideMenuOverlay {
 .linked-driver-record-card span,.linked-driver-record-card p { color:var(--sub-text-color); font-size:.61rem; line-height:1.45; }
 .linked-driver-record-card p { grid-column:1/-1; margin:0; }
 .linked-driver-record-card > b { color:var(--primary-color); font-size:.76rem; }
-
-@media (max-width: 350px) {
-    .driver-form-grid { grid-template-columns:1fr; }
-    .driver-form-wide { grid-column:auto; }
-    .linked-driver-assignment { grid-template-columns:1fr; }
-}
-
 .personal-intro {
     position: relative;
     overflow: hidden;
@@ -2616,7 +2544,7 @@ textarea::placeholder {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    white-space: nowrap; 
+    white-space: nowrap;
 }
 
 .backup-btn:hover {
@@ -3034,13 +2962,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .pallet-route-group {
     margin-top: 4px;
 }
-
-@media (max-width: 380px) {
-    .fixed-route-section { padding-inline: 12px; }
-    .fixed-count-quick-buttons { gap: 6px; }
-    .fixed-route-unit { min-width: 42px; }
-}
-
 /* 운행 일지 세부 내역 - Figma 시안 */
 #callDetailModal { align-items: flex-start; height:100dvh; overflow-y:auto; padding:10px 10px calc(18px + env(safe-area-inset-bottom)); box-sizing:border-box; scroll-padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
 #callDetailModal .call-detail-modal-content { width:100%; max-width:420px; max-height:none; margin:0 auto calc(8px + env(safe-area-inset-bottom)); padding:16px; border-radius:22px; overflow:visible; box-sizing:border-box; }
@@ -3120,16 +3041,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .call-remarks-panel > label { margin-left: 4px; }
 .call-detail-form-actions { position:sticky; bottom:env(safe-area-inset-bottom); z-index:2; gap:10px; margin-top:12px; padding:10px 0 4px; background:var(--card-bg); }
 .call-detail-form-actions .modal-btn { min-height: 52px; border-radius: 999px; }
-
-@media (max-width: 380px) {
-    #callDetailModal { padding-inline: 5px; }
-    #callDetailModal .call-detail-modal-content { padding-inline: 10px; }
-    .call-detail-panel { padding-inline: 10px; }
-    .call-inline-field { grid-template-columns: 74px minmax(0, 1fr) auto; gap: 7px; }
-    .platform-main-row { grid-template-columns: 74px minmax(0, 1fr); }
-    .call-detail-panel .input-box { padding-inline: 9px; font-size: .84rem; }
-}
-
 #modalCallDetailSection {
     padding: 20px 16px;
     border-radius: 26px;
@@ -3310,11 +3221,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     font-weight: 800;
     cursor: pointer;
 }
-
-@media (max-width: 390px) {
-    .call-detail-route { font-size: 1.02rem; }
-}
-
 /* 차량 정비/주유 - Figma 시안 미세 조정 */
 .maint-fuel-add-btn.maint-add-direct-btn {
     color: var(--sunday-color);
@@ -3552,12 +3458,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     text-align: center;
     cursor: pointer;
 }
-
-@media (max-width: 360px) {
-    .maint-fuel-info { align-items: flex-start; }
-    .maint-fuel-info > strong { font-size: .95rem; }
-}
-
 /* 거래처/차량 관리 화면 - Figma 시안 */
 #clientManagementPage,
 #carManagementPage {
@@ -3701,12 +3601,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .management-add-menu button:hover {
     background: var(--hover-bg);
 }
-
-@media (max-width: 360px) {
-    .management-list-card { padding-inline: 15px; }
-    .management-list-card .car-action-btns { margin-left: 5px; }
-}
-
 /* 정비/주유 월별 목록 - Figma 시안 */
 #maintManagementPage {
     padding-bottom: 155px;
@@ -4024,17 +3918,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 [data-theme="dark"] :is(#settingsPage, #subCarSettingsPage) .settings-backup-card {
     background: color-mix(in srgb, var(--primary-color) 4%, var(--card-bg));
 }
-
-@media (max-width: 380px) {
-    :is(#settingsPage, #subCarSettingsPage) .setting-section {
-        padding-inline: 14px;
-    }
-
-    :is(#settingsPage, #subCarSettingsPage) .tree-line-group {
-        padding-right: 0;
-        padding-left: 12px;
-    }
-}
 #maintManagementPage .date-navigator {
     width: min(300px, 78%);
     min-height: 54px;
@@ -4259,13 +4142,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .maint-management-tabs .toggle-btn {
     min-height: 48px;
 }
-
-@media (max-width: 360px) {
-    .management-day-card { padding-inline: 10px; }
-    .management-day-head > div { gap: 6px; font-size: .78rem; }
-    .management-record-info > strong { font-size: .84rem; }
-}
-
 .modal-btns {
     display: flex;
     gap: 12px;
@@ -4900,22 +4776,6 @@ body.pdf-export-mode .summary-row.total {
 .sub-car-back-btn {
     top: 29px;
 }
-
-/* 운영체제의 '동작 줄이기' 설정 존중 */
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        scroll-behavior: auto !important;
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-        transition-delay: 0ms !important;
-    }
-
-    .splash-banner {
-        animation: none !important;
-    }
-}
-
 /* 전체 업무 화면을 메인 달력 기준 스케일로 통일 */
 #carManagementPage,
 #clientManagementPage,
@@ -5214,13 +5074,6 @@ body.pdf-export-mode .summary-row.total {
     min-height: 44px;
     border-radius: 13px;
 }
-
-@media (max-width: 380px) {
-    .management-list-card { padding-inline: 12px; }
-    .report-page { padding-inline: 9px; }
-    .modal-content { padding-inline: 14px; }
-}
-
 /* 일일운행 상세 카드 */
 #workModal #modalWorkDetails > .modal-section,
 #workModal #modalMaintSection {
@@ -5436,13 +5289,6 @@ body.pdf-export-mode .summary-row.total {
     margin-top: 9px;
     padding-top: 8px;
 }
-
-@media (max-width: 380px) {
-    #workModal #modalWorkDetails > .modal-section,
-    #workModal #modalMaintSection { padding-inline: 12px; }
-    #workModal .call-detail-card { padding-inline: 10px; }
-}
-
 /* 일일운행 인라인 세부 입력폼 미세조정 */
 #workModal .call-detail-inline-host .call-detail-modal-content {
     padding: 10px 0 0;
@@ -5648,17 +5494,6 @@ body.pdf-export-mode .summary-row.total {
     border-radius: 12px;
     font-size: .78rem;
 }
-
-@media (max-width: 360px) {
-    #workModal .call-detail-inline-host .call-inline-field {
-        grid-template-columns: 64px minmax(0, 1fr) 20px;
-        gap: 6px;
-    }
-    #workModal .call-detail-inline-host .platform-main-row {
-        grid-template-columns: 64px minmax(0, 1fr);
-    }
-}
-
 /* 사이드 메뉴 최종 밀도 정리 */
 .side-menu {
     right: -270px;
@@ -5741,11 +5576,6 @@ body.pdf-export-mode .summary-row.total {
     height: 40px;
     padding: 10px;
 }
-
-@media (max-width: 360px) {
-    .side-menu { width: 270px; }
-}
-
 /* 서브화면 공통 헤더 */
 #appContent .page:not(#mainPage) > .settings-header {
     position: relative;
@@ -5810,13 +5640,6 @@ body.pdf-export-mode .summary-row.total {
 #mainPage #mainBannerText {
     width: auto;
 }
-
-@media (max-width: 380px) {
-    #mainPage #mainBannerImage {
-        height: 42px;
-    }
-}
-
 /* 메인 달력 카드 간격 통일 */
 #mainPage .header,
 #mainPage .calendar-grid,
@@ -6042,14 +5865,6 @@ body.pdf-export-mode .summary-row.total {
     padding: 26px 12px;
     font-size: .76rem;
 }
-
-@media (max-width: 360px) {
-    #receivablesManagementPage .receivable-group-card,
-    #receivablesManagementPage .receivable-item-card {
-        padding-inline: 12px;
-    }
-}
-
 /* 일지 세부 입력 전용 선택형 UI와 360px 입력 폭 정리 */
 #callDetailModal :where(.call-detail-panel, .form-group, .call-inline-field, .input-with-suffix, .app-temporal),
 #workModal .call-detail-inline-host :where(.call-detail-panel, .form-group, .call-inline-field, .input-with-suffix, .app-temporal) {
@@ -6165,25 +5980,6 @@ body.pdf-export-mode .summary-row.total {
     font-size: .74rem;
     white-space: nowrap;
 }
-
-@media (max-width: 360px) {
-    #callDetailModal .app-temporal-trigger,
-    #workModal .call-detail-inline-host .app-temporal-trigger {
-        padding-inline: 10px;
-    }
-
-    #callDetailModal .call-inline-field,
-    #workModal .call-detail-inline-host .call-inline-field {
-        grid-template-columns: minmax(62px, auto) minmax(0, 1fr) minmax(18px, auto);
-        gap: 6px;
-    }
-
-    #callDetailModal .platform-main-row,
-    #workModal .call-detail-inline-host .platform-main-row {
-        grid-template-columns: minmax(62px, auto) minmax(0, 1fr);
-    }
-}
-
 /* 일지 세부입력의 모든 입력 안내 문구를 동일한 타이포그래피로 표시한다. */
 #callDetailModal input::placeholder,
 #callDetailModal textarea::placeholder {
@@ -6330,8 +6126,6 @@ body.pdf-export-mode .summary-row.total {
 .message-template-list button strong,.message-template-list button span { display:block; }
 .message-template-list button strong { margin-bottom:4px; color:var(--primary-color); font-size:.88rem; }
 .message-template-list button span { color:var(--sub-text-color); font-size:.76rem; line-height:1.4; }
-@media (max-width:390px) { #workModal .call-detail-card-foot { align-items:flex-end; } .message-template-overlay { padding:8px; } }
-
 /* 개별 카드에는 운송료만, 정산 상세는 하단 통합 카드 한 곳에 표시 */
 #workModal .call-detail-fare-line {
     display:flex;
@@ -6437,12 +6231,6 @@ body.pdf-export-mode .summary-row.total {
 #reportCarSelectModal .report-car-option-arrow { color:var(--primary-color); font-size:1.45rem; line-height:1; }
 #reportCarSelectModal .modal-btns { margin-top:14px; }
 #reportCarSelectModal .modal-btn.cancel { min-height:44px; border-radius:13px; background:transparent; color:var(--sub-text-color); font-size:.84rem; }
-
-@media (max-width:360px) {
-    #reportCarSelectModal .report-car-select-content { width:calc(100% - 20px); padding:18px; }
-    #reportCarSelectModal .report-car-option { min-height:60px; }
-}
-
 #reportShareModal .report-share-content { width:min(calc(100% - 32px),390px); padding:22px; border-radius:22px; }
 #reportShareModal .report-share-head strong { display:block; font-size:1.05rem; }
 #reportShareModal .report-share-head p { margin:5px 0 16px; color:var(--sub-text-color); font-size:.78rem; }
@@ -6460,10 +6248,6 @@ body.pdf-export-mode .summary-row.total {
 #reportShareModal .report-share-file-icon.image { background:color-mix(in srgb,#40a36f 14%,var(--card-bg)); color:#40a36f; }
 #reportShareModal .report-share-file-icon.kakao { background:#fee500; color:#191919; font-size:.78rem; }
 #reportShareModal .report-share-file-icon.sms { background:color-mix(in srgb,#40a36f 16%,var(--card-bg)); color:#268a57; font-size:.7rem; }
-@media (max-width:360px) {
-    #reportShareModal .report-share-content { width:calc(100% - 20px); padding:18px; }
-}
-
 /* 선택 칩과 입력 컨트롤의 단일 상태 기준 */
 :is(.pill-btn, .segment-btn, .dark-pill-btn).active,
 .toggle-btn.active-work,
@@ -6574,18 +6358,6 @@ body.pdf-export-mode .summary-row.total {
 .tax-invoice-amount-grid .total { grid-column:1/-1; flex-direction:row; justify-content:space-between; }
 .tax-invoice-amount-grid .total strong { color:var(--primary-color); font-size:.9rem; }
 .tax-invoice-caution { margin:0 3px 12px; color:var(--sub-text-color); font-size:.62rem; line-height:1.45; text-align:left; }
-
-@media (max-width:380px) {
-    .personal-inline-fields { grid-template-columns:1fr; gap:0; }
-    .tax-invoice-control-card { padding-right:10px; padding-left:10px; }
-    .tax-invoice-month-navigator { gap:3px; }
-    .tax-invoice-month-navigator .arrow-btn { flex-basis:30px; width:30px; }
-    .tax-invoice-month-picker { gap:6px; padding-right:9px; padding-left:9px; }
-    .tax-invoice-month-picker input { width:116px; font-size:.84rem; }
-    .tax-invoice-flow-tabs button { font-size:.62rem; }
-    .tax-invoice-card-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
-}
-
 /* 거래처 목록과 세금계산서 사용 설정 */
 #clientModal .client-tax-settings {
     margin:12px 0;
@@ -6659,11 +6431,6 @@ button.save-action-loading::after {
 @keyframes save-action-spin {
     to { transform:rotate(360deg); }
 }
-
-@media (prefers-reduced-motion:reduce) {
-    button.save-action-loading::after { animation-duration:1.4s; }
-}
-
 /* ========== 신규 유저 온보딩 마법사 ========== */
 .onboarding-wizard-content {
     max-width: 380px;
@@ -6765,4 +6532,179 @@ button.save-action-loading::after {
     color: var(--sub-text-color);
     font-size: 0.78rem;
     line-height: 1.5;
+}
+
+/* ==========================================================================
+   반응형 브레이크포인트 통합 섹션
+   같은 max-width / prefers-reduced-motion 조건의 규칙을 여기 하나로 모았다.
+   그룹 내부의 규칙 순서는 원래 파일에 있던 순서를 그대로 유지한다.
+   ========================================================================== */
+
+@media (max-width: 340px) {
+    .mypage-shortcut-section { padding-inline: 10px; }
+    .mypage-shortcut { grid-template-columns: 32px minmax(0, 1fr); gap: 7px; padding-inline: 9px; }
+    .mypage-shortcut-icon { width: 32px; height: 32px; }
+    .mypage-shortcut strong { font-size: .74rem; }
+    .mypage-shortcut small { font-size: .61rem; }
+}
+
+@media (max-width: 350px) {
+    .driver-form-grid { grid-template-columns:1fr; }
+    .driver-form-wide { grid-column:auto; }
+    .linked-driver-assignment { grid-template-columns:1fr; }
+}
+
+@media (max-width: 360px) {
+    .account-flow-page { padding-inline: 0; }
+    .account-flow-heading h1 { font-size: 1.88rem; }
+    .account-flow-heading p { font-size: .8rem; }
+    .account-type-options { margin-top: 36px; }
+    .account-type-option { grid-template-columns: 52px minmax(0, 1fr); min-height: 94px; padding: 15px; }
+    .account-type-icon { width: 52px; height: 52px; }
+    .login-flow-shell .account-flow-heading { margin-bottom: 32px; }
+    .login-selected-account-type { margin-bottom: 24px; }
+    .login-invite-field { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
+
+    .maint-fuel-info { align-items: flex-start; }
+    .maint-fuel-info > strong { font-size: .95rem; }
+
+    .management-list-card { padding-inline: 15px; }
+    .management-list-card .car-action-btns { margin-left: 5px; }
+
+    .management-day-card { padding-inline: 10px; }
+    .management-day-head > div { gap: 6px; font-size: .78rem; }
+    .management-record-info > strong { font-size: .84rem; }
+
+    #workModal .call-detail-inline-host .call-inline-field {
+        grid-template-columns: 64px minmax(0, 1fr) 20px;
+        gap: 6px;
+    }
+    #workModal .call-detail-inline-host .platform-main-row {
+        grid-template-columns: 64px minmax(0, 1fr);
+    }
+
+    .side-menu { width: 270px; }
+
+    #receivablesManagementPage .receivable-group-card,
+    #receivablesManagementPage .receivable-item-card {
+        padding-inline: 12px;
+    }
+
+    #callDetailModal .app-temporal-trigger,
+    #workModal .call-detail-inline-host .app-temporal-trigger {
+        padding-inline: 10px;
+    }
+
+    #callDetailModal .call-inline-field,
+    #workModal .call-detail-inline-host .call-inline-field {
+        grid-template-columns: minmax(62px, auto) minmax(0, 1fr) minmax(18px, auto);
+        gap: 6px;
+    }
+
+    #callDetailModal .platform-main-row,
+    #workModal .call-detail-inline-host .platform-main-row {
+        grid-template-columns: minmax(62px, auto) minmax(0, 1fr);
+    }
+
+    #reportCarSelectModal .report-car-select-content { width:calc(100% - 20px); padding:18px; }
+    #reportCarSelectModal .report-car-option { min-height:60px; }
+
+    #reportShareModal .report-share-content { width:calc(100% - 20px); padding:18px; }
+}
+
+@media (max-width: 380px) {
+/* 작은 화면의 기사차량 일지에서는 뒤로가기를 위에, 알림을 그 아래에 배치한다. */
+    body.sub-car-log-active #subCarBackBtn {
+        top: 29px;
+        left: 15px;
+    }
+
+    body.sub-car-log-active #notificationBtn {
+        top: 81px;
+        left: 15px;
+    }
+
+    #mainPage #mainBannerImage {
+        right: calc(50% + 76px);
+        height: 42px;
+    }
+
+/* 작은 화면에서도 휴무 배지는 한 줄을 유지한다. */
+    #mainPage .off-badge {
+        max-width: 100%;
+        padding: 3px 2px;
+        font-size: clamp(0.52rem, 2.7vw, 0.68rem);
+        letter-spacing: -0.4px;
+        white-space: nowrap;
+        word-break: keep-all;
+        overflow-wrap: normal;
+    }
+
+    .fixed-route-section { padding-inline: 12px; }
+    .fixed-count-quick-buttons { gap: 6px; }
+    .fixed-route-unit { min-width: 42px; }
+
+    #callDetailModal { padding-inline: 5px; }
+    #callDetailModal .call-detail-modal-content { padding-inline: 10px; }
+    .call-detail-panel { padding-inline: 10px; }
+    .call-inline-field { grid-template-columns: 74px minmax(0, 1fr) auto; gap: 7px; }
+    .platform-main-row { grid-template-columns: 74px minmax(0, 1fr); }
+    .call-detail-panel .input-box { padding-inline: 9px; font-size: .84rem; }
+
+    :is(#settingsPage, #subCarSettingsPage) .setting-section {
+        padding-inline: 14px;
+    }
+
+    :is(#settingsPage, #subCarSettingsPage) .tree-line-group {
+        padding-right: 0;
+        padding-left: 12px;
+    }
+
+    .management-list-card { padding-inline: 12px; }
+    .report-page { padding-inline: 9px; }
+    .modal-content { padding-inline: 14px; }
+
+    #workModal #modalWorkDetails > .modal-section,
+    #workModal #modalMaintSection { padding-inline: 12px; }
+    #workModal .call-detail-card { padding-inline: 10px; }
+
+    #mainPage #mainBannerImage {
+        height: 42px;
+    }
+
+    .personal-inline-fields { grid-template-columns:1fr; gap:0; }
+    .tax-invoice-control-card { padding-right:10px; padding-left:10px; }
+    .tax-invoice-month-navigator { gap:3px; }
+    .tax-invoice-month-navigator .arrow-btn { flex-basis:30px; width:30px; }
+    .tax-invoice-month-picker { gap:6px; padding-right:9px; padding-left:9px; }
+    .tax-invoice-month-picker input { width:116px; font-size:.84rem; }
+    .tax-invoice-flow-tabs button { font-size:.62rem; }
+    .tax-invoice-card-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+
+@media (max-width: 390px) {
+    .call-detail-route { font-size: 1.02rem; }
+
+ #workModal .call-detail-card-foot { align-items:flex-end; } .message-template-overlay { padding:8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .client-list-card {
+        transition-duration: .01ms;
+    }
+
+/* 운영체제의 '동작 줄이기' 설정 존중 */
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        transition-delay: 0ms !important;
+    }
+
+    .splash-banner {
+        animation: none !important;
+    }
+
+    button.save-action-loading::after { animation-duration:1.4s; }
 }

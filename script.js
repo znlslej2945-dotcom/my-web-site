@@ -3464,7 +3464,7 @@ function saveNewCar() {
     
     if (!num) {
         markFieldError('newCarNumber');
-        showConfirmModal('차량번호를 입력하세요.', null);
+        document.getElementById('newCarNumber').focus();
         return;
     }
 
@@ -3935,7 +3935,6 @@ function saveMaintRecord() {
     const kind = document.getElementById('maintRecordKind')?.value === 'misc' ? 'misc' : 'maint';
     const isMisc = kind === 'misc';
     const dataKey = isMisc ? 'miscItems' : 'maintItems';
-    const titleBase = isMisc ? '지출 항목명' : '정비 항목명';
     const viewDateRef = isMisc ? miscViewDate : maintViewDate;
 
     const date = document.getElementById('maintRecordDate').value;
@@ -3950,11 +3949,16 @@ function saveMaintRecord() {
     const origIndex = document.getElementById('maintRecordOriginalIndex').value;
 
     if (!date) {
-        showConfirmModal('날짜를 선택하세요.', null);
+        markFieldError('maintRecordDate');
+        document.getElementById('maintRecordDate').focus();
         return;
     }
     if (!name && !fare) {
-        showConfirmModal(`${titleBase} 또는 비용을 입력하세요.`, null);
+        // 항목명 또는 비용 중 하나만 있으면 되는 검증이라, 콜 상세 저장(saveCallDetail)의
+        // "여러 필드 중 하나만 있으면 통과" 패턴과 동일하게 둘 다 강조하고 첫 필드로 포커스한다.
+        markFieldError('maintRecordName');
+        markFieldError('maintRecordFare');
+        document.getElementById('maintRecordName').focus();
         return;
     }
 
@@ -4305,11 +4309,16 @@ function saveFuelDetail() {
     const origIndex = document.getElementById('fuelOriginalIndex').value;
 
     if (!date) {
-        showConfirmModal('날짜를 입력하세요.', null);
+        markFieldError('fuelDetailDate');
+        document.getElementById('fuelDetailDate').focus();
         return;
     }
     if (!cost && !liter) {
-        showConfirmModal('비용 또는 주유량을 입력하세요.', null);
+        // 비용 또는 주유량 중 하나만 있으면 되는 검증이라, 콜 상세 저장(saveCallDetail)의
+        // "여러 필드 중 하나만 있으면 통과" 패턴과 동일하게 둘 다 강조하고 첫 필드로 포커스한다.
+        markFieldError('fuelDetailCost');
+        markFieldError('fuelDetailLiter');
+        document.getElementById('fuelDetailCost').focus();
         return;
     }
 
@@ -6155,6 +6164,20 @@ function clearCallDetailRequiredError(input) {
         .forEach(clearFieldError);
 }
 
+// 정비/기타지출 저장 시 "항목명 또는 비용 중 하나만 있으면 통과"하는 필드 쌍의 인라인
+// 오류를 함께 지운다(둘 중 하나만 채워도 검증을 통과하므로, 어느 쪽에 입력해도 둘 다 해제).
+function clearMaintRequiredError() {
+    [document.getElementById('maintRecordName'), document.getElementById('maintRecordFare')]
+        .forEach(clearFieldError);
+}
+
+// 주유 기록 저장 시 "비용 또는 주유량 중 하나만 있으면 통과"하는 필드 쌍의 인라인 오류를
+// 함께 지운다.
+function clearFuelRequiredError() {
+    [document.getElementById('fuelDetailCost'), document.getElementById('fuelDetailLiter')]
+        .forEach(clearFieldError);
+}
+
 function updateCallDetailDistance() {
     const startInput = document.getElementById('callStartOdometer');
     const endInput = document.getElementById('callEndOdometer');
@@ -7265,6 +7288,9 @@ function updateClientPaymentTermControls() {
     const valueWrap = document.getElementById('clientPaymentTermValueWrap');
     const valueLabel = document.getElementById('clientPaymentTermValueLabel');
     const valueInput = document.getElementById('clientPaymentTermValue');
+    // 결제 주기 유형이 바뀌면 이전 유형 기준으로 표시됐던 인라인 오류는 더 이상 유효하지
+    // 않으므로 함께 지운다.
+    clearFieldError(valueInput);
 
     if (term === 'next_month_day' || term === 'second_month_day') {
         valueWrap.style.display = 'block';
@@ -8455,9 +8481,14 @@ function saveTaxInvoicePartyInfo(item) {
 
 function saveTaxInvoiceDraft() {
     const item = collectTaxInvoiceForm();
-    if (!item.clientBizNumber || !item.issueDate) {
-        const partyLabel = item.flow === 'purchase' ? '공급자' : '공급받는 자';
-        showConfirmModal(`${partyLabel}의 사업자등록번호와 작성일자를 입력해 주세요.`, null);
+    if (!item.clientBizNumber) {
+        markFieldError('taxInvoiceClientBizNumber');
+        document.getElementById('taxInvoiceClientBizNumber').focus();
+        return;
+    }
+    if (!item.issueDate) {
+        markFieldError('taxInvoiceDate');
+        document.getElementById('taxInvoiceDate').focus();
         return;
     }
     persistTaxInvoice(item);
@@ -8815,35 +8846,37 @@ function saveClient() {
 
     if (!companyName) {
         markFieldError('clientCompanyName');
-        showConfirmModal('거래처명을 입력해 주세요.', null);
+        document.getElementById('clientCompanyName').focus();
         return;
     }
 
     if (taxInvoiceEnabled && !bizNumber) {
         markFieldError('clientBizNumber');
-        showConfirmModal('세금계산서를 사용하려면 사업자 번호를 입력해 주세요.', null);
+        document.getElementById('clientBizNumber').focus();
         return;
     }
 
     if (commEnabled && !commValue) {
         markFieldError('clientCommValue');
-        showConfirmModal('수수료 수치 또는 금액을 입력해 주세요.', null);
+        document.getElementById('clientCommValue').focus();
         return;
     }
 
     if (fixedMonthlyOn && !fixedMonthlyAmount) {
         markFieldError('clientFixedMonthlyAmount');
-        showConfirmModal('월정액 계약 금액을 입력해 주세요.', null);
+        document.getElementById('clientFixedMonthlyAmount').focus();
         return;
     }
 
     if ((paymentTerm === 'next_month_day' || paymentTerm === 'second_month_day') && (!paymentTermValue || parseInt(paymentTermValue, 10) < 1 || parseInt(paymentTermValue, 10) > 31)) {
-        showConfirmModal('입금일은 1일부터 31일 사이로 입력해 주세요.', null);
+        markFieldError('clientPaymentTermValue');
+        document.getElementById('clientPaymentTermValue').focus();
         return;
     }
 
     if (paymentTerm === 'after_days' && paymentTermValue === '') {
-        showConfirmModal('운행 후 경과일을 입력해 주세요.', null);
+        markFieldError('clientPaymentTermValue');
+        document.getElementById('clientPaymentTermValue').focus();
         return;
     }
 

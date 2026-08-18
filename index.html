@@ -1464,12 +1464,12 @@
             
             <div class="form-group">
                 <label>날짜</label>
-                <input type="date" id="fuelDetailDate" class="date-input">
+                <input type="date" id="fuelDetailDate" class="date-input" oninput="clearFieldError(this)">
             </div>
 
             <div class="form-group">
                 <label>비용 (원)</label>
-                <input type="text" id="fuelDetailCost" class="input-box" inputmode="numeric" placeholder="비용을 입력하세요" oninput="formatCurrencyInput(this)">
+                <input type="text" id="fuelDetailCost" class="input-box" inputmode="numeric" placeholder="비용을 입력하세요" oninput="formatCurrencyInput(this); clearFuelRequiredError();">
             </div>
 
             <div class="form-group">
@@ -1490,7 +1490,7 @@
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                     <label>주유량</label>
                     <div class="input-with-suffix">
-                        <input type="number" step="0.1" id="fuelDetailLiter" class="input-box" style="padding-right: 30px; text-align: right;">
+                        <input type="number" step="0.1" id="fuelDetailLiter" class="input-box" style="padding-right: 30px; text-align: right;" oninput="clearFuelRequiredError()">
                         <span class="suffix">L</span>
                     </div>
                 </div>
@@ -1522,7 +1522,7 @@
             <div style="display: flex; gap: 10px; margin-bottom: 14px;">
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                     <label for="maintRecordDate">날짜</label>
-                    <input type="date" id="maintRecordDate" class="date-input" style="padding-right: 10px;">
+                    <input type="date" id="maintRecordDate" class="date-input" style="padding-right: 10px;" oninput="clearFieldError(this)">
                 </div>
                 <div class="form-group" id="maintRecordMileageGroup" style="flex: 1; margin-bottom: 0;">
                     <label for="maintRecordMileage">누적거리</label>
@@ -1535,7 +1535,7 @@
 
             <div class="form-group">
                 <label for="maintRecordName" id="maintRecordNameLabel">정비 항목명</label>
-                <input type="text" id="maintRecordName" class="input-box" placeholder="항목명을 입력하세요">
+                <input type="text" id="maintRecordName" class="input-box" placeholder="항목명을 입력하세요" oninput="clearMaintRequiredError()">
             </div>
 
             <div class="form-group">
@@ -1557,7 +1557,7 @@
 
             <div class="form-group">
                 <label for="maintRecordFare">비용 (원)</label>
-                <input type="text" id="maintRecordFare" class="input-box" inputmode="numeric" placeholder="비용을 입력하세요" oninput="formatCurrencyInput(this)">
+                <input type="text" id="maintRecordFare" class="input-box" inputmode="numeric" placeholder="비용을 입력하세요" oninput="formatCurrencyInput(this); clearMaintRequiredError();">
             </div>
 
             <div class="form-group" style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 18px;">
@@ -1878,7 +1878,7 @@
 
             <div id="clientPaymentTermValueWrap" class="form-group" style="display: none;">
                 <label id="clientPaymentTermValueLabel" for="clientPaymentTermValue">날짜</label>
-                <input type="number" id="clientPaymentTermValue" class="input-box" inputmode="numeric" min="1" max="31" placeholder="숫자 입력" oninput="updateClientPaymentTermGuide();">
+                <input type="number" id="clientPaymentTermValue" class="input-box" inputmode="numeric" min="1" max="31" placeholder="숫자 입력" oninput="updateClientPaymentTermGuide(); clearFieldError(this);">
             </div>
 
             <p id="clientPaymentTermGuide" class="payment-term-guide"></p>
@@ -1902,7 +1902,7 @@
             <div class="tax-invoice-form-section">
                 <h3 id="taxInvoicePartyHeading">공급받는 자</h3>
                 <div class="form-group"><label for="taxInvoiceClientName">상호</label><input id="taxInvoiceClientName" class="input-box" readonly></div>
-                <div class="form-group"><label for="taxInvoiceClientBizNumber">사업자등록번호</label><input id="taxInvoiceClientBizNumber" class="input-box" placeholder="000-00-00000"></div>
+                <div class="form-group"><label for="taxInvoiceClientBizNumber">사업자등록번호</label><input id="taxInvoiceClientBizNumber" class="input-box" placeholder="000-00-00000" oninput="clearFieldError(this)"></div>
                 <div class="personal-inline-fields">
                     <div class="form-group"><label for="taxInvoiceClientRepresentative">대표자</label><input id="taxInvoiceClientRepresentative" class="input-box"></div>
                     <div class="form-group"><label for="taxInvoiceClientEmail">이메일</label><input type="email" id="taxInvoiceClientEmail" class="input-box"></div>
@@ -1916,7 +1916,7 @@
             <div class="tax-invoice-form-section">
                 <h3>작성 내용</h3>
                 <div class="personal-inline-fields">
-                    <div class="form-group"><label for="taxInvoiceDate">작성일자</label><input type="date" id="taxInvoiceDate" class="date-input"></div>
+                    <div class="form-group"><label for="taxInvoiceDate">작성일자</label><input type="date" id="taxInvoiceDate" class="date-input" oninput="clearFieldError(this)"></div>
                     <div class="form-group"><label for="taxInvoiceItemName">품목</label><input id="taxInvoiceItemName" class="input-box" value="화물운송료"></div>
                 </div>
                 <div class="tax-invoice-amount-grid">
