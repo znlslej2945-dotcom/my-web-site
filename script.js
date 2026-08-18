@@ -1555,6 +1555,25 @@ function normalizeLegacyData() {
     }
 }
 
+// 거래처(client)에 이름과 무관한 고유 id를 부여하는 1회성 마이그레이션.
+// id가 이미 있는 거래처는 건드리지 않고, id가 없는(과거에 저장된) 거래처만 새로 생성해 채운다.
+function normalizeLegacyClientIds() {
+    const settings = getUserSettings();
+    if (!Array.isArray(settings.clients) || settings.clients.length === 0) return;
+
+    let changed = false;
+    settings.clients.forEach(client => {
+        if (!client.id) {
+            client.id = generateLocalId('client');
+            changed = true;
+        }
+    });
+
+    if (changed) {
+        setUserSettings(settings);
+    }
+}
+
 function getRecordTotalDistance(record) {
     const details = Array.isArray(record?.callDetails) ? record.callDetails : [];
     const hasDetailDistance = details.some(detail => String(detail?.distanceKm ?? '').trim() !== '');
@@ -5253,16 +5272,26 @@ function buildCalendar() {
                             const clientObj = savedSettings.clients?.find(c => c.companyName === clientName);
                             if (clientObj) {
                                 isRegisteredClient = true;
-                                if (clientObj.commEnabled) {
-                                    if (clientObj.commType === 'percent' || !clientObj.commType) {
-                                        comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
-                                        clientCommLabels[clientName] = `${clientObj.commValue}%`;
-                                    } else {
-                                        comm = parseCurrencyValue(clientObj.commValue);
-                                        clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
-                                    }
-                                    monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
+                            }
+
+                            // 수수료 계산은 저장 시점의 스냅샷을 우선 사용한다(거래처명/수수료율이
+                            // 나중에 바뀌어도 이미 저장된 기록의 표시값이 소급 변경되지 않도록).
+                            // 스냅샷이 없는(마이그레이션 이전) 과거 기록만 현재 거래처 설정을
+                            // 참조하는 기존 방식으로 폴백한다.
+                            const commSnapshot = detail.commissionSnapshot;
+                            const commEnabled = commSnapshot ? commSnapshot.enabled : !!clientObj?.commEnabled;
+                            const commType = commSnapshot ? commSnapshot.type : clientObj?.commType;
+                            const commValue = commSnapshot ? commSnapshot.value : clientObj?.commValue;
+
+                            if (commEnabled) {
+                                if (commType === 'percent' || !commType) {
+                                    comm = Math.floor(gross * (parseFloat(commValue) / 100));
+                                    clientCommLabels[clientName] = `${commValue}%`;
+                                } else {
+                                    comm = parseCurrencyValue(commValue);
+                                    clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
                                 }
+                                monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
                             }
                         }
 
@@ -5681,15 +5710,29 @@ function renderCallDetailSummaryInMainModal() {
         return ` (${hours ? hours + '시간' : ''}${mins ? mins + '분' : ''})`;
     };
     const getClientInfo = name => settings.clients?.find(client => client.companyName === name);
+    // 저장 시점의 수수료 스냅샷(commissionSnapshot)이 있으면 그 값을 우선 사용해서, 이후
+    // 거래처명 변경이나 수수료율 수정이 이미 저장된 기록의 표시값을 소급해서 바꾸지 않도록 한다.
+    // 스냅샷이 없는(마이그레이션 이전) 과거 기록만 현재 거래처 설정을 참조하는 기존 방식으로 폴백한다.
     const getCommission = (item, fare) => {
-        const client = getClientInfo(item.client);
-        if (!client?.commEnabled) return { amount: 0, label: '' };
-        const amount = client.commType === 'direct'
-            ? parseCurrencyValue(client.commValue)
-            : Math.floor(fare * (parseFloat(client.commValue) || 0) / 100);
-        const label = client.commType === 'direct'
-            ? `${parseCurrencyValue(client.commValue).toLocaleString()}원`
-            : `${client.commValue}%`;
+        const snapshot = item.commissionSnapshot;
+        let enabled, type, value;
+        if (snapshot) {
+            enabled = snapshot.enabled;
+            type = snapshot.type;
+            value = snapshot.value;
+        } else {
+            const client = getClientInfo(item.client);
+            enabled = !!client?.commEnabled;
+            type = client?.commType;
+            value = client?.commValue;
+        }
+        if (!enabled) return { amount: 0, label: '' };
+        const amount = type === 'direct'
+            ? parseCurrencyValue(value)
+            : Math.floor(fare * (parseFloat(value) || 0) / 100);
+        const label = type === 'direct'
+            ? `${parseCurrencyValue(value).toLocaleString()}원`
+            : `${value}%`;
         return { amount, label };
     };
 
@@ -6178,11 +6221,24 @@ function saveCallDetail() {
     // 수금 이력(payments)은 이 화면에서 건드리지 않는 값이므로 수정 시에도 그대로 보존한다.
     const payments = existingItem && Array.isArray(existingItem.payments) ? existingItem.payments : [];
 
+    // 저장 시점의 거래처 연결과 수수료 조건을 스냅샷으로 함께 남긴다. 이후 거래처명 변경이나
+    // 수수료율 수정이 이미 저장된 이 기록의 표시값을 소급해서 바꾸지 않도록 하기 위함이다.
+    // (신규 저장뿐 아니라 기존 기록을 수정해서 다시 저장할 때도, 그 시점의 최신 거래처 조건으로
+    // 스냅샷이 새로 갱신된다.)
+    const savedSettings = getUserSettings();
+    const matchedClient = savedSettings.clients?.find(c => c.companyName === client);
+    const clientId = matchedClient?.id || null;
+    const commissionSnapshot = (matchedClient && matchedClient.commEnabled)
+        ? { enabled: true, type: matchedClient.commType, value: matchedClient.commValue }
+        : { enabled: false, type: null, value: null };
+
     const newItem = {
         loadLoc,
         unloadLoc,
         fare,
         client,
+        clientId,
+        commissionSnapshot,
         remarks,
         departureTime,
         arrivalTime,
@@ -6464,19 +6520,29 @@ function buildReportPage(isForExport = false) {
                             const clientObj = savedSettings.clients?.find(c => c.companyName === clientName);
                             if (clientObj) {
                                 isRegisteredClient = true;
-                                if (clientObj.commEnabled) {
-                                    if (clientObj.commType === 'percent' || !clientObj.commType) {
-                                        comm = Math.floor(gross * (parseFloat(clientObj.commValue) / 100));
-                                        clientCommLabels[clientName] = `${clientObj.commValue}%`;
-                                    } else {
-                                        comm = parseCurrencyValue(clientObj.commValue);
-                                        clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
-                                    }
-                                    monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
+                            }
+
+                            // 수수료 계산은 저장 시점의 스냅샷을 우선 사용한다(거래처명/수수료율이
+                            // 나중에 바뀌어도 이미 저장된 기록의 표시값이 소급 변경되지 않도록).
+                            // 스냅샷이 없는(마이그레이션 이전) 과거 기록만 현재 거래처 설정을
+                            // 참조하는 기존 방식으로 폴백한다.
+                            const commSnapshot = detail.commissionSnapshot;
+                            const commEnabled = commSnapshot ? commSnapshot.enabled : !!clientObj?.commEnabled;
+                            const commType = commSnapshot ? commSnapshot.type : clientObj?.commType;
+                            const commValue = commSnapshot ? commSnapshot.value : clientObj?.commValue;
+
+                            if (commEnabled) {
+                                if (commType === 'percent' || !commType) {
+                                    comm = Math.floor(gross * (parseFloat(commValue) / 100));
+                                    clientCommLabels[clientName] = `${commValue}%`;
+                                } else {
+                                    comm = parseCurrencyValue(commValue);
+                                    clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
                                 }
+                                monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
                             }
                         }
-                        
+
                         if (isRegisteredClient) {
                             monthFareByClient[clientName] = (monthFareByClient[clientName] || 0) + gross;
                         } else {
@@ -6736,16 +6802,26 @@ function viewDetailReport(isForExport) {
                         const clientObj = savedSettings.clients?.find(c => c.companyName === item.client);
                         if (clientObj) {
                             isRegisteredClient = true;
-                            if (clientObj.commEnabled) {
-                                if (clientObj.commType === 'percent' || !clientObj.commType) {
-                                    comm = Math.floor(fareVal * (parseFloat(clientObj.commValue) / 100));
-                                    clientCommLabels[clientName] = `${clientObj.commValue}%`;
-                                } else {
-                                    comm = parseCurrencyValue(clientObj.commValue);
-                                    clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
-                                }
-                                monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
+                        }
+
+                        // 수수료 계산은 저장 시점의 스냅샷을 우선 사용한다(거래처명/수수료율이
+                        // 나중에 바뀌어도 이미 저장된 기록의 표시값이 소급 변경되지 않도록).
+                        // 스냅샷이 없는(마이그레이션 이전) 과거 기록만 현재 거래처 설정을
+                        // 참조하는 기존 방식으로 폴백한다.
+                        const commSnapshot = item.commissionSnapshot;
+                        const commEnabled = commSnapshot ? commSnapshot.enabled : !!clientObj?.commEnabled;
+                        const commType = commSnapshot ? commSnapshot.type : clientObj?.commType;
+                        const commValue = commSnapshot ? commSnapshot.value : clientObj?.commValue;
+
+                        if (commEnabled) {
+                            if (commType === 'percent' || !commType) {
+                                comm = Math.floor(fareVal * (parseFloat(commValue) / 100));
+                                clientCommLabels[clientName] = `${commValue}%`;
+                            } else {
+                                comm = parseCurrencyValue(commValue);
+                                clientCommLabels[clientName] = `${comm.toLocaleString()}원`;
                             }
+                            monthCommByClient[clientName] = (monthCommByClient[clientName] || 0) + comm;
                         }
                     }
 
@@ -7015,6 +7091,7 @@ function editCar(idx) {
 
 // 앱 초기화 구문
 normalizeLegacyData();
+normalizeLegacyClientIds();
 try {
     syncNormalizedEntityStore();
 } catch (error) {
@@ -8696,6 +8773,9 @@ function saveClient() {
     const previousClient = editingClientIndex >= 0 ? (settings.clients[editingClientIndex] || {}) : {};
     const clientData = {
         ...previousClient,
+        // 거래처명과 무관한 고유 id. 수정 시에는 기존 id를 그대로 유지하고, 신규 등록일 때만
+        // 새로 생성한다 — 운행 기록에 저장되는 clientId/commissionSnapshot이 이 id를 참조한다.
+        id: previousClient.id || generateLocalId('client'),
         companyName,
         managerName,
         bizNumber,
