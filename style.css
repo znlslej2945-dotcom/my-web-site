@@ -4872,6 +4872,21 @@ body.pdf-export-mode .summary-row.total {
     font-weight: 800;
 }
 
+/* 메인+서브 차량 통합 미수금 목록에서 어느 차량 기록인지 구분해 보여주는 배지 줄.
+   서브 차량이 없는 계정에는 애초에 렌더링되지 않는다(JS에서 hasSubCars로 분기). */
+.receivable-group-cars,
+.receivable-item-car,
+.receivable-detail-car {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 0 2px;
+}
+
+.notification-panel-item-car {
+    margin: 4px 0;
+}
+
 .receivable-empty {
     color: var(--sub-text-color);
     text-align: center;

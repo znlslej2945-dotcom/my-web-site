@@ -1500,8 +1500,23 @@ function switchCarLog(carNum) {
 }
 
 function saveDataToStorage() {
-    if (activeLogId === 'main') {
-        localStorage.setItem('workData', JSON.stringify(workData));
+    writeWorkDataStoreForLog(activeLogId, workData);
+}
+
+// 미수금 등에서 지금 열려 있는 차량 로그(activeLogId)가 아닌 다른 차량의 운행 기록도
+// 다뤄야 할 때 쓰는 헬퍼. logId는 'main' 또는 서브 차량 번호(car.number)다.
+// activeLogId와 같은 로그를 읽을 때는 이미 메모리에 로드돼 수정 중인 전역 workData를
+// 그대로 반환한다(참조를 공유하므로 그 자리에서 바로 수정해도 화면과 어긋나지 않는다).
+function readWorkDataStoreForLog(logId) {
+    if (logId === activeLogId) return workData;
+    return readWorkDataStorage(logId === 'main' ? 'workData' : 'workData_' + logId);
+}
+
+// 특정 로그의 운행 기록 저장소를 저장한다. saveDataToStorage()가 activeLogId에 대해 하던
+// 일을 임의의 logId에 대해서도 똑같이 할 수 있도록 일반화한 버전이다.
+function writeWorkDataStoreForLog(logId, data) {
+    if (logId === 'main') {
+        localStorage.setItem('workData', JSON.stringify(data));
         const settings = getUserSettings();
         const employerLink = settings.accountType === 'employed_driver' && settings.employerLink?.status === 'linked'
             ? settings.employerLink
@@ -1509,9 +1524,9 @@ function saveDataToStorage() {
         const connectionKey = employerLink
             ? (employerLink.inviteCode || String(employerLink.ownerPhone || '').replace(/\D/g, ''))
             : '';
-        if (connectionKey) localStorage.setItem(`linkedDriverWorkData_${connectionKey}`, JSON.stringify(workData));
+        if (connectionKey) localStorage.setItem(`linkedDriverWorkData_${connectionKey}`, JSON.stringify(data));
     } else {
-        localStorage.setItem('workData_' + activeLogId, JSON.stringify(workData));
+        localStorage.setItem('workData_' + logId, JSON.stringify(data));
     }
     scheduleNormalizedEntitySync();
 }
@@ -2590,7 +2605,7 @@ function setClientCommType(type) {
     if (type === 'percent') {
         btnPercent.classList.add('active-work');
         btnDirect.classList.remove('active-work');
-        commLabel.textContent = '수수료율 (%)';
+        commLabel.textContent = '거래처 수수료율 (%)';
         commInput.placeholder = '비율(%) 입력';
         let val = commInput.value.replace(/[^0-9.]/g, '');
         if (parseFloat(val) > 100) val = '100';
@@ -2598,7 +2613,7 @@ function setClientCommType(type) {
     } else {
         btnDirect.classList.add('active-work');
         btnPercent.classList.remove('active-work');
-        commLabel.textContent = '수수료 (원)';
+        commLabel.textContent = '거래처 수수료 (원)';
         commInput.placeholder = '금액(원) 입력';
         formatCurrencyInput(commInput);
     }
@@ -3407,7 +3422,7 @@ function setCarCommType(type) {
         btnDirect.classList.remove('active');
         btnPercent.setAttribute('aria-pressed', 'true');
         btnDirect.setAttribute('aria-pressed', 'false');
-        label.textContent = '수수료율';
+        label.textContent = '기사(차량) 수수료율';
         input.placeholder = '0';
         input.inputMode = 'decimal';
         unit.textContent = '%';
@@ -3419,7 +3434,7 @@ function setCarCommType(type) {
         btnPercent.classList.remove('active');
         btnDirect.setAttribute('aria-pressed', 'true');
         btnPercent.setAttribute('aria-pressed', 'false');
-        label.textContent = '건당 수수료';
+        label.textContent = '기사(차량) 건당 수수료';
         input.placeholder = '0';
         input.inputMode = 'numeric';
         unit.textContent = '원';
@@ -3585,7 +3600,7 @@ function saveNewCar() {
 }
 
 function deleteCar(idx) {
-    showConfirmModal('해당 차량을 삭제하시겠습니까?', () => {
+    showConfirmModal('해당 차량을 삭제하시겠습니까? 이 차량으로 기록된 운행 내역도 함께 삭제되며 복구할 수 없습니다.', () => {
         const settings = getUserSettings();
         const deletedCar = settings.cars[idx];
         const deletedCarNum = deletedCar.number;
@@ -3599,7 +3614,14 @@ function deleteCar(idx) {
         }
         settings.cars.splice(idx, 1);
         setUserSettings(settings);
-        
+
+        // 이 차량으로 저장된 운행 기록도 함께 삭제한다. 메인 차량은 접두사 없는 'workData'
+        // 키를 공용으로 쓰므로(서브 차량과 저장 구조 자체가 다름) 대상에서 제외한다 —
+        // 메인 로그 전체를 지워버리는 사고를 막기 위함.
+        if (deletedCar.type !== 'main') {
+            localStorage.removeItem('workData_' + deletedCarNum);
+        }
+
         if (editingCarIndex === idx) resetCarForm();
         loadCarList();
         renderSubCarMenu(); 
@@ -7355,38 +7377,64 @@ function syncDetailPaymentStatus(detail) {
     return summary;
 }
 
+// 지금 열려 있는 차량 로그 하나가 아니라, 세금계산서 집계(getTaxInvoiceSourceGroups)와 동일한
+// 방식으로 메인 + 모든 서브 차량의 운행 기록을 합산해서 미수금 항목을 만든다.
+// - 메인/서브는 각각 paymentOn(메인)·subPaymentOn(서브, 모든 서브 차량이 공유하는 설정)이
+//   켜져 있을 때만 포함한다.
+// - 기사 직접 정산(driver_direct) 차량은 그 매출이 회사(내 장부) 몫이 아니므로 세금계산서
+//   집계와 동일하게 제외한다.
+// - 각 항목에는 어느 로그에서 나왔는지 구분할 수 있도록 logId('main' 또는 차량번호)와
+//   화면 표시용 logLabel을 함께 담는다.
 function getReceivableItems() {
-    if (!getActiveLogSettings().paymentOn) return [];
+    const settings = getUserSettings();
+    const cars = settings.cars || [];
+
+    const sources = [];
+    if (settings.paymentOn) {
+        sources.push({ logId: 'main', logLabel: '메인 차량', data: readWorkDataStorage('workData') });
+    }
+    if (settings.subPaymentOn) {
+        cars.filter(car => car.type === 'sub').forEach(car => {
+            const mode = getEffectiveDriverSettlementMode(car, settings);
+            if (mode === 'company' || mode === 'employee') {
+                sources.push({ logId: car.number, logLabel: getShortCarNum(car.number), data: getDriverCarWorkData(car, settings) });
+            }
+        });
+    }
 
     const items = [];
 
-    Object.keys(workData).forEach(dateKey => {
-        const record = workData[dateKey];
+    sources.forEach(source => {
+        Object.keys(source.data || {}).forEach(dateKey => {
+            const record = source.data[dateKey];
 
-        if (!record || record.isOff || !record.callDetails) {
-            return;
-        }
-
-        record.callDetails.forEach((detail, detailIndex) => {
-            const paymentSummary = getDetailPaymentSummary(detail);
-            if (paymentSummary.status === 'paid') {
+            if (!record || record.isOff || !record.callDetails) {
                 return;
             }
 
-            items.push({
-                dateKey,
-                detailIndex,
-                client: detail.client || '미지정 거래처',
-                fare: parseCurrencyValue(detail.fare),
-                paidAmount: paymentSummary.paidAmount,
-                remainingAmount: paymentSummary.remainingAmount,
-                paymentSummaryStatus: paymentSummary.status,
-                payments: Array.isArray(detail.payments) ? detail.payments : [],
-                paymentDueDate: detail.paymentDueDate || '',
-                workDate: detail.workDate || dateKey,
-                loadLoc: detail.loadLoc || '',
-                unloadLoc: detail.unloadLoc || '',
-                remarks: detail.remarks || ''
+            record.callDetails.forEach((detail, detailIndex) => {
+                const paymentSummary = getDetailPaymentSummary(detail);
+                if (paymentSummary.status === 'paid') {
+                    return;
+                }
+
+                items.push({
+                    dateKey,
+                    detailIndex,
+                    logId: source.logId,
+                    logLabel: source.logLabel,
+                    client: detail.client || '미지정 거래처',
+                    fare: parseCurrencyValue(detail.fare),
+                    paidAmount: paymentSummary.paidAmount,
+                    remainingAmount: paymentSummary.remainingAmount,
+                    paymentSummaryStatus: paymentSummary.status,
+                    payments: Array.isArray(detail.payments) ? detail.payments : [],
+                    paymentDueDate: detail.paymentDueDate || '',
+                    workDate: detail.workDate || dateKey,
+                    loadLoc: detail.loadLoc || '',
+                    unloadLoc: detail.unloadLoc || '',
+                    remarks: detail.remarks || ''
+                });
             });
         });
     });
@@ -7395,8 +7443,6 @@ function getReceivableItems() {
 }
 
 function getOverdueReceivableItems() {
-    if (!getActiveLogSettings().paymentOn) return [];
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return getReceivableItems().filter(item => {
@@ -7406,8 +7452,9 @@ function getOverdueReceivableItems() {
     });
 }
 
+// 어느 차량(logId)의 기록인지까지 포함해야 차량마다 알림 무시 여부가 올바르게 구분된다.
 function getNotificationItemKey(item) {
-    return `${activeLogId}|${item.dateKey}|${item.detailIndex}|${item.paymentDueDate}`;
+    return `${item.logId}|${item.dateKey}|${item.detailIndex}|${item.paymentDueDate}`;
 }
 
 function getDismissedNotificationKeys() {
@@ -7440,10 +7487,12 @@ function updateOverdueNotification(announce = false) {
     const now = new Date();
     const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const signature = overdueItems
-        .map(item => `${item.dateKey}:${item.detailIndex}:${item.paymentDueDate}`)
+        .map(item => `${item.logId}:${item.dateKey}:${item.detailIndex}:${item.paymentDueDate}`)
         .sort()
         .join('|');
-    const alertKey = `${todayKey}|${activeLogId}|${signature}`;
+    // 이제 여러 차량 로그를 합산한 결과이므로 activeLogId로 더 이상 범위를 좁히지 않는다
+    // (그러면 로그를 전환할 때마다 같은 연체 알림 토스트가 다시 뜨게 된다).
+    const alertKey = `${todayKey}|${signature}`;
     if (localStorage.getItem('lastOverdueReceivableAlert') === alertKey) return;
 
     localStorage.setItem('lastOverdueReceivableAlert', alertKey);
@@ -7463,6 +7512,9 @@ function renderNotificationPanel() {
         return;
     }
 
+    // 서브 차량이 하나도 없는(메인만 쓰는) 계정에는 차량 구분 배지를 아예 노출하지 않는다.
+    const hasSubCars = (getUserSettings().cars || []).some(car => car.type === 'sub');
+
     container.innerHTML = overdueItems.map(item => `
         <div class="notification-swipe-shell" data-notification-key="${escapeDetailText(getNotificationItemKey(item))}">
             <div class="notification-delete-backdrop" aria-hidden="true"><span>삭제</span><span>삭제</span></div>
@@ -7471,6 +7523,7 @@ function renderNotificationPanel() {
                     <strong>${escapeDetailText(item.client)}</strong>
                     <span>${getDdayText(item.paymentDueDate)}</span>
                 </div>
+                ${hasSubCars ? `<div class="notification-panel-item-car"><span class="management-badge car-type${item.logId === 'main' ? ' main' : ''}">${escapeDetailText(item.logLabel)}</span></div>` : ''}
                 <p class="notification-panel-item-message">입금 예정일이 지난 미수금입니다. 정산 내역을 확인해 주세요.</p>
                 <div class="notification-panel-item-meta">
                     <span>입금 예정일 ${item.paymentDueDate.replace(/-/g, '.')}</span>
@@ -7650,6 +7703,8 @@ function renderReceivablesManagement(tab) {
     currentReceivableTab = tab;
     const container = document.getElementById('receivablesListContainer');
     const items = getReceivableItems();
+    // 서브 차량이 하나도 없는(메인만 쓰는) 계정에는 차량 구분 배지를 아예 노출하지 않는다.
+    const hasSubCars = (getUserSettings().cars || []).some(car => car.type === 'sub');
 
     if (tab === 'monthly') {
         const grouped = {};
@@ -7682,12 +7737,21 @@ function renderReceivablesManagement(tab) {
 
         container.innerHTML = groups.map(group => {
             const [year, month] = group.monthKey.split('-');
+            // 한 그룹(같은 거래처+월)에 여러 차량의 기록이 섞여 있을 수 있으므로, 관련된
+            // 차량을 전부 모아 배지로 보여준다(중복 제거).
+            const distinctLogs = hasSubCars
+                ? [...new Map(group.items.map(i => [i.logId, i])).values()]
+                : [];
+            const carBadges = distinctLogs
+                .map(i => `<span class="management-badge car-type${i.logId === 'main' ? ' main' : ''}">${escapeDetailText(i.logLabel)}</span>`)
+                .join('');
             return `
                 <div class="receivable-group-card">
                     <div class="receivable-group-head">
                         <div class="receivable-group-title">${escapeDetailText(group.client)}</div>
                         <div class="receivable-group-period">${year}년 ${parseInt(month, 10)}월 운행분</div>
                     </div>
+                    ${carBadges ? `<div class="receivable-group-cars">${carBadges}</div>` : ''}
                     <div class="receivable-group-summary">
                         <span class="receivable-summary-label">미수금</span>
                         <strong class="receivable-summary-amount">${group.total.toLocaleString()}원</strong>
@@ -7725,11 +7789,15 @@ function renderReceivablesManagement(tab) {
 
     container.innerHTML = dueItems.map(item => {
         const workMonth = item.workDate.slice(0, 7).replace('-', '년 ') + '월';
+        const carBadge = hasSubCars
+            ? `<div class="receivable-item-car"><span class="management-badge car-type${item.logId === 'main' ? ' main' : ''}">${escapeDetailText(item.logLabel)}</span></div>`
+            : '';
         return `
             <div class="receivable-item-card">
                 <div class="receivable-item-row">
                     <div>
                         <div class="receivable-item-client">${escapeDetailText(item.client)}</div>
+                        ${carBadge}
                         <div class="receivable-item-info">${workMonth} 운행분</div>
                         <div class="receivable-item-info">입금 예정일: ${item.paymentDueDate.replace(/-/g, '.')}</div>
                         <div class="receivable-dday">${getDdayText(item.paymentDueDate)}</div>
@@ -7770,6 +7838,8 @@ function renderReceivableDetail() {
     const [year, month] = monthKey.split('-');
     const total = items.reduce((sum, item) => sum + item.remainingAmount, 0);
     const dueDates = items.map(item => item.paymentDueDate).filter(Boolean).sort();
+    // 서브 차량이 하나도 없는(메인만 쓰는) 계정에는 차량 구분 배지를 아예 노출하지 않는다.
+    const hasSubCars = (getUserSettings().cars || []).some(car => car.type === 'sub');
 
     document.getElementById('receivableDetailClient').textContent = clientName;
     document.getElementById('receivableDetailPeriod').textContent = `${year}년 ${parseInt(month, 10)}월 운행분`;
@@ -7808,12 +7878,17 @@ function renderReceivableDetail() {
             return `<div class="receivable-payment-history-row"><span>${escapeDetailText(paidAtText)}</span><span>${parseCurrencyValue(payment.amount).toLocaleString()}원</span></div>`;
         }).join('');
 
+        const carBadge = hasSubCars
+            ? `<span class="management-badge car-type${item.logId === 'main' ? ' main' : ''}">${escapeDetailText(item.logLabel)}</span>`
+            : '';
+
         return `
             <article class="receivable-detail-item">
                 <div class="receivable-detail-item-top">
                     <time datetime="${item.workDate}">${item.workDate.replace(/-/g, '.')}</time>
                     <strong>${item.remainingAmount.toLocaleString()}원</strong>
                 </div>
+                ${carBadge ? `<div class="receivable-detail-car">${carBadge}</div>` : ''}
                 <div class="receivable-detail-route">${route}</div>
                 <div class="receivable-detail-due">${due}</div>
                 ${item.remarks ? `<p class="receivable-detail-remarks">${escapeDetailText(item.remarks)}</p>` : ''}
@@ -7821,13 +7896,13 @@ function renderReceivableDetail() {
                 ${payments.length ? `<button type="button" class="receivable-history-toggle-btn" onclick="togglePaymentHistory(this)">입금 내역 보기 (${payments.length}건)</button>
                 <div class="receivable-payment-history hidden">${historyRows}</div>` : ''}
                 <div class="receivable-item-actions">
-                    <button type="button" class="receivable-item-paid-btn" onclick="markReceivableItemPaid('${item.dateKey}', ${item.detailIndex})">이 건 입금 완료</button>
+                    <button type="button" class="receivable-item-paid-btn" onclick="markReceivableItemPaid('${escapeForInlineHandlerArg(item.logId)}', '${item.dateKey}', ${item.detailIndex})">이 건 입금 완료</button>
                     <button type="button" class="receivable-item-partial-btn" onclick="togglePartialPaymentInput(this)">부분 입금 처리</button>
-                    ${payments.length ? `<button type="button" class="receivable-item-undo-btn" onclick="undoLastPayment('${item.dateKey}', ${item.detailIndex})">취소</button>` : ''}
+                    ${payments.length ? `<button type="button" class="receivable-item-undo-btn" onclick="undoLastPayment('${escapeForInlineHandlerArg(item.logId)}', '${item.dateKey}', ${item.detailIndex})">취소</button>` : ''}
                 </div>
                 <div class="receivable-partial-input-row hidden">
                     <input type="text" inputmode="numeric" class="input-box receivable-partial-amount" placeholder="입금액 입력" oninput="formatCurrencyInput(this)">
-                    <button type="button" class="receivable-partial-confirm-btn" onclick="confirmPartialPayment(this, '${item.dateKey}', ${item.detailIndex})">확인</button>
+                    <button type="button" class="receivable-partial-confirm-btn" onclick="confirmPartialPayment(this, '${escapeForInlineHandlerArg(item.logId)}', '${item.dateKey}', ${item.detailIndex})">확인</button>
                 </div>
             </article>`;
     }).join('');
@@ -7847,8 +7922,11 @@ function togglePaymentHistory(btnEl) {
 }
 
 // 부분 입금 등록: payments 배열에 한 건을 추가한다. 남은 금액을 초과하는 입력은 막는다.
-function addPartialPayment(dateKey, detailIndex, amount) {
-    const detail = workData[dateKey]?.callDetails?.[detailIndex];
+// logId('main' 또는 서브 차량 번호)로 그 항목이 속한 실제 로그를 찾아 반영한다 — 지금 열려
+// 있는 차량 로그가 아니어도 정확히 그 차량의 저장소에 반영된다.
+function addPartialPayment(logId, dateKey, detailIndex, amount) {
+    const store = readWorkDataStoreForLog(logId);
+    const detail = store[dateKey]?.callDetails?.[detailIndex];
     if (!detail) return;
 
     const value = parseCurrencyValue(amount);
@@ -7877,21 +7955,22 @@ function addPartialPayment(dateKey, detailIndex, amount) {
     detail.payments.push({ id: generateLocalId('pay'), amount: value, paidAt: new Date().toISOString(), note: '' });
     syncDetailPaymentStatus(detail);
 
-    saveDataToStorage();
-    buildCalendar();
+    writeWorkDataStoreForLog(logId, store);
+    if (logId === activeLogId) buildCalendar();
     renderReceivableDetail();
     showToastMessage('부분 입금을 등록했습니다.');
 }
 
-function confirmPartialPayment(btnEl, dateKey, detailIndex) {
+function confirmPartialPayment(btnEl, logId, dateKey, detailIndex) {
     const input = btnEl.closest('.receivable-partial-input-row')?.querySelector('input');
     if (!input) return;
-    addPartialPayment(dateKey, detailIndex, input.value);
+    addPartialPayment(logId, dateKey, detailIndex, input.value);
 }
 
 // 가장 최근에 추가된 입금 기록 1건만 되돌린다 (전체 초기화가 아님).
-function undoLastPayment(dateKey, detailIndex) {
-    const detail = workData[dateKey]?.callDetails?.[detailIndex];
+function undoLastPayment(logId, dateKey, detailIndex) {
+    const store = readWorkDataStoreForLog(logId);
+    const detail = store[dateKey]?.callDetails?.[detailIndex];
     if (!detail || !Array.isArray(detail.payments) || detail.payments.length === 0) {
         showToastMessage('되돌릴 입금 기록이 없습니다.');
         return;
@@ -7900,8 +7979,8 @@ function undoLastPayment(dateKey, detailIndex) {
     showConfirmModal('가장 최근 입금 기록 1건을 취소하시겠습니까?', () => {
         detail.payments.pop();
         syncDetailPaymentStatus(detail);
-        saveDataToStorage();
-        buildCalendar();
+        writeWorkDataStoreForLog(logId, store);
+        if (logId === activeLogId) buildCalendar();
         renderReceivableDetail();
         showToastMessage('입금 기록을 취소했습니다.');
     });
@@ -7909,8 +7988,9 @@ function undoLastPayment(dateKey, detailIndex) {
 
 // "이 건 입금 완료": 남은 금액 전액을 결제 이력 한 건으로 등록해 완납 처리한다.
 // (부분입금이 이미 있는 상태에서 눌러도 잔액만큼만 추가되므로 중복 합산되지 않는다.)
-function markReceivableItemPaid(dateKey, detailIndex) {
-    const detail = workData[dateKey]?.callDetails?.[detailIndex];
+function markReceivableItemPaid(logId, dateKey, detailIndex) {
+    const store = readWorkDataStoreForLog(logId);
+    const detail = store[dateKey]?.callDetails?.[detailIndex];
     const summary = detail ? getDetailPaymentSummary(detail) : null;
     if (!detail || summary.status === 'paid') {
         showToastMessage('이미 처리된 내역입니다.');
@@ -7923,8 +8003,8 @@ function markReceivableItemPaid(dateKey, detailIndex) {
     }
     syncDetailPaymentStatus(detail);
 
-    saveDataToStorage();
-    buildCalendar();
+    writeWorkDataStoreForLog(logId, store);
+    if (logId === activeLogId) buildCalendar();
     renderReceivableDetail();
     showToastMessage('입금 완료 처리했습니다.');
 }
@@ -7934,24 +8014,27 @@ function markCurrentReceivableGroupPaid() {
     markMonthlyReceivablesPaid(currentReceivableDetail.clientName, currentReceivableDetail.monthKey, true);
 }
 
+// 그룹(거래처+월)에 속한 항목이 여러 차량 로그에 걸쳐 있을 수 있으므로, getReceivableItems()로
+// 정확히 같은 대상을 다시 추려서 로그별로 묶은 뒤 각 로그의 저장소에 정확히 반영한다.
 function markMonthlyReceivablesPaid(clientName, monthKey, stayOnDetail = false) {
-    Object.keys(workData).forEach(dateKey => {
-        const record = workData[dateKey];
+    const targets = getReceivableItems().filter(item =>
+        item.client === clientName && item.workDate.slice(0, 7) === monthKey
+    );
 
-        if (!record || !record.callDetails) {
-            return;
-        }
+    const itemsByLog = new Map();
+    targets.forEach(item => {
+        if (!itemsByLog.has(item.logId)) itemsByLog.set(item.logId, []);
+        itemsByLog.get(item.logId).push(item);
+    });
 
-        record.callDetails.forEach(detail => {
-            const workDate = detail.workDate || dateKey;
-            if ((detail.client || '미지정 거래처') !== clientName || workDate.slice(0, 7) !== monthKey) {
-                return;
-            }
+    itemsByLog.forEach((logItems, logId) => {
+        const store = readWorkDataStoreForLog(logId);
+        logItems.forEach(({ dateKey, detailIndex }) => {
+            const detail = store[dateKey]?.callDetails?.[detailIndex];
+            if (!detail) return;
 
             const summary = getDetailPaymentSummary(detail);
-            if (summary.status === 'paid') {
-                return;
-            }
+            if (summary.status === 'paid') return;
 
             if (!Array.isArray(detail.payments)) detail.payments = [];
             if (summary.remainingAmount > 0) {
@@ -7959,10 +8042,10 @@ function markMonthlyReceivablesPaid(clientName, monthKey, stayOnDetail = false) 
             }
             syncDetailPaymentStatus(detail);
         });
+        writeWorkDataStoreForLog(logId, store);
     });
 
-    saveDataToStorage();
-    buildCalendar();
+    if (itemsByLog.has(activeLogId)) buildCalendar();
     if (stayOnDetail) renderReceivableDetail();
     else renderReceivablesManagement('monthly');
     showToastMessage(`${clientName} ${parseInt(monthKey.slice(5, 7), 10)}월분 미수금을 수금 완료 처리했습니다.`);
