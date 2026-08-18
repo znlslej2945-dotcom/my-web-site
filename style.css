@@ -1681,8 +1681,8 @@ body {
 body.account-flow-active {
     min-height: 100dvh;
     padding-bottom: 0;
-    background: #111111;
-    color: #f5f5f5;
+    background: var(--bg-color);
+    color: var(--text-color);
 }
 
 body.account-flow-active .container {
@@ -1730,10 +1730,10 @@ body.account-flow-active #sideMenuOverlay {
     height: 48px;
     margin: 0;
     padding: 0;
-    border: 1px solid #353535;
+    border: 1px solid var(--border-color);
     border-radius: 16px;
-    background: #1d1d1d;
-    color: #f5f5f5;
+    background: var(--card-bg);
+    color: var(--text-color);
     cursor: pointer;
 }
 
@@ -1753,7 +1753,7 @@ body.account-flow-active #sideMenuOverlay {
     gap: 9px;
     width: max-content;
     margin: 0 0 42px;
-    color: #69a9f2;
+    color: var(--primary-color);
     font-size: 1.05rem;
     font-weight: 900;
     letter-spacing: -.03em;
@@ -1776,7 +1776,7 @@ body.account-flow-active #sideMenuOverlay {
 .account-flow-topbar .account-flow-brand { justify-self: center; margin: 0; }
 
 .account-flow-heading > span {
-    color: #69a9f2;
+    color: var(--primary-color);
     font-size: .72rem;
     font-weight: 900;
     letter-spacing: .15em;
@@ -1784,7 +1784,7 @@ body.account-flow-active #sideMenuOverlay {
 
 .account-flow-heading h1 {
     margin: 14px 0 16px;
-    color: #f7f7f7;
+    color: var(--text-color);
     font-size: clamp(2rem, 8.8vw, 2.5rem);
     line-height: 1.16;
     letter-spacing: -.055em;
@@ -1792,7 +1792,7 @@ body.account-flow-active #sideMenuOverlay {
 
 .account-flow-heading p {
     margin: 0;
-    color: #9b9b9b;
+    color: var(--sub-text-color);
     font-size: .88rem;
     line-height: 1.6;
 }
@@ -1811,20 +1811,20 @@ body.account-flow-active #sideMenuOverlay {
     width: 100%;
     min-height: 104px;
     padding: 18px;
-    border: 1px solid #363636;
+    border: 1px solid var(--border-color);
     border-radius: 22px;
-    background: #1d1d1d;
-    color: #f5f5f5;
-    box-shadow: 0 5px 12px rgba(0, 0, 0, .24);
+    background: var(--card-bg);
+    color: var(--text-color);
+    box-shadow: var(--shadow-md);
     font: inherit;
     text-align: left;
     cursor: pointer;
 }
 
 .account-type-option.active {
-    border-color: #587da7;
-    background: #22282e;
-    box-shadow: 0 0 0 1px rgba(105, 169, 242, .08), 0 8px 20px rgba(0, 0, 0, .28);
+    border-color: color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color) 13%, var(--card-bg)), var(--card-bg) 72%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 14%, transparent), var(--shadow-md);
 }
 
 .account-type-icon {
@@ -1833,8 +1833,8 @@ body.account-flow-active #sideMenuOverlay {
     width: 58px;
     height: 58px;
     border-radius: 18px;
-    background: #303740;
-    color: #69a9f2;
+    background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
+    color: var(--primary-color);
 }
 
 .account-type-icon svg,
@@ -1856,16 +1856,16 @@ body.account-flow-active #sideMenuOverlay {
     min-width: 0;
 }
 
-.account-type-option strong { color: #f5f5f5; font-size: 1rem; font-weight: 850; }
-.account-type-option small { color: #9d9d9d; font-size: .78rem; line-height: 1.45; }
+.account-type-option strong { color: var(--text-color); font-size: 1rem; font-weight: 850; }
+.account-type-option small { color: var(--sub-text-color); font-size: .78rem; line-height: 1.45; }
 
 .account-flow-primary {
     width: 100%;
     min-height: 60px;
     margin-top: auto;
-    border: 1px solid #4d91dc;
+    border: 1px solid var(--primary-color);
     border-radius: 18px;
-    background: #4d91dc;
+    background: var(--primary-color);
     color: #fff;
     font: inherit;
     font-size: 1rem;
@@ -1874,9 +1874,9 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 .account-flow-primary:disabled {
-    border-color: #343434;
-    background: #2a2a2a;
-    color: #909090;
+    border-color: var(--border-color);
+    background: var(--input-bg);
+    color: var(--sub-text-color);
     cursor: default;
 }
 
@@ -1890,10 +1890,10 @@ body.account-flow-active #sideMenuOverlay {
     min-height: 94px;
     margin-bottom: 32px;
     padding: 14px 16px;
-    border: 1px solid #56799f;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
     border-radius: 21px;
-    background: #22282e;
-    color: #69a9f2;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color) 13%, var(--card-bg)), var(--card-bg) 72%);
+    color: var(--primary-color);
 }
 
 .login-selected-account-type > span:first-child {
@@ -1902,11 +1902,11 @@ body.account-flow-active #sideMenuOverlay {
     width: 54px;
     height: 54px;
     border-radius: 17px;
-    background: #303740;
+    background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
 }
 
-.login-selected-account-type strong { color: #f5f5f5; font-size: .96rem; }
-.login-selected-account-type small { color: #9d9d9d; font-size: .75rem; line-height: 1.45; }
+.login-selected-account-type strong { color: var(--text-color); font-size: .96rem; }
+.login-selected-account-type small { color: var(--sub-text-color); font-size: .75rem; line-height: 1.45; }
 
 .login-local-form {
     display: grid;
@@ -1916,7 +1916,7 @@ body.account-flow-active #sideMenuOverlay {
 
 .login-local-form label {
     margin: 7px 0 2px;
-    color: #f5f5f5;
+    color: var(--text-color);
     font-size: .8rem;
     font-weight: 850;
 }
@@ -1927,15 +1927,15 @@ body.account-flow-active #sideMenuOverlay {
     margin: 0;
     padding: 0 20px;
     box-sizing: border-box;
-    border: 1px solid #383838;
+    border: 1px solid var(--border-color);
     border-radius: 22px;
-    background: #292929;
-    color: #f5f5f5;
+    background: var(--input-bg);
+    color: var(--text-color);
     font-size: .92rem;
 }
 
-.login-local-form .input-box::placeholder { color: #929292; }
-.login-local-form .input-box:focus { border-color: #5d8fc5; outline: 2px solid rgba(105, 169, 242, .12); }
+.login-local-form .input-box::placeholder { color: var(--sub-text-color); }
+.login-local-form .input-box:focus { border-color: var(--primary-color); outline: 2px solid color-mix(in srgb, var(--primary-color) 12%, transparent); }
 
 .login-invite-field {
     display: grid;
@@ -1947,8 +1947,8 @@ body.account-flow-active #sideMenuOverlay {
 
 .login-invite-field.hidden { display: none !important; }
 .login-invite-field > span { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.login-invite-field strong { color: #f5f5f5; font-size: .8rem; font-weight: 850; }
-.login-invite-field small { color: #929292; font-size: .7rem; line-height: 1.45; }
+.login-invite-field strong { color: var(--text-color); font-size: .8rem; font-weight: 850; }
+.login-invite-field small { color: var(--sub-text-color); font-size: .7rem; line-height: 1.45; }
 .login-invite-field .input-box { min-width: 0; text-align: center; letter-spacing: .16em; }
 
 @media (max-width: 360px) {
@@ -6637,8 +6637,8 @@ button.save-action-loading::after {
 }
 
 .account-flow-primary.save-action-loading:disabled {
-    border-color:#4d91dc;
-    background:#4d91dc;
+    border-color:var(--primary-color);
+    background:var(--primary-color);
 }
 
 @keyframes save-action-spin {

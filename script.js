@@ -1555,16 +1555,6 @@ function normalizeLegacyData() {
     }
 }
 
-// 운송사·운영 사장(operator) 계정 유형 폐지: 과거에 저장된 값을 차주(owner_driver)로 일원화
-function normalizeLegacyAccountType() {
-    const settings = getUserSettings();
-    if (settings.accountType === 'operator') {
-        settings.accountType = 'owner_driver';
-        settings.driverType = 'owner_driver';
-        setUserSettings(settings);
-    }
-}
-
 function getRecordTotalDistance(record) {
     const details = Array.isArray(record?.callDetails) ? record.callDetails : [];
     const hasDetailDistance = details.some(detail => String(detail?.distanceKm ?? '').trim() !== '');
@@ -7025,7 +7015,6 @@ function editCar(idx) {
 
 // 앱 초기화 구문
 normalizeLegacyData();
-normalizeLegacyAccountType();
 try {
     syncNormalizedEntityStore();
 } catch (error) {
