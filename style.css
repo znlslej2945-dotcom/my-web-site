@@ -800,7 +800,7 @@ body {
 .app-dropdown-option {
     display: block;
     width: 100%;
-    min-height: 38px;
+    min-height: 44px;
     padding: 8px 10px;
     border: 0;
     border-radius: 7px;
@@ -836,7 +836,7 @@ body {
 
 .date-select-group .app-dropdown-trigger {
     position: relative;
-    min-height: 34px;
+    min-height: 44px;
     padding: 0 8px;
     border-color: transparent;
     background: transparent;
@@ -949,7 +949,7 @@ body {
 .app-temporal-option {
     display: block;
     width: 100%;
-    min-height: 36px;
+    min-height: 44px;
     padding: 7px 5px;
     border: 0;
     border-radius: 7px;
@@ -1291,6 +1291,31 @@ body {
     font-weight: 700;
 }
 
+.modal-title-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.autosave-status {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--sub-text-color);
+    height: 14px;
+    line-height: 14px;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.autosave-status.visible {
+    opacity: 1;
+}
+
+.autosave-status.error {
+    color: #e05252;
+}
+
 /* 마이페이지 홈 */
 #myPage {
     padding-bottom: 92px;
@@ -1618,7 +1643,7 @@ body {
 }
 
 .message-settings-actions button {
-    min-height: 42px;
+    min-height: 44px;
     margin: 0;
     border-radius: 12px;
     font: inherit;
@@ -1675,9 +1700,7 @@ body.account-flow-active #sideMenuOverlay {
     display: none !important;
 }
 
-#driverConnectionMenuBtn.hidden,
 .account-flow-back.hidden,
-#ownerDriverLinkSummaryCard.hidden,
 #employedDriverLinkCard.hidden,
 #employedDriverDisconnectedPanel.hidden,
 #employedDriverConnectedPanel.hidden,
@@ -1815,8 +1838,7 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 .account-type-icon svg,
-.login-selected-account-type svg,
-.personal-role-summary-icon svg {
+.login-selected-account-type svg {
     width: 24px;
     height: 24px;
     fill: none;
@@ -1827,8 +1849,7 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 .account-type-option > span:last-child,
-.login-selected-account-type > span:last-child,
-.personal-role-summary > span:last-child {
+.login-selected-account-type > span:last-child {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -1942,33 +1963,9 @@ body.account-flow-active #sideMenuOverlay {
     .login-invite-field { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
 }
 
-/* 개인정보의 사용자 유형·연동 상태 */
-.personal-role-summary {
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    padding: 11px;
-    border-radius: 14px;
-    background: var(--input-bg);
-}
-
-.personal-role-summary-icon {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 13px;
-    background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg));
-    color: var(--primary-color);
-}
-
-.personal-role-summary strong { color: var(--text-color); font-size: .8rem; }
-.personal-role-summary small { color: var(--sub-text-color); font-size: .64rem; line-height: 1.4; }
-
 .personal-role-change-btn {
     width: 100%;
-    min-height: 39px;
+    min-height: 44px;
     margin-top: 9px;
     border: 1px solid var(--border-color);
     border-radius: 11px;
@@ -1982,8 +1979,6 @@ body.account-flow-active #sideMenuOverlay {
 
 .personal-role-change-btn.primary { border-color: var(--primary-color); background: var(--primary-color); color: #fff; }
 .personal-role-change-btn.danger { border-color: color-mix(in srgb, var(--sunday-color) 36%, var(--border-color)); color: var(--sunday-color); background: transparent; }
-.personal-link-status-row { display:flex; align-items:center; justify-content:space-between; padding:11px 12px; border-radius:12px; background:var(--input-bg); color:var(--sub-text-color); font-size:.72rem; }
-.personal-link-status-row strong { color:var(--primary-color); font-size:.88rem; }
 .employer-link-form .form-group { margin-bottom: 8px; }
 .employer-link-divider { display:flex; align-items:center; gap:8px; margin:4px 0; color:var(--sub-text-color); font-size:.62rem; }
 .employer-link-divider::before,.employer-link-divider::after { content:""; flex:1; height:1px; background:var(--border-color); }
@@ -2119,7 +2114,7 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 .car-commission-type button {
-    min-height: 38px;
+    min-height: 44px;
     border: 0;
     border-radius: 9px;
     background: transparent;
@@ -2366,7 +2361,7 @@ body.account-flow-active #sideMenuOverlay {
 }
 
 #personalInfoPage .input-box {
-    min-height: 42px;
+    min-height: 44px;
     padding: 10px 14px;
     border-radius: 14px;
     font-size: 0.88rem;
@@ -2450,17 +2445,6 @@ body.account-flow-active #sideMenuOverlay {
 .setting-item label {
     font-weight: 600;
     font-size: 0.9rem;
-}
-
-/* 2. 긴 막대기 대신 사용할 회색 동그라미 추가 */
-.grey-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--sub-text-color);
-    margin-right: 8px;
-    vertical-align: middle;
 }
 
 /* 종속 관계 수직선 트리 디자인 적용 (부드러운 곡선) */
@@ -2759,13 +2743,22 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 /* 일일 운행내역 좌측 슬라이드 패널 관련 코드 삭제 (Navigation/Push 페이지로 대체) */
 
-#maintDetailModal, #maintRecordModal, #callDetailModal, #detailReportSelectModal {
+#maintRecordModal, #callDetailModal, #detailReportSelectModal {
     z-index: 1050;
 }
 
 #confirmModal {
     z-index: 1200;
 }
+
+.confirm-modal-title {
+    margin-bottom:20px;
+    color:var(--sunday-color);
+}
+
+#confirmModal[data-tone="primary"] .confirm-modal-title { color:var(--primary-color); }
+#confirmModal[data-tone="danger"] .modal-btn.confirm { background-color:var(--sunday-color); }
+#confirmModal[data-tone="primary"] .modal-btn.confirm { background-color:var(--primary-color); }
 
 .modal-overlay.hidden {
     display: none !important;
@@ -2830,29 +2823,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border-radius: 4px;
 }
 
-.call-item-row, .maint-item-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-.call-item-row .input-box, .maint-item-row .input-box {
-    flex: 1;
-}
-
 /* 둥근 버튼류 */
-.btn-del {
-    background-color: var(--sunday-color);
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 20px;
-    cursor: pointer;
-    font-weight: bold;
-    min-height: 42px;
-}
-
 .compact-add-btn {
     background-color: var(--input-bg);
     border: 1px solid var(--border-color);
@@ -2869,13 +2840,15 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     background-color: var(--hover-bg);
 }
 
-/* 주유 내역 추가 모달 강제 다크 테마 지정 (피그마 디자인 스펙) */
-.fuel-modal-dark {
+/* 주유 내역 추가 모달 (피그마 디자인 스펙) - 다크모드에서는 전용 팔레트, 라이트모드에서는 기본 테마 변수를 사용 */
+[data-theme="dark"] .fuel-modal-dark {
     --card-bg: #1e1e1e;
     --input-bg: #2c2c2c;
     --text-color: #ffffff;
     --sub-text-color: #a0a0a0;
     --border-color: #3a3a3a;
+}
+.fuel-modal-dark {
     background-color: var(--card-bg);
     border: 1px solid var(--border-color);
     color: var(--text-color);
@@ -2939,7 +2912,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .toggle-btn {
     flex: 1;
     min-width: 52px;
-    min-height: 42px;
+    min-height: 44px;
     padding: 8px;
     border-radius: 24px;
     border: 1px solid var(--border-color);
@@ -3116,7 +3089,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .location-shortcuts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
 .location-chip { display: inline-flex; align-items: stretch; max-width: 100%; overflow: hidden; border: 1px solid var(--border-color); border-radius: 999px; background: var(--input-bg); }
 .location-chip.pinned { border-color: var(--primary-color); }
-.location-chip button { min-height: 30px; border: 0; background: transparent; color: var(--sub-text-color); cursor: pointer; }
+.location-chip button { min-height: 44px; border: 0; background: transparent; color: var(--sub-text-color); cursor: pointer; }
 .location-chip-select { max-width: 112px; padding: 5px 4px 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; }
 .location-chip-pin { width: 28px; padding: 4px 7px 4px 3px; color: var(--primary-color) !important; font-size: .82rem; }
 .call-detail-panel .input-box { min-width: 0; min-height: 44px; padding: 10px 13px; border-color: var(--border-color); background: var(--input-bg); text-align: center; }
@@ -3126,11 +3099,13 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .call-money-panel #callDetailFare { color: var(--primary-color); font-size: 1.05rem; font-weight: 800; }
 .call-two-column-panel .input-with-suffix .input-box { padding-right: 34px; }
 .call-detail-panel .input-error { border-color: var(--sunday-color); color: var(--sunday-color); }
+/* 거래처/차량/연동기사 등록 폼 등 .call-detail-panel 밖에서도 쓰는 범용 필수입력 오류 표시 */
+.input-error { border-color: var(--sunday-color); }
 .platform-main-row { grid-template-columns: 82px minmax(0, 1fr); }
 .call-platform-quick-list, .call-client-shortcuts { justify-content: flex-start; gap: 7px; margin-top: 8px; }
-.call-platform-quick-list .dark-pill-btn, .call-client-shortcuts .dark-pill-btn { flex: 0 0 auto; min-height: 34px; padding: 7px 11px; border-radius: 999px; }
+.call-platform-quick-list .dark-pill-btn, .call-client-shortcuts .dark-pill-btn { flex: 0 0 auto; min-height: 44px; padding: 7px 11px; border-radius: 999px; }
 #callReceiptGroup { flex-wrap: nowrap; width: 100%; gap: 6px; }
-#callReceiptGroup .dark-pill-btn { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 8px 4px; border-radius: 999px; font-size: .88rem; }
+#callReceiptGroup .dark-pill-btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 8px 4px; border-radius: 999px; font-size: .88rem; }
 .call-client-panel > label { display: block; margin: 0 0 8px 4px; }
 .call-client-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .call-client-add-btn { min-width: 64px; border: 1px solid var(--border-color); border-radius: 999px; background: var(--input-bg); color: var(--text-color); font-weight: 750; cursor: pointer; }
@@ -3196,8 +3171,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .call-detail-card-head,
 .call-detail-card-foot,
-.call-detail-money-grid,
-.detail-calculation span,
 .call-detail-daily-summary > div {
     display: flex;
     align-items: center;
@@ -3251,36 +3224,8 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     font-weight: 800;
 }
 
-.call-detail-money-grid {
-    align-items: flex-end;
-    gap: 12px;
-    margin-top: 6px;
-}
-
-.detail-fare {
-    flex-shrink: 0;
-    color: var(--text-color);
-    font-size: 1.05rem;
-}
-
-.detail-calculation {
-    width: min(48%, 180px);
-    font-size: .78rem;
-}
-
-.detail-calculation span {
-    gap: 10px;
-    margin-top: 2px;
-}
-
-.detail-calculation .commission-row,
 .call-detail-daily-summary .commission-row {
     color: var(--sunday-color);
-}
-
-.detail-calculation .detail-total {
-    color: var(--primary-color);
-    font-size: 1rem;
 }
 
 .call-detail-card-foot {
@@ -3319,7 +3264,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .call-detail-card .payment-toggle-btn {
     min-width: 58px;
-    min-height: 38px;
+    min-height: 44px;
     border-radius: 999px;
     font-size: .9rem;
 }
@@ -3368,9 +3313,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 @media (max-width: 390px) {
     .call-detail-route { font-size: 1.02rem; }
-    .call-detail-money-grid { display: block; }
-    .detail-calculation { width: 100%; margin-top: 8px; }
-    .detail-fare { display: block; }
 }
 
 /* 차량 정비/주유 - Figma 시안 미세 조정 */
@@ -3379,6 +3321,9 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 }
 .maint-fuel-add-btn.fuel-add-direct-btn {
     color: var(--primary-color);
+}
+.maint-fuel-add-btn.misc-add-direct-btn {
+    color: #d97706;
 }
 .maint-fuel-inline-host {
     max-height: 0;
@@ -3529,6 +3474,11 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--primary-color);
 }
 
+.misc-title-color .maint-fuel-icon,
+.misc-total-color {
+    color: #d97706;
+}
+
 .maint-fuel-actions {
     display: flex;
     flex-shrink: 0;
@@ -3582,7 +3532,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .maint-fuel-add-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     padding-top: 14px;
 }
@@ -3837,7 +3787,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 :is(#settingsPage, #subCarSettingsPage) .settings-main-card .toggle-btn {
     min-width: 52px;
-    min-height: 34px;
+    min-height: 44px;
     margin: 0;
     padding: 5px 10px;
     border: 0;
@@ -3997,7 +3947,7 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 .run-count-preset-chip {
     width: 100%;
     min-width: 0;
-    min-height: 36px;
+    min-height: 44px;
     padding: 5px 2px;
     border: 1px solid var(--border-color);
     border-radius: 10px;
@@ -4149,6 +4099,11 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--primary-color);
 }
 
+.misc-day .management-day-head > div span,
+.misc-day .management-day-head > div b {
+    color: #d97706;
+}
+
 .management-record-item {
     padding: 12px 12px 10px;
     margin-top: 9px;
@@ -4178,6 +4133,10 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
 
 .fuel-record .management-record-title svg {
     stroke: var(--primary-color);
+}
+
+.misc-record .management-record-title svg {
+    stroke: #d97706;
 }
 
 .management-record-actions {
@@ -4253,6 +4212,10 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     color: var(--primary-color);
 }
 
+#maintFuelMonthLabel.misc-color {
+    color: #d97706;
+}
+
 .maint-month-summary span,
 .maint-month-summary b {
     color: var(--sub-text-color);
@@ -4272,9 +4235,24 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     cursor: pointer;
 }
 
+.fuel-subsidy-export-btn {
+    width: 100%;
+    margin-bottom: 14px;
+    padding: 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 16px;
+    background: var(--input-bg);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+    font: inherit;
+    font-weight: 800;
+    font-size: .86rem;
+    cursor: pointer;
+}
+
 .maint-management-tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 10px;
 }
 
@@ -4316,6 +4294,11 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     border: 1px solid var(--border-color);
 }
 
+.modal-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 /* 토스트 메세지 UI */
 .toast-message {
     position: fixed;
@@ -4334,11 +4317,36 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     transition: opacity 0.25s ease-in-out;
     box-shadow: var(--shadow-md);
     white-space: nowrap;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    max-width:calc(100vw - 32px);
 }
 
 .toast-message.show {
     opacity: 1;
 }
+
+.toast-message.retryable {
+    pointer-events:auto;
+    white-space:normal;
+}
+
+.toast-action-btn {
+    flex:none;
+    min-height:34px;
+    padding:6px 12px;
+    border:1px solid rgba(255,255,255,.45);
+    border-radius:999px;
+    background:rgba(255,255,255,.14);
+    color:#fff;
+    font:inherit;
+    font-size:.76rem;
+    font-weight:850;
+    cursor:pointer;
+}
+
+.toast-action-btn:active { transform:scale(.97); }
 
 /* 모달 내부 서머리 카드 개선 */
 .maint-summary-card {
@@ -4350,35 +4358,9 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     font-size: 0.9rem;
 }
 
-.maint-summary-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-}
-
-.maint-summary-item:last-child {
-    margin-bottom: 0;
-}
-
 .car-action-btns {
     display: flex;
     gap: 6px;
-}
-
-.btn-edit {
-    background-color: var(--sub-text-color);
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 20px;
-    cursor: pointer;
-    font-weight: bold;
-    min-height: 42px;
-}
-
-.btn-edit:hover {
-    background-color: var(--icon-color);
 }
 
 /* 정비 내역 추가 모달 신규 UI */
@@ -4453,96 +4435,6 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
     text-align: center;
     transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
-.odometer-section {
-    background-color: var(--hover-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 16px;
-}
-
-.odometer-input-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-}
-
-.odometer-form-group {
-    margin-bottom: 0;
-}
-
-.odometer-form-group > label:first-child {
-    font-weight: 700;
-    margin-bottom: 7px;
-}
-
-.odometer-photo-btn {
-    display: block;
-    width: 100%;
-    margin-top: 8px;
-    padding: 9px 10px;
-    border: 1px dashed var(--primary-color);
-    border-radius: 8px;
-    color: var(--primary-color);
-    background-color: var(--card-bg);
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-align: center;
-    cursor: pointer;
-    box-sizing: border-box;
-}
-
-.odometer-photo-preview {
-    width: 100%;
-    height: 92px;
-    margin-top: 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    object-fit: cover;
-    background-color: var(--input-bg);
-}
-
-.odometer-photo-preview.hidden {
-    display: none;
-}
-
-.odometer-result-box {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 16px;
-    padding: 14px;
-    border-radius: 10px;
-    background-color: var(--card-bg);
-    border: 1px solid var(--primary-color);
-}
-
-.odometer-result-box span {
-    font-size: 0.95rem;
-    font-weight: 700;
-}
-
-.odometer-result-box strong {
-    color: var(--primary-color);
-    font-size: 1.2rem;
-}
-
-.odometer-result-box strong.error {
-    color: var(--sunday-color);
-}
-
-.odometer-guide-text {
-    margin: 10px 0 0;
-    color: var(--sub-text-color);
-    font-size: 0.78rem;
-    line-height: 1.45;
-}
-
-@media (max-width: 420px) {
-    .odometer-input-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
 /* PDF 출력 모드 전용 Overrides */
 body.pdf-export-mode {
     --bg-color: #ffffff !important;
@@ -4621,11 +4513,6 @@ body.pdf-export-mode .report-summary-box {
     background-color: #f9f9f9 !important;
     border: 1px solid #cccccc !important;
     color: #000000 !important;
-    border-radius: 0 !important;
-}
-
-body.pdf-export-mode .commission-chip,
-body.pdf-export-mode .sub-commission-chip {
     border-radius: 0 !important;
 }
 
@@ -4719,30 +4606,7 @@ body.pdf-export-mode .summary-row.total {
     color: var(--primary-color);
 }
 
-/* 플랫폼 버튼 스타일: 글자 길이에 맞춰 자동 조절 및 정렬 */
-.platform-btn {
-    background-color: #383838;
-    border: 1px solid #555;
-    color: #fff;
-    padding: 10px 18px;
-    border-radius: 20px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap; /* 긴 단어도 한 줄로 표시 */
-    transition: background-color 0.2s;
-}
-.platform-btn:hover {
-    background-color: #555;
-}
-
 /* --- 신규 추가: 세부 입력 카드 및 미수금 관련 스타일 --- */
-.maint-summary-item.unpaid-card {
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-sm);
-    border-left: 4px solid var(--sunday-color);
-}
-
 /* 수정, 삭제 아이콘 버튼 */
 .action-icon-btn {
     background: none;
@@ -5160,7 +5024,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .maint-management-tabs .toggle-btn {
-    min-height: 38px;
+    min-height: 44px;
     border-radius: 12px;
     font-size: .76rem;
 }
@@ -5171,7 +5035,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .receivable-tab {
-    min-height: 38px;
+    min-height: 44px;
     padding: 7px 6px;
     border-radius: 10px;
     font-size: .76rem;
@@ -5205,7 +5069,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 .receivable-complete-btn {
-    min-height: 38px;
+    min-height: 44px;
     margin-top: 10px;
     padding: 8px;
     font-size: .76rem;
@@ -5305,7 +5169,7 @@ body.pdf-export-mode .summary-row.total {
 .modal-content .pill-btn,
 .modal-content .dark-pill-btn,
 .modal-content .segment-btn {
-    min-height: 36px;
+    min-height: 44px;
     border-radius: 12px;
     font-size: .76rem;
 }
@@ -5433,31 +5297,13 @@ body.pdf-export-mode .summary-row.total {
     font-size: .66rem;
 }
 
-#workModal .call-detail-money-grid {
-    gap: 8px;
-    margin-top: 6px;
-}
-
-#workModal .detail-fare {
-    font-size: .86rem;
-}
-
-#workModal .detail-calculation {
-    font-size: .72rem;
-}
-
-#workModal .detail-calculation .detail-total {
-    font-size: .92rem;
-    font-weight: 850;
-}
-
 #workModal .call-detail-card-foot {
     margin-top: 8px;
 }
 
 #workModal .call-detail-card .payment-toggle-btn {
     min-width: 54px;
-    min-height: 36px;
+    min-height: 44px;
     padding-inline: 10px;
     border-radius: 12px;
     font-size: .76rem;
@@ -5568,7 +5414,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #workModal .location-chip button {
-    min-height: 30px;
+    min-height: 44px;
 }
 
 #workModal .call-detail-form-actions {
@@ -5683,7 +5529,7 @@ body.pdf-export-mode .summary-row.total {
 #workModal .call-detail-inline-host .call-platform-quick-list .dark-pill-btn {
     width: 100%;
     min-width: 0;
-    min-height: 34px;
+    min-height: 44px;
     padding: 6px 4px;
     border-radius: 10px;
     font-size: .7rem;
@@ -5715,7 +5561,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #workModal .call-detail-inline-host #callReceiptGroup .dark-pill-btn {
-    min-height: 36px;
+    min-height: 44px;
     padding: 7px 2px;
     border-radius: 10px;
     font-size: .72rem;
@@ -5980,7 +5826,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #receivablesManagementPage .receivable-tab {
-    min-height: 32px;
+    min-height: 44px;
     padding: 5px 7px;
     border: 0;
     border-radius: 9px;
@@ -6072,7 +5918,7 @@ body.pdf-export-mode .summary-row.total {
 #receivablesManagementPage .receivable-detail-btn,
 #receivablesManagementPage .receivable-complete-btn {
     width: auto;
-    min-height: 30px;
+    min-height: 44px;
     margin: 0;
     padding: 5px 10px;
     border: 1px solid color-mix(in srgb, var(--primary-color) 38%, transparent);
@@ -6089,7 +5935,7 @@ body.pdf-export-mode .summary-row.total {
 
 #receivablesManagementPage .receivable-complete-btn {
     width: auto;
-    min-height: 30px;
+    min-height: 44px;
     margin: 0;
     padding: 5px 10px;
     border: 1px solid color-mix(in srgb, var(--primary-color) 38%, transparent);
@@ -6127,7 +5973,30 @@ body.pdf-export-mode .summary-row.total {
 .receivable-detail-due { display:flex; align-items:center; gap:6px; margin-top:7px; color:var(--sub-text-color); font-size:.68rem; }
 .receivable-detail-due b { color:var(--primary-color); }
 .receivable-detail-remarks { margin:7px 0 0; color:var(--sub-text-color); font-size:.68rem; }
-.receivable-item-paid-btn { display:block; width:auto; min-height:30px; margin:11px 0 0 auto; padding:5px 10px; border:1px solid color-mix(in srgb, var(--primary-color) 38%, transparent); border-radius:9px; background:transparent; color:var(--primary-color); font-size:.7rem; font-weight:800; }
+
+.receivable-payment-status { margin-top:9px; color:var(--sunday-color); font-size:.72rem; font-weight:750; }
+.receivable-payment-status.partial { color:#d97706; }
+.receivable-payment-status .receivable-original-fare { color:var(--sub-text-color); font-weight:600; }
+
+.receivable-history-toggle-btn { display:block; margin-top:6px; padding:0; border:none; background:none; color:var(--primary-color); font-size:.68rem; font-weight:700; text-decoration:underline; cursor:pointer; }
+.receivable-payment-history { margin-top:6px; padding:8px 10px; border-radius:10px; background:var(--input-bg); }
+.receivable-payment-history.hidden { display:none; }
+.receivable-payment-history-row { display:flex; justify-content:space-between; gap:10px; font-size:.68rem; color:var(--sub-text-color); padding:2px 0; }
+
+.receivable-item-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin-top:11px; }
+.receivable-item-actions .receivable-item-paid-btn,
+.receivable-item-actions .receivable-item-partial-btn,
+.receivable-item-actions .receivable-item-undo-btn {
+    display:inline-block; width:auto; margin:0; min-height:30px; padding:5px 10px; border-radius:9px; font-size:.7rem; font-weight:800; background:transparent;
+}
+.receivable-item-partial-btn { border:1px solid var(--border-color); color:var(--text-color); }
+.receivable-item-undo-btn { border:1px solid color-mix(in srgb, var(--sunday-color) 38%, transparent); color:var(--sunday-color); }
+
+.receivable-partial-input-row { display:flex; gap:6px; margin-top:8px; }
+.receivable-partial-input-row.hidden { display:none; }
+.receivable-partial-input-row .input-box { flex:1; min-height:36px; padding:6px 10px; font-size:.78rem; }
+.receivable-partial-confirm-btn { min-height:36px; padding:0 14px; border:none; border-radius:9px; background:var(--primary-color); color:#fff; font-size:.72rem; font-weight:800; }
+
 .receivable-detail-footer { position:sticky; bottom:10px; padding-top:8px; }
 .receivable-detail-all-paid { width:100%; min-height:46px; border:0; border-radius:14px; background:var(--primary-color); color:#fff; font-size:.82rem; font-weight:850; box-shadow:0 5px 16px color-mix(in srgb, var(--primary-color) 28%, transparent); }
 .receivable-detail-all-paid:disabled { opacity:.45; }
@@ -6253,7 +6122,7 @@ body.pdf-export-mode .summary-row.total {
 
 #callDetailModal .app-temporal-option,
 #workModal .call-detail-inline-host .app-temporal-option {
-    min-height: 32px;
+    min-height: 44px;
     padding: 5px 4px;
     font-size: .72rem;
 }
@@ -6428,10 +6297,6 @@ body.pdf-export-mode .summary-row.total {
 #workModal .call-detail-card-head { padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--border-color); }
 #workModal .call-detail-route { font-size:1.08rem; line-height:1.35; }
 #workModal .detail-meta-line { margin-top:6px; color:var(--sub-text-color); font-size:.8rem; line-height:1.5; }
-#workModal .call-detail-money-grid { align-items:stretch; padding:11px 12px; margin-top:12px; border-radius:13px; background:color-mix(in srgb,var(--primary-color) 6%,var(--input-bg)); }
-#workModal .detail-fare { align-self:center; font-size:.94rem; font-weight:850; }
-#workModal .detail-calculation { width:min(52%,180px); }
-#workModal .detail-calculation .detail-total { padding-top:4px; margin-top:4px; border-top:1px solid color-mix(in srgb,var(--primary-color) 22%,var(--border-color)); }
 #workModal .call-detail-card-foot { align-items:center; padding-top:10px; margin-top:0; }
 #workModal .detail-payment-actions { margin-left:auto; }
 #workModal .detail-call-phone,#workModal .detail-message-btn { width:40px; height:40px; border-radius:12px; }
@@ -6450,7 +6315,7 @@ body.pdf-export-mode .summary-row.total {
 .message-template-list button strong,.message-template-list button span { display:block; }
 .message-template-list button strong { margin-bottom:4px; color:var(--primary-color); font-size:.88rem; }
 .message-template-list button span { color:var(--sub-text-color); font-size:.76rem; line-height:1.4; }
-@media (max-width:390px) { #workModal .call-detail-money-grid { display:grid; grid-template-columns:1fr; } #workModal .detail-calculation { width:100%; } #workModal .call-detail-card-foot { align-items:flex-end; } .message-template-overlay { padding:8px; } }
+@media (max-width:390px) { #workModal .call-detail-card-foot { align-items:flex-end; } .message-template-overlay { padding:8px; } }
 
 /* 개별 카드에는 운송료만, 정산 상세는 하단 통합 카드 한 곳에 표시 */
 #workModal .call-detail-fare-line {
@@ -6580,8 +6445,6 @@ body.pdf-export-mode .summary-row.total {
 #reportShareModal .report-share-file-icon.image { background:color-mix(in srgb,#40a36f 14%,var(--card-bg)); color:#40a36f; }
 #reportShareModal .report-share-file-icon.kakao { background:#fee500; color:#191919; font-size:.78rem; }
 #reportShareModal .report-share-file-icon.sms { background:color-mix(in srgb,#40a36f 16%,var(--card-bg)); color:#268a57; font-size:.7rem; }
-#reportShareModal .report-share-cancel { width:100%; min-height:42px; margin-top:12px; border:1px solid var(--border-color); border-radius:13px; background:transparent; color:var(--sub-text-color); font:inherit; font-size:.82rem; cursor:pointer; }
-
 @media (max-width:360px) {
     #reportShareModal .report-share-content { width:calc(100% - 20px); padding:18px; }
 }
@@ -6626,7 +6489,7 @@ body.pdf-export-mode .summary-row.total {
     box-shadow: none;
 }
 
-:where(input[type="checkbox"], input[type="radio"]):focus-visible + :where(.slider, .checkmark) {
+:where(input[type="checkbox"], input[type="radio"]):focus-visible + .slider {
     outline: 2px solid var(--primary-color);
     outline-offset: -2px;
     box-shadow: none;
@@ -6735,3 +6598,156 @@ body.pdf-export-mode .summary-row.total {
 #clientManagementPage .car-sub-text { display:flex; flex-wrap:wrap; gap:3px 10px; margin:0; color:var(--sub-text-color); font-size:.65rem; }
 #clientManagementPage .car-sub-text + .car-sub-text { font-size:.62rem; }
 .management-badge.tax-invoice { border:1px solid color-mix(in srgb,var(--primary-color) 32%,transparent); background:color-mix(in srgb,var(--primary-color) 10%,var(--card-bg)); color:var(--primary-color); }
+
+/* 비동기 저장 동작 */
+button.save-action-loading {
+    position:relative !important;
+    pointer-events:none !important;
+    cursor:wait !important;
+    color:transparent !important;
+    opacity:.88;
+}
+
+button.save-action-loading > * { opacity:0 !important; }
+
+button.save-action-loading::after {
+    content:"";
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:18px;
+    height:18px;
+    margin:-9px 0 0 -9px;
+    border:2px solid color-mix(in srgb,var(--save-spinner-color,var(--primary-color)) 28%,transparent);
+    border-top-color:var(--save-spinner-color,var(--primary-color));
+    border-radius:50%;
+    animation:save-action-spin .7s linear infinite;
+}
+
+:is(
+    .account-flow-primary,
+    .message-settings-save,
+    .personal-role-change-btn.primary,
+    .driver-form-save,
+    .modal-btn.confirm,
+    .linked-driver-card-actions button.primary,
+    .tax-invoice-card-actions button.primary
+).save-action-loading {
+    --save-spinner-color:#fff;
+}
+
+.account-flow-primary.save-action-loading:disabled {
+    border-color:#4d91dc;
+    background:#4d91dc;
+}
+
+@keyframes save-action-spin {
+    to { transform:rotate(360deg); }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    button.save-action-loading::after { animation-duration:1.4s; }
+}
+
+/* ========== 신규 유저 온보딩 마법사 ========== */
+.onboarding-wizard-content {
+    max-width: 380px;
+    /* 로그인 완료 직후(계정 흐름 페이지 위)에 떠도 배경색과 대비되는 고유 글자색을 갖도록 명시 */
+    color: var(--text-color);
+}
+
+.onboarding-step.hidden,
+.onboarding-sub-question.hidden {
+    display: none;
+}
+
+.onboarding-wizard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.onboarding-step-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--sub-text-color);
+}
+
+.onboarding-step-desc {
+    margin: -10px 0 18px;
+    text-align: center;
+    color: var(--sub-text-color);
+    font-size: 0.85rem;
+}
+
+.onboarding-option-group {
+    margin-bottom: 8px;
+}
+
+.wizard-option {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.wizard-option:last-child {
+    margin-bottom: 0;
+}
+
+.wizard-option.active {
+    border-color: var(--primary-color);
+    background-color: var(--hover-bg);
+    color: var(--primary-color);
+}
+
+.wizard-option strong {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.wizard-option small {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    line-height: 1.4;
+    opacity: 0.72;
+}
+
+.onboarding-sub-question {
+    margin: 4px 0 18px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+}
+
+.onboarding-checklist .setting-item {
+    margin-bottom: 16px;
+}
+
+.onboarding-checklist .setting-item label {
+    padding-right: 12px;
+}
+
+.onboarding-hint {
+    margin-top: 4px;
+    color: var(--sub-text-color);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}

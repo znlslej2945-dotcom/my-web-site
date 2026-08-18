@@ -2,6 +2,7 @@ const appState = {
     viewDate: new Date(),
     maintViewDate: new Date(),
     fuelViewDate: new Date(),
+    miscViewDate: new Date(),
     selectedDateKey: null,
     activeLogId: 'main',
     workData: JSON.parse(localStorage.getItem('workData')) || {},
@@ -10,6 +11,7 @@ const appState = {
     currentTempMaintItems: [],
     currentTempCallDetails: [],
     currentTempFuelItems: [],
+    currentTempMiscItems: [],
     isDetailReportView: false,
     currentDetailClientFilter: 'ALL',
     calendarCells: [],
@@ -20,6 +22,7 @@ const appState = {
 let viewDate = appState.viewDate;
 let maintViewDate = appState.maintViewDate;
 let fuelViewDate = appState.fuelViewDate;
+let miscViewDate = appState.miscViewDate;
 let selectedDateKey = appState.selectedDateKey;
 let activeLogId = appState.activeLogId;
 let workData = appState.workData;
@@ -28,6 +31,7 @@ let isOffSelected = appState.isOffSelected;
 let currentTempMaintItems = appState.currentTempMaintItems;
 let currentTempCallDetails = appState.currentTempCallDetails;
 let currentTempFuelItems = appState.currentTempFuelItems;
+let currentTempMiscItems = appState.currentTempMiscItems;
 let isDetailReportView = appState.isDetailReportView;
 let currentDetailClientFilter = appState.currentDetailClientFilter;
 const calendarCells = appState.calendarCells;
@@ -36,6 +40,145 @@ let pendingAccountType = '';
 let accountTypeReturnPage = 'login';
 let driverConnectionReturnPage = 'main';
 let activeLinkedDriverId = '';
+let toastHideTimer = null;
+let toastActionCallback = null;
+const activeSaveActions = new Set();
+const backgroundSaveStates = new Map();
+
+async function runSaveAction(button, actionKey, action) {
+    if (typeof action !== 'function') return false;
+    const key = actionKey || action.name || 'save-action';
+    if (activeSaveActions.has(key)) return false;
+
+    activeSaveActions.add(key);
+    const canUpdateButton = button && typeof button === 'object' && 'disabled' in button;
+    const wasDisabled = canUpdateButton ? button.disabled : false;
+    const previousAriaBusy = canUpdateButton ? button.getAttribute?.('aria-busy') : null;
+
+    if (canUpdateButton) {
+        button.disabled = true;
+        button.classList?.add('save-action-loading');
+        button.setAttribute?.('aria-busy', 'true');
+    }
+
+    try {
+        await Promise.resolve().then(action);
+        return true;
+    } catch (error) {
+        console.error(`${key} 저장 실패:`, error);
+        showRetryableSaveError(error, () => runSaveAction(button, key, action));
+        return false;
+    } finally {
+        activeSaveActions.delete(key);
+        if (canUpdateButton) {
+            button.disabled = wasDisabled;
+            button.classList?.remove('save-action-loading');
+            if (previousAriaBusy === null || previousAriaBusy === undefined) button.removeAttribute?.('aria-busy');
+            else button.setAttribute?.('aria-busy', previousAriaBusy);
+        }
+    }
+}
+
+function queueBackgroundSave(actionKey, action, delay = 320) {
+    if (typeof action !== 'function') return;
+    const key = actionKey || action.name || 'background-save';
+    const state = backgroundSaveStates.get(key) || { timer: null, running: false, runningPromise: null, nextAction: null };
+    state.nextAction = action;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = setTimeout(() => flushBackgroundSave(key), Math.max(0, delay));
+    backgroundSaveStates.set(key, state);
+}
+
+async function flushBackgroundSave(actionKey) {
+    const state = backgroundSaveStates.get(actionKey);
+    if (!state) return;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+    if (state.running) {
+        await state.runningPromise;
+        if (backgroundSaveStates.has(actionKey)) return flushBackgroundSave(actionKey);
+        return;
+    }
+
+    const action = state.nextAction;
+    state.nextAction = null;
+    if (!action) {
+        backgroundSaveStates.delete(actionKey);
+        return;
+    }
+
+    state.running = true;
+    state.runningPromise = Promise.resolve().then(action);
+    try {
+        await state.runningPromise;
+    } catch (error) {
+        console.error(`${actionKey} 자동 저장 실패:`, error);
+        showToastMessage(getSaveErrorMessage(error, true), {
+            duration: 7000,
+            actionLabel: '다시 시도',
+            action: () => queueBackgroundSave(actionKey, action, 0)
+        });
+    } finally {
+        state.running = false;
+        state.runningPromise = null;
+        if (state.nextAction) state.timer = setTimeout(() => flushBackgroundSave(actionKey), 0);
+        else backgroundSaveStates.delete(actionKey);
+    }
+}
+
+async function flushAllBackgroundSaves() {
+    while (backgroundSaveStates.size) {
+        await Promise.all([...backgroundSaveStates.keys()].map(flushBackgroundSave));
+    }
+}
+
+class RequestTimeoutError extends Error {
+    constructor(message = '서버 응답 시간이 초과되었습니다.') {
+        super(message);
+        this.name = 'RequestTimeoutError';
+        this.code = 'REQUEST_TIMEOUT';
+    }
+}
+
+async function executeApiRequest(requestFactory, { timeoutMs = 10000 } = {}) {
+    if (typeof requestFactory !== 'function') throw new TypeError('요청 함수가 필요합니다.');
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    let timeoutId = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+            controller?.abort();
+            reject(new RequestTimeoutError());
+        }, Math.max(1000, timeoutMs));
+    });
+
+    try {
+        return await Promise.race([
+            Promise.resolve().then(() => requestFactory({ signal: controller?.signal })),
+            timeoutPromise
+        ]);
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+    }
+}
+
+function getSaveErrorMessage(error, isAutomatic = false) {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const timedOut = error?.code === 'REQUEST_TIMEOUT'
+        || error?.name === 'RequestTimeoutError'
+        || error?.name === 'AbortError';
+    if (offline) return `${isAutomatic ? '자동 저장' : '저장'}하지 못했습니다. 인터넷 연결을 확인해 주세요.`;
+    if (timedOut) return `서버 응답이 늦어 ${isAutomatic ? '자동 저장' : '저장'}을 완료하지 못했습니다.`;
+    return `${isAutomatic ? '자동 저장' : '저장'} 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.`;
+}
+
+function showRetryableSaveError(error, retryCallback) {
+    showConfirmModal(getSaveErrorMessage(error), retryCallback, {
+        title: '저장 실패',
+        cancelLabel: '닫기',
+        confirmLabel: '다시 시도',
+        tone: 'primary'
+    });
+}
 
 // 금액 만 단위 축약 표기 헬퍼
 function formatFareShort(amount) {
@@ -74,6 +217,342 @@ function getActiveLogSettings() {
 }
 function setUserSettings(settings) {
     localStorage.setItem('userSettings', JSON.stringify(settings));
+    scheduleNormalizedEntitySync();
+}
+
+const NORMALIZED_SCHEMA_VERSION = 1;
+const NORMALIZED_ENTITY_KEYS = Object.freeze({
+    meta: 'normalizedSchemaMeta',
+    users: 'entityUsers',
+    vehicles: 'entityVehicles',
+    dailyLogs: 'entityDailyLogs',
+    transportDetails: 'entityTransportDetails',
+    maintenanceRecords: 'entityMaintenanceRecords',
+    fuelRecords: 'entityFuelRecords',
+    miscExpenseRecords: 'entityMiscExpenseRecords',
+    clients: 'entityClients',
+    taxInvoices: 'entityTaxInvoices'
+});
+
+// FNV-1a를 서로 다른 시드/승수로 두 번 돌려 32비트 해시 두 조각(총 64비트, 16자리 hex)을 이어붙인다.
+// 입력이 같으면 항상 같은 출력(결정론적)이며, 결과 공간이 기존 32비트(약 43억) 대비 크게 넓어진다.
+// randomUUID 등 비결정적 값은 buildNormalizedEntitySnapshot()의 재실행 시 같은 레코드가 중복 생성되므로 쓰지 않는다.
+function createNormalizedId(prefix, ...parts) {
+    const source = parts.map(part => String(part ?? '')).join('|');
+
+    const hashWithSeed = (seed, multiplier) => {
+        let hash = seed;
+        for (let index = 0; index < source.length; index += 1) {
+            hash ^= source.charCodeAt(index);
+            hash = Math.imul(hash, multiplier);
+        }
+        // 마무리 믹싱(avalanche) 라운드: 두 해시 절반이 비슷한 입력에서도 서로 잘 갈리도록 보강
+        hash ^= hash >>> 16;
+        hash = Math.imul(hash, 0x85ebca6b);
+        hash ^= hash >>> 13;
+        hash = Math.imul(hash, 0xc2b2ae35);
+        hash ^= hash >>> 16;
+        return (hash >>> 0).toString(16).padStart(8, '0');
+    };
+
+    const high = hashWithSeed(2166136261, 16777619);
+    const low = hashWithSeed(0x9e3779b9, 0x5bd1e995);
+    return `${prefix}_${high}${low}`;
+}
+
+function getNormalizedUserId() {
+    const storedId = localStorage.getItem('normalizedUserId');
+    if (storedId) return storedId;
+    const randomPart = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '')
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    const userId = `usr_${randomPart}`;
+    localStorage.setItem('normalizedUserId', userId);
+    return userId;
+}
+
+function parseEntityNumber(value) {
+    const parsed = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getNormalizedVehicleSources(settings) {
+    const cars = Array.isArray(settings.cars) ? settings.cars : [];
+    const sources = new Map();
+    const mainCar = cars.find(car => car?.type === 'main') || {
+        number: settings.carNumber || 'main',
+        tonnage: settings.carTonnage || '',
+        type: 'main'
+    };
+
+    sources.set('main', { logId: 'main', storageKey: 'workData', car: mainCar });
+    cars.filter(car => car?.type === 'sub' && car.number).forEach(car => {
+        sources.set(car.number, { logId: car.number, storageKey: `workData_${car.number}`, car });
+    });
+
+    for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith('workData_')) continue;
+        const logId = key.slice('workData_'.length);
+        if (!logId || sources.has(logId)) continue;
+        sources.set(logId, {
+            logId,
+            storageKey: key,
+            car: { number: logId, tonnage: '', type: 'sub', archived: true }
+        });
+    }
+    return [...sources.values()];
+}
+
+function buildNormalizedEntitySnapshot() {
+    const settings = getUserSettings();
+    const userId = getNormalizedUserId();
+    const clients = Array.isArray(settings.clients) ? settings.clients : [];
+    const clientEntities = clients.filter(client => client && typeof client === 'object').map((client, index) => ({
+        ...client,
+        id: createNormalizedId('cli', userId, client.companyName || index),
+        userId,
+        displayOrder: index
+    }));
+    const clientIdByName = new Map(clientEntities.map(client => [client.companyName, client.id]));
+
+    const vehicleSources = getNormalizedVehicleSources(settings);
+    const vehicleEntities = [];
+    const vehicleIdByLogId = new Map();
+    const vehicleIdByNumber = new Map();
+    vehicleSources.forEach(({ logId, car }, index) => {
+        const { personalInfo, ...vehicleFields } = car || {};
+        const vehicleId = createNormalizedId('veh', userId, logId);
+        const entity = {
+            ...vehicleFields,
+            id: vehicleId,
+            userId,
+            legacyLogId: logId,
+            number: car?.number || (logId === 'main' ? '' : logId),
+            type: car?.type || (logId === 'main' ? 'main' : 'sub'),
+            displayOrder: index,
+            driverLegalName: personalInfo?.name || '',
+            driverBusinessNumber: personalInfo?.bizNumber || '',
+            driverBankName: personalInfo?.bank || '',
+            driverAccountNumber: personalInfo?.account || ''
+        };
+        vehicleEntities.push(entity);
+        vehicleIdByLogId.set(logId, vehicleId);
+        if (entity.number) vehicleIdByNumber.set(entity.number, vehicleId);
+    });
+
+    const dailyLogs = [];
+    const transportDetails = [];
+    const maintenanceRecords = [];
+    const fuelRecords = [];
+    const miscExpenseRecords = [];
+
+    vehicleSources.forEach(({ logId, storageKey }) => {
+        const vehicleId = vehicleIdByLogId.get(logId);
+        const sourceData = readWorkDataStorage(storageKey);
+        Object.keys(sourceData).sort().forEach(workDate => {
+            const rawRecord = sourceData[workDate] === 'off'
+                ? { isOff: true }
+                : sourceData[workDate];
+            if (!rawRecord || typeof rawRecord !== 'object' || Array.isArray(rawRecord)) return;
+
+            const {
+                callDetails = [],
+                maintItems = [],
+                fuelItems = [],
+                miscItems = [],
+                ...dailyFields
+            } = rawRecord;
+            const dailyLogId = createNormalizedId('day', userId, vehicleId, workDate);
+            dailyLogs.push({
+                ...dailyFields,
+                id: dailyLogId,
+                userId,
+                vehicleId,
+                workDate,
+                fixedCount: parseEntityNumber(rawRecord.fixedCount),
+                palletCount: parseEntityNumber(rawRecord.palletCount)
+            });
+
+            (Array.isArray(callDetails) ? callDetails : []).forEach((detail, index) => {
+                const safeDetail = detail && typeof detail === 'object' ? detail : {};
+                transportDetails.push({
+                    ...safeDetail,
+                    id: createNormalizedId('trp', dailyLogId, 'detail', index),
+                    dailyLogId,
+                    userId,
+                    vehicleId,
+                    clientId: clientIdByName.get(safeDetail.client) || null,
+                    workDate,
+                    sequence: index,
+                    sourceType: 'transport_detail',
+                    fareAmount: parseEntityNumber(safeDetail.fare),
+                    distanceKm: parseEntityNumber(safeDetail.distanceKm),
+                    insuranceFeeAmount: parseEntityNumber(safeDetail.insuranceFee)
+                });
+            });
+
+            (Array.isArray(maintItems) ? maintItems : []).forEach((item, index) => {
+                const safeItem = item && typeof item === 'object' ? item : {};
+                maintenanceRecords.push({
+                    ...safeItem,
+                    id: createNormalizedId('mnt', dailyLogId, index),
+                    dailyLogId,
+                    userId,
+                    vehicleId,
+                    workDate,
+                    sequence: index,
+                    costAmount: parseEntityNumber(safeItem.fare),
+                    mileageKm: parseEntityNumber(safeItem.mileage)
+                });
+            });
+
+            (Array.isArray(fuelItems) ? fuelItems : []).forEach((item, index) => {
+                const safeItem = item && typeof item === 'object' ? item : {};
+                fuelRecords.push({
+                    ...safeItem,
+                    id: createNormalizedId('ful', dailyLogId, index),
+                    dailyLogId,
+                    userId,
+                    vehicleId,
+                    workDate,
+                    sequence: index,
+                    costAmount: parseEntityNumber(safeItem.cost),
+                    subsidyAmount: parseEntityNumber(safeItem.subsidy),
+                    volumeLiter: parseEntityNumber(safeItem.liter),
+                    mileageKm: parseEntityNumber(safeItem.mileage)
+                });
+            });
+
+            (Array.isArray(miscItems) ? miscItems : []).forEach((item, index) => {
+                const safeItem = item && typeof item === 'object' ? item : {};
+                miscExpenseRecords.push({
+                    ...safeItem,
+                    id: createNormalizedId('msc', dailyLogId, index),
+                    dailyLogId,
+                    userId,
+                    vehicleId,
+                    workDate,
+                    sequence: index,
+                    costAmount: parseEntityNumber(safeItem.fare)
+                });
+            });
+        });
+    });
+
+    const taxInvoiceEntities = getTaxInvoiceRecords().map((invoice, index) => {
+        const safeInvoice = invoice && typeof invoice === 'object' ? invoice : {};
+        const legacyId = safeInvoice.id || `${safeInvoice.flow || 'sales'}|${safeInvoice.monthKey || ''}|${safeInvoice.partyKey || index}`;
+        return {
+            ...safeInvoice,
+            id: createNormalizedId('tax', userId, legacyId),
+            legacyId,
+            userId,
+            vehicleId: vehicleIdByNumber.get(safeInvoice.carNumber) || null,
+            clientId: clientIdByName.get(safeInvoice.clientName) || null,
+            supplyAmount: parseEntityNumber(safeInvoice.supplyAmount),
+            taxAmount: parseEntityNumber(safeInvoice.taxAmount),
+            totalAmount: parseEntityNumber(safeInvoice.totalAmount)
+        };
+    });
+
+    const userEntity = {
+        id: userId,
+        accountType: settings.accountType || '',
+        name: settings.userName || '',
+        phone: settings.userPhone || '',
+        businessName: settings.bizName || '',
+        businessNumber: settings.bizNumber || '',
+        businessAddress: settings.bizAddress || '',
+        businessType: settings.bizType || '',
+        businessItem: settings.bizItem || '',
+        businessEmail: settings.bizEmail || '',
+        bankName: settings.bankName || '',
+        accountNumber: settings.accountNumber || ''
+    };
+    const generatedAt = new Date().toISOString();
+    const entities = {
+        users: [userEntity],
+        vehicles: vehicleEntities,
+        dailyLogs,
+        transportDetails,
+        maintenanceRecords,
+        fuelRecords,
+        miscExpenseRecords,
+        clients: clientEntities,
+        taxInvoices: taxInvoiceEntities
+    };
+    const meta = {
+        schemaVersion: NORMALIZED_SCHEMA_VERSION,
+        generatedAt,
+        source: 'legacy-local-storage-mirror',
+        legacyCompatibility: true,
+        relations: {
+            vehicles: 'userId -> users.id',
+            dailyLogs: 'vehicleId -> vehicles.id',
+            transportDetails: 'dailyLogId -> dailyLogs.id',
+            maintenanceRecords: 'dailyLogId -> dailyLogs.id',
+            fuelRecords: 'dailyLogId -> dailyLogs.id',
+            miscExpenseRecords: 'dailyLogId -> dailyLogs.id',
+            taxInvoices: 'vehicleId -> vehicles.id, clientId -> clients.id'
+        },
+        counts: Object.fromEntries(Object.entries(entities).map(([key, value]) => [key, value.length]))
+    };
+    return { meta, ...entities };
+}
+
+function syncNormalizedEntityStore() {
+    const snapshot = buildNormalizedEntitySnapshot();
+    const writes = new Map([
+        [NORMALIZED_ENTITY_KEYS.meta, snapshot.meta],
+        [NORMALIZED_ENTITY_KEYS.users, snapshot.users],
+        [NORMALIZED_ENTITY_KEYS.vehicles, snapshot.vehicles],
+        [NORMALIZED_ENTITY_KEYS.dailyLogs, snapshot.dailyLogs],
+        [NORMALIZED_ENTITY_KEYS.transportDetails, snapshot.transportDetails],
+        [NORMALIZED_ENTITY_KEYS.maintenanceRecords, snapshot.maintenanceRecords],
+        [NORMALIZED_ENTITY_KEYS.fuelRecords, snapshot.fuelRecords],
+        [NORMALIZED_ENTITY_KEYS.miscExpenseRecords, snapshot.miscExpenseRecords],
+        [NORMALIZED_ENTITY_KEYS.clients, snapshot.clients],
+        [NORMALIZED_ENTITY_KEYS.taxInvoices, snapshot.taxInvoices]
+    ]);
+    const previousValues = new Map([...writes.keys()].map(key => [key, localStorage.getItem(key)]));
+    try {
+        writes.forEach((value, key) => localStorage.setItem(key, JSON.stringify(value)));
+    } catch (error) {
+        previousValues.forEach((value, key) => {
+            if (value === null) localStorage.removeItem(key);
+            else localStorage.setItem(key, value);
+        });
+        throw error;
+    }
+    return snapshot;
+}
+
+function scheduleNormalizedEntitySync() {
+    queueBackgroundSave('normalized-entities', syncNormalizedEntityStore, 180);
+}
+
+function getNormalizedEntitySnapshot() {
+    const read = (key, fallback) => {
+        try {
+            const value = JSON.parse(localStorage.getItem(key) || 'null');
+            return value ?? fallback;
+        } catch (error) {
+            return fallback;
+        }
+    };
+    return {
+        meta: read(NORMALIZED_ENTITY_KEYS.meta, { schemaVersion: NORMALIZED_SCHEMA_VERSION }),
+        users: read(NORMALIZED_ENTITY_KEYS.users, []),
+        vehicles: read(NORMALIZED_ENTITY_KEYS.vehicles, []),
+        dailyLogs: read(NORMALIZED_ENTITY_KEYS.dailyLogs, []),
+        transportDetails: read(NORMALIZED_ENTITY_KEYS.transportDetails, []),
+        maintenanceRecords: read(NORMALIZED_ENTITY_KEYS.maintenanceRecords, []),
+        fuelRecords: read(NORMALIZED_ENTITY_KEYS.fuelRecords, []),
+        miscExpenseRecords: read(NORMALIZED_ENTITY_KEYS.miscExpenseRecords, []),
+        clients: read(NORMALIZED_ENTITY_KEYS.clients, []),
+        taxInvoices: read(NORMALIZED_ENTITY_KEYS.taxInvoices, [])
+    };
 }
 
 function getAccountTypeMeta(type) {
@@ -82,11 +561,6 @@ function getAccountTypeMeta(type) {
             label: '차주',
             description: '본인 차량 일지 및 기사를 관리합니다.',
             icon: '<svg viewBox="0 0 24 24"><path d="M3 14.5v-2l2.5-1.4 1.6-3.7A2.3 2.3 0 0 1 9.2 6h5.6a2.3 2.3 0 0 1 2.1 1.4l1.6 3.7 2.5 1.4v4.2"></path><path d="M5 18h14M6 11h12"></path><circle cx="6.8" cy="17.5" r="2.5"></circle><circle cx="17.2" cy="17.5" r="2.5"></circle></svg>'
-        },
-        operator: {
-            label: '운송사·운영 사장',
-            description: '기사 초대, 차량 할당과 운행 기록 조회를 관리합니다.',
-            icon: '<svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-4 7 4v13"></path><path d="M9 21v-5h6v5M8 11h2M14 11h2"></path></svg>'
         },
         employed_driver: {
             label: '소속 기사',
@@ -98,7 +572,7 @@ function getAccountTypeMeta(type) {
 }
 
 function isOwnerAccountType(type) {
-    return type === 'owner_driver' || type === 'operator';
+    return type === 'owner_driver';
 }
 
 function getDriverSettlementModeMeta(mode) {
@@ -119,7 +593,7 @@ function getEffectiveDriverSettlementMode(car, settings = getUserSettings()) {
 function showAccountTypePage(returnPage = 'login') {
     accountTypeReturnPage = returnPage === 'personal' ? 'personal' : 'login';
     const settings = getUserSettings();
-    pendingAccountType = settings.accountType === 'operator' ? 'owner_driver' : (settings.accountType || '');
+    pendingAccountType = settings.accountType || '';
     hideAllPages();
     document.body.classList.add('account-flow-active');
     document.getElementById('accountTypePage').classList.remove('hidden');
@@ -229,38 +703,261 @@ function completeLocalLogin() {
             linkedAt: existingLink.linkedAt || new Date().toISOString()
         };
     }
+    // 완전 신규 유저(온보딩 이력 없음) 여부를 값 변경 전에 판별해 온보딩 마법사 노출 여부를 결정
+    const isNewUser = !settings.hasOwnProperty('onboardingCompleted');
+
     settings.isLoggedIn = true;
     settings.onboardingCompleted = true;
     setUserSettings(settings);
     loadSettings();
     updateAccountRoleUI();
     renderSubCarMenu();
-    showMain();
     showToastMessage('로그인되었습니다.');
+
+    // 신규 유저는 3문항 온보딩 마법사를 먼저 보여주고, 마법사 완료 시점에 showMain()을 호출한다.
+    // 기존 유저(재로그인)는 마법사를 건너뛰고 바로 메인으로 이동한다.
+    if (isNewUser) {
+        openOnboardingWizard();
+    } else {
+        showMain();
+    }
 }
 
-function requestAccountTypeChange() {
+// ========== 신규 유저용 온보딩 마법사 ==========
+let onboardingWizardState = null;
+
+// 계정 유형/차량 등록 상태에 따라 이번 마법사에서 보여줄 스텝 순서를 계산한다.
+// (운행방식 → 결제여부 → 선택항목 → 차량등록[이미 메인 차량이 있으면 생략] → 정산방식[소속기사면 생략])
+function getOnboardingStepSequence(settings) {
+    const hasMainCar = (settings.cars || []).some(c => c.type === 'main');
+    const isEmployedDriver = settings.accountType === 'employed_driver';
+    const seq = [1, 2, 3];
+    if (!hasMainCar) seq.push(4);
+    if (!isEmployedDriver) seq.push(5);
+    return seq;
+}
+
+function getDefaultOnboardingWizardState() {
     const settings = getUserSettings();
-    const hasOwnerLinks = isOwnerAccountType(settings.accountType)
-        && (settings.driverLinks || []).some(link => link.status === 'linked' || link.status === 'pending');
-    const hasEmployerLink = settings.accountType === 'employed_driver' && settings.employerLink?.status === 'linked';
-    if (hasOwnerLinks || hasEmployerLink) {
-        showConfirmModal('사용자 유형을 변경하려면 현재 기사 또는 소속 연동을 먼저 해제해 주세요.', null);
+    return {
+        step: 1,
+        stepSequence: getOnboardingStepSequence(settings), // 마법사 시작 시점에 고정 (진행 중 변경되지 않음)
+        workStyle: null,      // 'fixed' | 'call' | 'both'
+        palletOn: false,
+        paymentOn: null,      // true | false
+        timeOn: false,
+        cargoTonnageOn: false,
+        platformOn: false,
+        distanceOn: false,
+        settlementMode: null  // 'company' | 'driver_direct' | 'employee' | 'none' | null(건너뛰기)
+    };
+}
+
+function openOnboardingWizard() {
+    onboardingWizardState = getDefaultOnboardingWizardState();
+
+    document.querySelectorAll('#onboardingStep1 .wizard-option, #onboardingStep2 .wizard-option, #onboardingStep5 .wizard-option').forEach(btn => btn.classList.remove('active'));
+
+    const palletToggle = document.getElementById('onboardingPalletToggle');
+    if (palletToggle) palletToggle.checked = false;
+    document.getElementById('onboardingPalletSub')?.classList.add('hidden');
+
+    ['onboardingTimeToggle', 'onboardingTonnageToggle', 'onboardingPlatformToggle', 'onboardingDistanceToggle'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+    });
+
+    const step1Next = document.getElementById('onboardingStep1NextBtn');
+    if (step1Next) step1Next.disabled = true;
+    const step2Next = document.getElementById('onboardingStep2NextBtn');
+    if (step2Next) step2Next.disabled = true;
+
+    showOnboardingWizardStep(onboardingWizardState.stepSequence[0]);
+    document.getElementById('onboardingWizardModal')?.classList.remove('hidden');
+}
+
+function showOnboardingWizardStep(step) {
+    if (!onboardingWizardState) return;
+    onboardingWizardState.step = step;
+
+    [1, 2, 3, 4, 5].forEach(n => {
+        document.getElementById(`onboardingStep${n}`)?.classList.toggle('hidden', n !== step);
+    });
+
+    const seq = onboardingWizardState.stepSequence;
+    const idx = seq.indexOf(step);
+    const label = document.getElementById('onboardingStepLabel');
+    if (label) label.textContent = `${idx + 1}/${seq.length}`;
+
+    const backBtn = document.getElementById('onboardingBackBtn');
+    if (backBtn) backBtn.style.visibility = idx <= 0 ? 'hidden' : 'visible';
+
+    if (step === 3) updateOnboardingStep3ButtonLabels();
+}
+
+// Step3(선택 항목)은 더 이상 항상 마지막 스텝이 아니므로, 뒤에 차량등록/정산방식 스텝이
+// 남아있는지에 따라 버튼 문구를 "다음"/"완료하기"로 동적으로 바꿔준다.
+function updateOnboardingStep3ButtonLabels() {
+    if (!onboardingWizardState) return;
+    const seq = onboardingWizardState.stepSequence;
+    const isLast = seq.indexOf(3) === seq.length - 1;
+    const confirmBtn = document.getElementById('onboardingStep3ConfirmBtn');
+    const skipBtn = document.getElementById('onboardingStep3SkipBtn');
+    if (confirmBtn) confirmBtn.textContent = isLast ? '완료하기' : '다음';
+    if (skipBtn) skipBtn.textContent = isLast ? '건너뛰기' : '건너뛰고 다음';
+}
+
+function goOnboardingStep(delta) {
+    if (!onboardingWizardState) return;
+    const seq = onboardingWizardState.stepSequence;
+    const idx = seq.indexOf(onboardingWizardState.step);
+    if (idx === -1) return;
+
+    if (delta > 0) {
+        if (onboardingWizardState.step === 1 && !onboardingWizardState.workStyle) return;
+        if (onboardingWizardState.step === 2 && onboardingWizardState.paymentOn === null) return;
+    }
+
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= seq.length) return;
+    showOnboardingWizardStep(seq[nextIdx]);
+}
+
+// 현재 스텝에서 다음 스텝으로 진행하거나, 더 이상 스텝이 없으면 마법사를 완료 처리한다.
+function advanceOnboardingOrFinish() {
+    if (!onboardingWizardState) return;
+    const seq = onboardingWizardState.stepSequence;
+    const idx = seq.indexOf(onboardingWizardState.step);
+    if (idx === -1 || idx >= seq.length - 1) {
+        finishOnboardingWizard(false);
+    } else {
+        showOnboardingWizardStep(seq[idx + 1]);
+    }
+}
+
+// Step4(차량 등록) - 기존 openCarModal('main')의 검증/저장 로직을 그대로 재사용한다.
+function startOnboardingCarRegistration() {
+    const settings = getUserSettings();
+    const hasMainCar = (settings.cars || []).some(c => c.type === 'main');
+    if (hasMainCar) {
+        // 방어적 처리: 이미 메인 차량이 등록되어 있다면 openCarModal이 열리지 않으므로 바로 다음 스텝으로.
+        advanceOnboardingOrFinish();
         return;
     }
-    showAccountTypePage('personal');
+    document.getElementById('onboardingWizardModal')?.classList.add('hidden');
+    openCarModal('main');
+}
+
+function skipOnboardingCarStep() {
+    advanceOnboardingOrFinish();
+}
+
+// carModal이 저장/취소/배경클릭 등 어떤 방식으로든 닫힐 때 호출되는 closeCarModal()에서 훅으로 사용.
+function resumeOnboardingAfterCarModal() {
+    if (!onboardingWizardState || onboardingWizardState.step !== 4) return;
+    document.getElementById('onboardingWizardModal')?.classList.remove('hidden');
+    advanceOnboardingOrFinish();
+}
+
+// Step5(정산 방식, 차주 계정만 노출)
+function selectOnboardingSettlementMode(value, btnEl) {
+    if (!onboardingWizardState) return;
+    onboardingWizardState.settlementMode = value;
+    document.querySelectorAll('#onboardingStep5 .wizard-option').forEach(btn => btn.classList.toggle('active', btn === btnEl));
+}
+
+function selectOnboardingWorkStyle(value, btnEl) {
+    if (!onboardingWizardState) return;
+    onboardingWizardState.workStyle = value;
+
+    document.querySelectorAll('#onboardingStep1 .wizard-option').forEach(btn => btn.classList.toggle('active', btn === btnEl));
+
+    const showPallet = value === 'fixed' || value === 'both';
+    const palletSub = document.getElementById('onboardingPalletSub');
+    if (palletSub) palletSub.classList.toggle('hidden', !showPallet);
+    if (!showPallet) {
+        onboardingWizardState.palletOn = false;
+        const palletToggle = document.getElementById('onboardingPalletToggle');
+        if (palletToggle) palletToggle.checked = false;
+    }
+
+    const step1Next = document.getElementById('onboardingStep1NextBtn');
+    if (step1Next) step1Next.disabled = false;
+}
+
+function toggleOnboardingPallet(checked) {
+    if (!onboardingWizardState) return;
+    onboardingWizardState.palletOn = checked;
+}
+
+function selectOnboardingPayment(value, btnEl) {
+    if (!onboardingWizardState) return;
+    onboardingWizardState.paymentOn = value;
+
+    document.querySelectorAll('#onboardingStep2 .wizard-option').forEach(btn => btn.classList.toggle('active', btn === btnEl));
+
+    const step2Next = document.getElementById('onboardingStep2NextBtn');
+    if (step2Next) step2Next.disabled = false;
+}
+
+function toggleOnboardingOption(field, checked) {
+    if (!onboardingWizardState) return;
+    onboardingWizardState[field] = checked;
+}
+
+function finishOnboardingWizard(skip) {
+    if (!onboardingWizardState) return;
+
+    const triggeringStep = onboardingWizardState.step;
+
+    // skip의 의미는 호출한 스텝에 따라 다르다 (Step3=선택항목 초기화, Step5=정산방식 미선택).
+    if (skip && triggeringStep === 3) {
+        onboardingWizardState.timeOn = false;
+        onboardingWizardState.cargoTonnageOn = false;
+        onboardingWizardState.platformOn = false;
+        onboardingWizardState.distanceOn = false;
+    }
+    if (skip && triggeringStep === 5) {
+        onboardingWizardState.settlementMode = null;
+    }
+
+    // Step3 이후에도 진행할 스텝(차량등록/정산방식)이 남아있다면 아직 완료하지 않고 다음 스텝으로 이동.
+    if (triggeringStep === 3) {
+        const seq = onboardingWizardState.stepSequence;
+        const idx = seq.indexOf(3);
+        if (idx !== -1 && idx < seq.length - 1) {
+            showOnboardingWizardStep(seq[idx + 1]);
+            return;
+        }
+    }
+
+    const isFixed = onboardingWizardState.workStyle === 'fixed' || onboardingWizardState.workStyle === 'both';
+    const isCall = onboardingWizardState.workStyle === 'call' || onboardingWizardState.workStyle === 'both';
+
+    const settings = getUserSettings();
+    settings.fixedOn = isFixed;
+    settings.callDetailOn = isCall;
+    settings.palletOn = isFixed ? !!onboardingWizardState.palletOn : false;
+    settings.paymentOn = !!onboardingWizardState.paymentOn;
+    settings.timeOn = !!onboardingWizardState.timeOn;
+    settings.cargoTonnageOn = !!onboardingWizardState.cargoTonnageOn;
+    settings.platformOn = !!onboardingWizardState.platformOn;
+    settings.distanceOn = !!onboardingWizardState.distanceOn;
+    if (onboardingWizardState.settlementMode) {
+        settings.defaultDriverSettlementMode = onboardingWizardState.settlementMode;
+    }
+    settings.onboardingCompleted = true;
+    setUserSettings(settings);
+
+    document.getElementById('onboardingWizardModal')?.classList.add('hidden');
+    onboardingWizardState = null;
+
+    loadSettings();
+    showMain();
 }
 
 function updateAccountRoleUI() {
     const settings = getUserSettings();
-    const meta = getAccountTypeMeta(settings.accountType);
-    const roleLabel = document.getElementById('personalAccountTypeLabel');
-    const roleDescription = document.getElementById('personalAccountTypeDescription');
-    const roleIcon = document.getElementById('personalAccountTypeIcon');
-    if (roleLabel) roleLabel.textContent = meta.label;
-    if (roleDescription) roleDescription.textContent = meta.description;
-    if (roleIcon) roleIcon.innerHTML = meta.icon;
-
     const ownerRole = isOwnerAccountType(settings.accountType);
     document.getElementById('employedDriverLinkCard')?.classList.toggle('hidden', settings.accountType !== 'employed_driver');
     document.getElementById('myPageDriverConnectionLink')?.classList.toggle('hidden', !ownerRole);
@@ -274,14 +971,24 @@ function updateAccountRoleUI() {
     renderEmployedDriverLinkState();
 }
 
-function showConfirmModal(msg, callback) {
+function showConfirmModal(msg, callback, options = {}) {
+    const modal = document.getElementById('confirmModal');
+    const title = document.getElementById('confirmModalTitle');
+    const cancelButton = document.getElementById('confirmModalCancelBtn');
+    const confirmButton = document.getElementById('confirmModalConfirmBtn');
     document.getElementById('confirmModalText').innerText = msg;
+    if (title) title.textContent = options.title || '경고';
+    if (cancelButton) cancelButton.textContent = options.cancelLabel || '취소';
+    if (confirmButton) confirmButton.textContent = options.confirmLabel || '확인';
+    modal.dataset.tone = options.tone || 'danger';
     confirmCallback = callback;
-    document.getElementById('confirmModal').classList.remove('hidden');
+    modal.classList.remove('hidden');
 }
 
 function closeConfirmModal() {
-    document.getElementById('confirmModal').classList.add('hidden');
+    const modal = document.getElementById('confirmModal');
+    modal.classList.add('hidden');
+    delete modal.dataset.tone;
     confirmCallback = null;
 }
 
@@ -393,6 +1100,33 @@ function getAssignmentState(link) {
     return { key: 'active', label: '할당 중' };
 }
 
+// 같은 차량에 할당 기간이 겹치는 기사가 있는지 확인 (assignmentStart/End 중복 체크)
+function assignmentRangesOverlap(startA, endA, startB, endB) {
+    const aEnd = endA || '9999-12-31';
+    const bEnd = endB || '9999-12-31';
+    return startA <= bEnd && startB <= aEnd;
+}
+
+function findOverlappingDriverLink(links, vehicleNumber, start, end, excludeId) {
+    if (!vehicleNumber || !start) return null;
+    return (links || []).find(link => {
+        if (excludeId && link.id === excludeId) return false;
+        if (link.status === 'disconnected') return false;
+        if ((link.vehicleNumber || '') !== vehicleNumber) return false;
+        if (!link.assignmentStart) return false;
+        return assignmentRangesOverlap(start, end, link.assignmentStart, link.assignmentEnd || '');
+    });
+}
+
+// 차주가 연동된 기사의 기록을 조회/집계할 때, 해당 날짜가 실제 할당 기간 안에 있는지 판별한다.
+// 소속기사 본인의 workData 조회에는 적용하지 않는다 (연동 조회/집계 전용).
+function isDateWithinAssignment(dateKey, assignmentStart, assignmentEnd) {
+    if (!assignmentStart) return true; // 할당 시작일 자체가 없으면 제한 없이 전부 포함 (레거시 데이터 보호)
+    if (dateKey < assignmentStart) return false;
+    if (assignmentEnd && dateKey > assignmentEnd) return false;
+    return true;
+}
+
 function generateLocalId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -421,7 +1155,7 @@ function populateLinkedDriverVehicleOptions() {
 function showDriverConnectionManagement(returnPage = 'main') {
     const settings = getUserSettings();
     if (!isOwnerAccountType(settings.accountType)) {
-        showConfirmModal('개인 차주 또는 운송사·운영 사장 유형에서 사용할 수 있습니다.', null);
+        showConfirmModal('차주 유형에서 사용할 수 있습니다.', null);
         return;
     }
     driverConnectionReturnPage = ['personal', 'car', 'myPage'].includes(returnPage) ? returnPage : 'main';
@@ -461,6 +1195,9 @@ function saveLinkedDriverInvitation() {
     const editId = document.getElementById('linkedDriverEditId')?.value || '';
 
     if (!name || !vehicleNumber || !assignmentStart || (!phone && !inviteCode)) {
+        if (!name) markFieldError('linkedDriverName');
+        if (!vehicleNumber) markFieldError('linkedDriverVehicle');
+        if (!assignmentStart) markFieldError('linkedDriverAssignmentStart');
         showToastMessage('기사, 연결 수단, 차량과 시작일을 입력해 주세요.');
         return;
     }
@@ -471,6 +1208,13 @@ function saveLinkedDriverInvitation() {
 
     const settings = getUserSettings();
     const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+
+    const conflictingLink = findOverlappingDriverLink(links, vehicleNumber, assignmentStart, assignmentEnd, editId);
+    if (conflictingLink) {
+        showToastMessage(`같은 차량에 ${conflictingLink.driverName || '다른 기사'}의 할당 기간(${conflictingLink.assignmentStart}~${conflictingLink.assignmentEnd || '계속'})과 겹칩니다.`);
+        return;
+    }
+
     const existingIndex = links.findIndex(link => link.id === editId);
     const previous = existingIndex >= 0 ? links[existingIndex] : null;
     const nextLink = {
@@ -589,7 +1333,7 @@ function renderLinkedDriverList() {
         const connection = [link.phone, link.inviteCode ? `코드 ${link.inviteCode}` : ''].filter(Boolean).join(' · ');
         let actions = '';
         if (link.status === 'pending') {
-            actions = `<button type="button" class="primary" onclick="completeLinkedDriverConnection('${encodedId}')">연결 완료</button><button type="button" onclick="editLinkedDriver('${encodedId}')">초대 수정</button><button type="button" class="danger" onclick="disconnectLinkedDriver('${encodedId}')">초대 취소</button>`;
+            actions = `<button type="button" class="primary" onclick="runSaveAction(this, 'driver-connect-${encodedId}', () => completeLinkedDriverConnection('${encodedId}'))">연결 완료</button><button type="button" onclick="editLinkedDriver('${encodedId}')">초대 수정</button><button type="button" class="danger" onclick="disconnectLinkedDriver('${encodedId}')">초대 취소</button>`;
         } else if (link.status === 'linked') {
             actions = `<button type="button" class="primary" onclick="showLinkedDriverManagement('${encodedId}', true)">기록 조회</button><button type="button" onclick="editLinkedDriver('${encodedId}')">할당 변경</button><button type="button" class="danger" onclick="disconnectLinkedDriver('${encodedId}')">연동 해제</button>`;
         } else {
@@ -655,7 +1399,7 @@ function renderLinkedDriverRecords() {
     const month = document.getElementById('linkedDriverRecordMonth')?.value || '';
     const data = getLinkedDriverRecordData(link);
     const records = Object.entries(data)
-        .filter(([dateKey]) => !month || dateKey.startsWith(month))
+        .filter(([dateKey]) => (!month || dateKey.startsWith(month)) && isDateWithinAssignment(dateKey, link.assignmentStart, link.assignmentEnd))
         .sort(([a], [b]) => b.localeCompare(a))
         .map(([dateKey, record]) => ({ dateKey, record, summary: getLinkedRecordSummary(record) }));
     const totalCount = records.reduce((sum, item) => sum + item.summary.count, 0);
@@ -769,6 +1513,7 @@ function saveDataToStorage() {
     } else {
         localStorage.setItem('workData_' + activeLogId, JSON.stringify(workData));
     }
+    scheduleNormalizedEntitySync();
 }
 
 function normalizeLegacyData() {
@@ -780,13 +1525,10 @@ function normalizeLegacyData() {
                 isOff: true,
                 fixedCount: 0,
                 palletCount: 0,
-                callFares: [],
                 maintItems: [],
                 fuelItems: [],
-                callDetails: [],
-                startOdometer: '',
-                endOdometer: '',
-                dailyDistance: 0
+                miscItems: [],
+                callDetails: []
             };
             dataChanged = true;
         }
@@ -801,25 +1543,35 @@ function normalizeLegacyData() {
             dataChanged = true;
         }
 
-        if (!workData[key].hasOwnProperty('startOdometer')) {
-            workData[key].startOdometer = '';
+        if (!workData[key].miscItems) {
+            workData[key].miscItems = [];
             dataChanged = true;
         }
 
-        if (!workData[key].hasOwnProperty('endOdometer')) {
-            workData[key].endOdometer = '';
-            dataChanged = true;
-        }
-
-        if (!workData[key].hasOwnProperty('dailyDistance')) {
-            workData[key].dailyDistance = 0;
-            dataChanged = true;
-        }
     }
 
     if (dataChanged) {
         saveDataToStorage();
     }
+}
+
+// 운송사·운영 사장(operator) 계정 유형 폐지: 과거에 저장된 값을 차주(owner_driver)로 일원화
+function normalizeLegacyAccountType() {
+    const settings = getUserSettings();
+    if (settings.accountType === 'operator') {
+        settings.accountType = 'owner_driver';
+        settings.driverType = 'owner_driver';
+        setUserSettings(settings);
+    }
+}
+
+function getRecordTotalDistance(record) {
+    const details = Array.isArray(record?.callDetails) ? record.callDetails : [];
+    const hasDetailDistance = details.some(detail => String(detail?.distanceKm ?? '').trim() !== '');
+    if (hasDetailDistance) {
+        return details.reduce((total, detail) => total + (parseFloat(detail?.distanceKm) || 0), 0);
+    }
+    return parseFloat(record?.dailyDistance) || 0;
 }
 
 function populateYearMonthSelects(yearId, monthId) {
@@ -855,6 +1607,10 @@ function initMaintDateSelects() {
 
 function initFuelDateSelects() {
     populateYearMonthSelects('fuelYearSelect', 'fuelMonthSelect');
+}
+
+function initMiscDateSelects() {
+    populateYearMonthSelects('miscYearSelect', 'miscMonthSelect');
 }
 
 function changeYearMonth() {
@@ -1382,6 +2138,10 @@ function showBillingSettingsPage() {
 }
 
 function saveBillingSettings() {
+    queueBackgroundSave('billing-settings', commitBillingSettings);
+}
+
+function commitBillingSettings() {
     const settings = getUserSettings();
     settings.defaultDriverSettlementMode = document.getElementById('defaultDriverSettlementMode').value || 'company';
     settings.driverInvoiceBasis = document.getElementById('driverInvoiceBasis').value || 'net';
@@ -1740,6 +2500,9 @@ function renderClientList() {
             const badgeText = client.commType === 'direct' ? `${client.commValue}원` : `${client.commValue}%`;
             badges += `<span class="management-badge commission">수수료 ${escapeDetailText(badgeText)}</span>`;
         }
+        if (client.fixedMonthlyOn) {
+            badges += `<span class="management-badge commission">월정액 ${parseCurrencyValue(client.fixedMonthlyAmount).toLocaleString()}원</span>`;
+        }
         if (client.taxInvoiceEnabled) {
             badges += '<span class="management-badge tax-invoice">계산서</span>';
         }
@@ -1793,6 +2556,11 @@ function toggleClientComm() {
     setSettingsGroupExpanded(document.getElementById('clientCommSection'), isChecked);
 }
 
+function toggleClientFixedMonthly() {
+    const isChecked = document.getElementById('clientFixedMonthlyToggle').checked;
+    setSettingsGroupExpanded(document.getElementById('clientFixedMonthlySection'), isChecked);
+}
+
 function formatCommValue(input) {
     let val = input.value.replace(/[^0-9.]/g, '');
     if (parseFloat(val) > 100) val = '100';
@@ -1839,58 +2607,6 @@ function formatClientCommValue(input) {
     }
 }
 
-function openClientModal(index = -1) {
-    editingClientIndex = index;
-    const settings = getUserSettings();
-    const clients = settings.clients || [];
-
-    if (index >= 0 && clients[index]) {
-        document.getElementById('clientModalTitle').textContent = '거래처 수정';
-        document.getElementById('clientCompanyName').value = clients[index].companyName || '';
-        document.getElementById('clientManagerName').value = clients[index].managerName || '';
-        document.getElementById('clientBizNumber').value = clients[index].bizNumber || '';
-        document.getElementById('clientPhone').value = clients[index].phone || '';
-        
-        // 고정 거래처 세팅
-        document.getElementById('clientPinnedToggle').checked = !!clients[index].isPinned;
-        toggleClientPinned();
-
-        document.getElementById('clientCommToggle').checked = !!clients[index].commEnabled;
-        
-        const commType = clients[index].commType || 'percent';
-        setClientCommType(commType);
-        
-        const commInput = document.getElementById('clientCommValue');
-        commInput.value = clients[index].commValue || '';
-        
-        if (commType === 'direct') {
-            formatCurrencyInput(commInput);
-        } else {
-            let val = commInput.value.replace(/[^0-9.]/g, '');
-            if (parseFloat(val) > 100) val = '100';
-            commInput.value = val;
-        }
-        toggleClientComm();
-    } else {
-        document.getElementById('clientModalTitle').textContent = '거래처 등록';
-        document.getElementById('clientCompanyName').value = '';
-        document.getElementById('clientManagerName').value = '';
-        document.getElementById('clientBizNumber').value = '';
-        document.getElementById('clientPhone').value = '';
-        
-        // 고정 거래처 세팅 초기화
-        document.getElementById('clientPinnedToggle').checked = false;
-        toggleClientPinned();
-
-        document.getElementById('clientCommToggle').checked = false;
-        setClientCommType('percent');
-        document.getElementById('clientCommValue').value = '';
-        toggleClientComm();
-    }
-    
-    document.getElementById('clientModal').classList.remove('hidden');
-}
-
 function closeClientModal() {
     document.getElementById('clientModal').classList.add('hidden');
 }
@@ -1898,47 +2614,6 @@ function closeClientModal() {
 function cancelClientModal() {
     clientModalOpenedFromCallDetail = false;
     closeClientModal();
-}
-
-function saveClient() {
-    const companyName = document.getElementById('clientCompanyName').value.trim();
-    const managerName = document.getElementById('clientManagerName').value.trim();
-    const bizNumber = document.getElementById('clientBizNumber').value.trim();
-    const phone = document.getElementById('clientPhone').value.trim();
-
-    // 고정 거래처 값 및 수수료 토글의 종속 로직 처리
-    const isPinned = document.getElementById('clientPinnedToggle').checked;
-    const commEnabled = isPinned ? document.getElementById('clientCommToggle').checked : false; // 고정 거래처가 켜져 있을 때만 수수료 값 인정
-    const commTypeEl = document.getElementById('clientCommType');
-    const commType = commTypeEl ? commTypeEl.value : 'percent';
-    const commValue = document.getElementById('clientCommValue').value.trim();
-
-    if (!companyName) {
-        showConfirmModal('거래처명을 입력해주세요.', null);
-        return;
-    }
-    if (commEnabled && !commValue) {
-        showConfirmModal('수수료 수치/금액을 입력해주세요.', null);
-        return;
-    }
-
-    const settings = getUserSettings();
-    if (!settings.clients) settings.clients = [];
-
-    const clientData = { companyName, managerName, bizNumber, phone, isPinned, commEnabled, commType, commValue };
-
-    if (editingClientIndex >= 0) {
-        settings.clients[editingClientIndex] = clientData;
-        showToastMessage('수정되었습니다.');
-    } else {
-        settings.clients.push(clientData);
-        showToastMessage('등록되었습니다.');
-    }
-
-    setUserSettings(settings);
-    closeClientModal();
-    renderClientList(); // 이곳에서 자동 재정렬 됨
-    buildCalendar(); 
 }
 
 /* 단순 선택형 입력을 앱 내부 드롭다운으로 표시한다. 원본 select의 값과 이벤트는 유지한다. */
@@ -2413,8 +3088,7 @@ function initBackdropDismissModals() {
         reportCarSelectModal: closeReportCarSelectModal,
         reportShareModal: closeReportShareModal,
         clientModal: cancelClientModal,
-        confirmModal: closeConfirmModal,
-        mixedLoadModal: closeMixedLoadModal
+        confirmModal: closeConfirmModal
     };
 
     Object.entries(dismissHandlers).forEach(([modalId, dismiss]) => {
@@ -2702,6 +3376,7 @@ function openCarModal(mode = 'main') {
 function closeCarModal() {
     document.getElementById('carModal').classList.add('hidden');
     resetCarForm();
+    resumeOnboardingAfterCarModal();
 }
 
 function setCarCommType(type) {
@@ -2764,6 +3439,7 @@ function saveNewCar() {
     const mode = document.getElementById('carModalMode').value;
     
     if (!num) {
+        markFieldError('newCarNumber');
         showConfirmModal('차량번호를 입력하세요.', null);
         return;
     }
@@ -2776,6 +3452,8 @@ function saveNewCar() {
     const driverPhone = carType === 'sub' ? document.getElementById('newUserPhone').value.trim() : '';
     const settlementMode = carType === 'sub' ? document.getElementById('newCarSettlementMode').value : 'default';
     if (carType === 'sub' && (!driverName || driverPhone.replace(/\D/g, '').length < 10)) {
+        if (!driverName) markFieldError('newDriverName');
+        if (driverPhone.replace(/\D/g, '').length < 10) markFieldError('newUserPhone');
         showToastMessage('기사명과 연락처를 확인해 주세요.');
         return;
     }
@@ -2826,6 +3504,12 @@ function saveNewCar() {
         }
         if (assignmentEnd && assignmentEnd < assignmentStart) {
             showToastMessage('할당 종료일은 시작일 이후로 선택해 주세요.');
+            return;
+        }
+
+        const conflictingLink = findOverlappingDriverLink(links, num, assignmentStart, assignmentEnd, existingLink?.id);
+        if (conflictingLink) {
+            showToastMessage(`같은 차량에 ${conflictingLink.driverName || '다른 기사'}의 할당 기간(${conflictingLink.assignmentStart}~${conflictingLink.assignmentEnd || '계속'})과 겹칩니다.`);
             return;
         }
 
@@ -2920,14 +3604,6 @@ function deleteCar(idx) {
     });
 }
 
-function showMaintManagement() {
-    showMaintFuelManagement('maint');
-}
-
-function showFuelManagement() {
-    showMaintFuelManagement('fuel');
-}
-
 function showMaintFuelManagement(tab = 'maint', returnPage = 'main') {
     setUtilityReturnPage(returnPage);
     hideAllPages();
@@ -2935,33 +3611,31 @@ function showMaintFuelManagement(tab = 'maint', returnPage = 'main') {
 
     maintViewDate = new Date(viewDate.getTime());
     fuelViewDate = new Date(viewDate.getTime());
+    miscViewDate = new Date(viewDate.getTime());
 
     updateMaintDateSelects();
     updateFuelDateSelects();
+    updateMiscDateSelects();
     selectMaintFuelTab(tab);
 }
 
 function selectMaintFuelTab(tab) {
-    const maintTabBtn = document.getElementById('maintTabBtn');
-    const fuelTabBtn = document.getElementById('fuelTabBtn');
-    const maintTabPanel = document.getElementById('maintTabPanel');
-    const fuelTabPanel = document.getElementById('fuelTabPanel');
+    const tabs = {
+        maint: { btn: 'maintTabBtn', panel: 'maintTabPanel', update: updateMaintDateSelects, render: renderMaintList },
+        fuel: { btn: 'fuelTabBtn', panel: 'fuelTabPanel', update: updateFuelDateSelects, render: renderFuelList },
+        misc: { btn: 'miscTabBtn', panel: 'miscTabPanel', update: updateMiscDateSelects, render: renderMiscList }
+    };
+    const activeTab = tabs[tab] ? tab : 'maint';
 
-    const isMaintTab = tab === 'maint';
+    Object.keys(tabs).forEach(key => {
+        const { btn, panel } = tabs[key];
+        document.getElementById(btn)?.classList.toggle('active-work', key === activeTab);
+        const panelEl = document.getElementById(panel);
+        if (panelEl) panelEl.style.display = key === activeTab ? 'block' : 'none';
+    });
 
-    maintTabBtn.classList.toggle('active-work', isMaintTab);
-    fuelTabBtn.classList.toggle('active-work', !isMaintTab);
-
-    maintTabPanel.style.display = isMaintTab ? 'block' : 'none';
-    fuelTabPanel.style.display = isMaintTab ? 'none' : 'block';
-
-    if (isMaintTab) {
-        updateMaintDateSelects();
-        renderMaintList();
-    } else {
-        updateFuelDateSelects();
-        renderFuelList();
-    }
+    tabs[activeTab].update();
+    tabs[activeTab].render();
 }
 
 function updateFuelDateSelects() {
@@ -2987,6 +3661,68 @@ function changeFuelYearMonth() {
     renderFuelList();
 }
 
+function getActiveVehicleNumber() {
+    const settings = getUserSettings();
+    if (activeLogId !== 'main') {
+        const currentCar = (settings.cars || []).find(c => c.number === activeLogId);
+        return currentCar?.number || activeLogId;
+    }
+    const mainCar = (settings.cars || []).find(c => c.type === 'main');
+    return mainCar?.number || settings.carNumber || '';
+}
+
+function csvEscapeCell(value) {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+// 유가보조금 신청용 주유 내역 CSV 내보내기 (해당 월의 fuelItems 기준: 날짜/차량번호/구분/주유량/금액/유가보조금/누적거리)
+function exportFuelSubsidyCsv() {
+    const year = fuelViewDate.getFullYear();
+    const monthNumber = fuelViewDate.getMonth() + 1;
+    const month = String(monthNumber).padStart(2, '0');
+    const prefix = `${year}-${month}-`;
+    const vehicleNumber = getActiveVehicleNumber();
+
+    const rows = [];
+    Object.keys(workData).filter(date => date.startsWith(prefix)).sort().forEach(date => {
+        const items = workData[date]?.fuelItems;
+        if (!items?.length) return;
+        items.forEach(item => {
+            rows.push([
+                date,
+                vehicleNumber,
+                item.type || '주유',
+                parseFloat(item.liter) || 0,
+                parseCurrencyValue(item.cost),
+                parseCurrencyValue(item.subsidy),
+                item.mileage || ''
+            ]);
+        });
+    });
+
+    if (rows.length === 0) {
+        showToastMessage('선택한 달에 주유 내역이 없습니다.');
+        return;
+    }
+
+    const header = ['날짜', '차량번호', '구분', '주유량(L)', '금액(원)', '유가보조금(원)', '누적거리(km)'];
+    const csvBody = [header, ...rows].map(row => row.map(csvEscapeCell).join(',')).join('\r\n');
+    const csvContent = '﻿' + csvBody; // UTF-8 BOM: 엑셀에서 한글 깨짐 방지
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const filename = `${year}-${month}_${vehicleNumber || '차량'}_유가보조금신청.csv`.replace(/[\\/:*?"<>|]/g, '_');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToastMessage('유가보조금 신청용 CSV 파일을 저장했습니다.');
+}
+
 function updateMaintDateSelects() {
     const yearSelect = document.getElementById('maintYearSelect');
     const monthSelect = document.getElementById('maintMonthSelect');
@@ -3010,6 +3746,29 @@ function changeMaintYearMonth() {
     renderMaintList();
 }
 
+function updateMiscDateSelects() {
+    const yearSelect = document.getElementById('miscYearSelect');
+    const monthSelect = document.getElementById('miscMonthSelect');
+    yearSelect.value = miscViewDate.getFullYear();
+    monthSelect.value = miscViewDate.getMonth();
+    yearSelect.parentElement?._dropdownSync?.();
+    monthSelect.parentElement?._dropdownSync?.();
+}
+
+function changeMiscMonth(delta) {
+    miscViewDate.setMonth(miscViewDate.getMonth() + delta);
+    updateMiscDateSelects();
+    renderMiscList();
+}
+
+function changeMiscYearMonth() {
+    const y = parseInt(document.getElementById('miscYearSelect').value, 10);
+    const m = parseInt(document.getElementById('miscMonthSelect').value, 10);
+    miscViewDate.setFullYear(y);
+    miscViewDate.setMonth(m);
+    renderMiscList();
+}
+
 function restoreMaintFuelModalToRoot(panel) {
     if (!panel || panel.parentElement === document.body) return;
     const previousHost = panel.parentElement;
@@ -3024,7 +3783,8 @@ function restoreMaintFuelModalToRoot(panel) {
 
 function selectMaintCategory(btnEl, value) {
     const isAlreadySelected = !!btnEl?.classList.contains('active');
-    document.querySelectorAll('#maintCategoryGroup .pill-btn').forEach(btn => btn.classList.remove('active'));
+    const group = btnEl?.closest('.pill-group') || document.getElementById('maintCategoryGroup');
+    group.querySelectorAll('.pill-btn').forEach(btn => btn.classList.remove('active'));
     if (btnEl && !isAlreadySelected) btnEl.classList.add('active');
     document.getElementById('maintRecordCategory').value = isAlreadySelected ? '' : value;
 }
@@ -3035,66 +3795,15 @@ function selectMaintPayment(btnEl, value) {
     document.getElementById('maintRecordPayment').value = value;
 }
 
-function renderMaintListLegacy() {
-    const y = maintViewDate.getFullYear();
-    const m = String(maintViewDate.getMonth() + 1).padStart(2, '0');
-    const prefix = `${y}-${m}-`;
-    
-    let groupedMaint = {};
-    for (let key in workData) {
-        if (key.startsWith(prefix) && workData[key].maintItems && workData[key].maintItems.length > 0) {
-            groupedMaint[key] = workData[key].maintItems.map((item, index) => {
-                return { name: item.name, fare: item.fare, index: index };
-            });
-        }
-    }
-    
-    const sortedDates = Object.keys(groupedMaint).sort((a, b) => a.localeCompare(b));
-    const container = document.getElementById('maintListContainer');
-    container.innerHTML = '';
-    
-    if (sortedDates.length === 0) {
-        container.innerHTML = '<div class="empty-state">이번 달 등록된 정비 내역이 없습니다.</div>';
-        return;
-    }
-
-    sortedDates.forEach(date => {
-        const items = groupedMaint[date];
-        
-        let itemsHtml = items.map(item => `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border-color);">
-                <span style="font-weight: 600;">${item.name || '정비 항목'}</span>
-                <div style="display:flex; align-items:center; gap: 10px;">
-                    <strong style="color:var(--sunday-color);">${parseCurrencyValue(item.fare).toLocaleString()} 원</strong>
-                    <div style="display:flex; gap: 2px;">
-                        <button type="button" class="action-icon-btn" onclick="openMaintRecordModal('${date}', ${item.index})" title="수정">
-                            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        </button>
-                        <button type="button" class="action-icon-btn del" onclick="deleteMaintRecord('${date}', ${item.index})" title="삭제">
-                            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-
-        const div = document.createElement('div');
-        div.className = 'setting-section';
-        div.style.marginBottom = '10px';
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <strong style="color:var(--primary-color); font-size:1.1rem;">${date}</strong>
-            </div>
-            ${itemsHtml}
-        `;
-        container.appendChild(div);
-    });
-}
-
-function openMaintRecordModal(date = null, index = null) {
+function openMaintRecordModal(date = null, index = null, kind = 'maint') {
     let item = null;
+    const isMisc = kind === 'misc';
     const isFromWorkModal = !document.getElementById('workModal').classList.contains('hidden');
     const maintModal = document.getElementById('maintRecordModal');
+    const tempItems = isMisc ? currentTempMiscItems : currentTempMaintItems;
+    const dataKey = isMisc ? 'miscItems' : 'maintItems';
+    const viewDate = isMisc ? miscViewDate : maintViewDate;
+    const titleBase = isMisc ? '기타지출' : '정비 내역';
 
     if (!isFromWorkModal) restoreMaintFuelModalToRoot(maintModal);
 
@@ -3103,25 +3812,35 @@ function openMaintRecordModal(date = null, index = null) {
         return;
     }
 
+    document.getElementById('maintRecordKind').value = kind;
+    document.getElementById('maintRecordNameLabel').textContent = isMisc ? '지출 항목명' : '정비 항목명';
+    const mileageGroup = document.getElementById('maintRecordMileageGroup');
+    if (mileageGroup) mileageGroup.style.display = isMisc ? 'none' : '';
+    const maintCategoryGroup = document.getElementById('maintCategoryGroup');
+    const miscCategoryGroup = document.getElementById('miscCategoryGroup');
+    if (maintCategoryGroup) maintCategoryGroup.style.display = isMisc ? 'none' : '';
+    if (miscCategoryGroup) miscCategoryGroup.style.display = isMisc ? '' : 'none';
+    const activeCategoryGroup = isMisc ? miscCategoryGroup : maintCategoryGroup;
+
     if (date !== null && index !== null) {
-        if (isFromWorkModal && date === selectedDateKey && currentTempMaintItems[index]) {
-            item = currentTempMaintItems[index];
-        } else if (workData[date] && workData[date].maintItems[index]) {
-            item = workData[date].maintItems[index];
+        if (isFromWorkModal && date === selectedDateKey && tempItems[index]) {
+            item = tempItems[index];
+        } else if (workData[date] && workData[date][dataKey] && workData[date][dataKey][index]) {
+            item = workData[date][dataKey][index];
         }
     }
 
     if (item !== null) {
-        document.getElementById('maintRecordModalTitle').textContent = '정비 내역 수정';
+        document.getElementById('maintRecordModalTitle').textContent = `${titleBase} 수정`;
         document.getElementById('maintRecordDate').value = date;
         document.getElementById('maintRecordName').value = item.name;
         document.getElementById('maintRecordFare').value = parseCurrencyValue(item.fare).toLocaleString();
-        
+
         document.getElementById('maintRecordMileage').value = item.mileage || '';
-        
+
         const category = item.category || '';
         document.getElementById('maintRecordCategory').value = category;
-        document.querySelectorAll('#maintCategoryGroup .pill-btn').forEach(btn => {
+        (activeCategoryGroup ? activeCategoryGroup.querySelectorAll('.pill-btn') : []).forEach(btn => {
             if(btn.textContent.trim() === category) btn.classList.add('active');
             else btn.classList.remove('active');
         });
@@ -3136,32 +3855,32 @@ function openMaintRecordModal(date = null, index = null) {
         document.getElementById('maintRecordOriginalDate').value = date;
         document.getElementById('maintRecordOriginalIndex').value = index;
     } else {
-        document.getElementById('maintRecordModalTitle').textContent = '정비 내역 추가';
-        const y = maintViewDate.getFullYear();
-        const m = String(maintViewDate.getMonth() + 1).padStart(2, '0');
+        document.getElementById('maintRecordModalTitle').textContent = `${titleBase} 추가`;
+        const y = viewDate.getFullYear();
+        const m = String(viewDate.getMonth() + 1).padStart(2, '0');
         const d = String(new Date().getDate()).padStart(2, '0');
-        
+
         const currentMonth = new Date().getMonth();
-        const selectedMonth = maintViewDate.getMonth();
+        const selectedMonth = viewDate.getMonth();
         document.getElementById('maintRecordDate').value = (currentMonth === selectedMonth) ? `${y}-${m}-${d}` : `${y}-${m}-01`;
-        
+
         if (isFromWorkModal && selectedDateKey) {
             document.getElementById('maintRecordDate').value = selectedDateKey;
         }
 
         document.getElementById('maintRecordName').value = '';
         document.getElementById('maintRecordFare').value = '';
-        
+
         document.getElementById('maintRecordMileage').value = '';
         document.getElementById('maintRecordCategory').value = '';
-        document.querySelectorAll('#maintCategoryGroup .pill-btn').forEach(btn => btn.classList.remove('active'));
-        
+        document.querySelectorAll('#maintCategoryGroup .pill-btn, #miscCategoryGroup .pill-btn').forEach(btn => btn.classList.remove('active'));
+
         document.getElementById('maintRecordPayment').value = '카드';
         document.querySelectorAll('#maintPaymentGroup .segment-btn').forEach(btn => {
             if(btn.textContent.trim() === '카드') btn.classList.add('active');
             else btn.classList.remove('active');
         });
-        
+
         document.getElementById('maintRecordOriginalDate').value = '';
         document.getElementById('maintRecordOriginalIndex').value = '';
     }
@@ -3169,15 +3888,29 @@ function openMaintRecordModal(date = null, index = null) {
     if (isFromWorkModal) openMaintFuelInlinePanel(maintModal);
 }
 
+function openMiscRecordModal(date = null, index = null) {
+    openMaintRecordModal(date, index, 'misc');
+}
+
 function closeMaintRecordModal() {
     closeMaintFuelInlinePanel(document.getElementById('maintRecordModal'));
 }
 
+function closeMiscRecordModal() {
+    closeMaintRecordModal();
+}
+
 function saveMaintRecord() {
-    const date = document.getElementById('maintRecordDate').value; 
+    const kind = document.getElementById('maintRecordKind')?.value === 'misc' ? 'misc' : 'maint';
+    const isMisc = kind === 'misc';
+    const dataKey = isMisc ? 'miscItems' : 'maintItems';
+    const titleBase = isMisc ? '지출 항목명' : '정비 항목명';
+    const viewDateRef = isMisc ? miscViewDate : maintViewDate;
+
+    const date = document.getElementById('maintRecordDate').value;
     const name = document.getElementById('maintRecordName').value.trim();
     const fare = document.getElementById('maintRecordFare').value.trim();
-    
+
     const mileage = document.getElementById('maintRecordMileage').value.trim();
     const category = document.getElementById('maintRecordCategory').value;
     const payment = document.getElementById('maintRecordPayment').value;
@@ -3190,12 +3923,12 @@ function saveMaintRecord() {
         return;
     }
     if (!name && !fare) {
-        showConfirmModal('정비 항목명 또는 비용을 입력하세요.', null);
+        showConfirmModal(`${titleBase} 또는 비용을 입력하세요.`, null);
         return;
     }
 
-    const newItem = { 
-        name: name, 
+    const newItem = {
+        name: name,
         fare: fare,
         mileage: mileage,
         category: category,
@@ -3203,106 +3936,109 @@ function saveMaintRecord() {
     };
 
     if (!document.getElementById('workModal').classList.contains('hidden')) {
+        const tempItems = isMisc ? currentTempMiscItems : currentTempMaintItems;
         if (origIndex !== '') {
-            currentTempMaintItems[origIndex] = newItem;
+            tempItems[origIndex] = newItem;
         } else {
-            currentTempMaintItems.push(newItem);
+            tempItems.push(newItem);
         }
-        renderMaintSummaryInMainModal();
+        if (isMisc) renderMiscSummaryInMainModal(); else renderMaintSummaryInMainModal();
         autoSaveWorkRecord();
     } else {
         if (origDate && origIndex !== '') {
-            workData[origDate].maintItems.splice(parseInt(origIndex, 10), 1);
+            workData[origDate][dataKey].splice(parseInt(origIndex, 10), 1);
         }
 
         if (!workData[date]) {
-            workData[date] = { isOff: false, fixedCount: 0, palletCount: 0, callFares: [], maintItems: [], callDetails: [] };
+            workData[date] = { isOff: false, fixedCount: 0, palletCount: 0, maintItems: [], fuelItems: [], miscItems: [], callDetails: [] };
         }
-        if (!workData[date].maintItems) {
-            workData[date].maintItems = [];
+        if (!workData[date][dataKey]) {
+            workData[date][dataKey] = [];
         }
 
-        workData[date].maintItems.push(newItem);
-        
+        workData[date][dataKey].push(newItem);
+
         saveDataToStorage();
-        
+
         const updatedDate = new Date(date);
-        maintViewDate.setFullYear(updatedDate.getFullYear());
-        maintViewDate.setMonth(updatedDate.getMonth());
-        updateMaintDateSelects();
-        renderMaintList();
-        buildCalendar(); 
+        viewDateRef.setFullYear(updatedDate.getFullYear());
+        viewDateRef.setMonth(updatedDate.getMonth());
+        if (isMisc) {
+            updateMiscDateSelects();
+            renderMiscList();
+        } else {
+            updateMaintDateSelects();
+            renderMaintList();
+        }
+        buildCalendar();
     }
-    
+
     closeMaintRecordModal();
     showToastMessage('저장되었습니다.');
 }
 
-function deleteMaintRecord(date, index) {
+function deleteMaintRecord(date, index, kind = 'maint') {
+    const dataKey = kind === 'misc' ? 'miscItems' : 'maintItems';
     showConfirmModal('삭제하시겠습니까?', () => {
-        workData[date].maintItems.splice(index, 1);
-        saveDataToStorage(); 
-        renderMaintList();
+        workData[date][dataKey].splice(index, 1);
+        saveDataToStorage();
+        if (kind === 'misc') renderMiscList(); else renderMaintList();
         showToastMessage('삭제되었습니다.');
         buildCalendar();
     });
 }
 
-// ========== 주유 내역 관련 로직 ==========
-function renderFuelListLegacy() {
-    const y = fuelViewDate.getFullYear();
-    const m = String(fuelViewDate.getMonth() + 1).padStart(2, '0');
-    const prefix = `${y}-${m}-`;
-    
-    let groupedFuel = {};
-    for (let key in workData) {
-        if (key.startsWith(prefix) && workData[key].fuelItems && workData[key].fuelItems.length > 0) {
-            groupedFuel[key] = workData[key].fuelItems.map((item, index) => {
-                return { type: item.type, cost: item.cost, liter: item.liter, index: index };
-            });
-        }
-    }
-    
-    const sortedDates = Object.keys(groupedFuel).sort((a, b) => a.localeCompare(b));
-    const container = document.getElementById('fuelListContainer');
-    container.innerHTML = '';
-    
-    if (sortedDates.length === 0) {
-        container.innerHTML = '<div class="empty-state">이번 달 등록된 주유 내역이 없습니다.</div>';
-        return;
-    }
+function deleteMiscRecord(date, index) {
+    deleteMaintRecord(date, index, 'misc');
+}
 
-    sortedDates.forEach(date => {
-        const items = groupedFuel[date];
-        
-        let itemsHtml = items.map(item => `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border-color);">
-                <span style="font-weight: 600;">${item.type || '주유'} ${item.liter ? `(${item.liter}L)` : ''}</span>
-                <div style="display:flex; align-items:center; gap: 10px;">
-                    <strong style="color:var(--primary-color);">${parseCurrencyValue(item.cost).toLocaleString()} 원</strong>
-                    <div style="display:flex; gap: 2px;">
-                        <button type="button" class="action-icon-btn" onclick="openFuelDetailModal('${date}', ${item.index})" title="수정">
-                            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        </button>
-                        <button type="button" class="action-icon-btn del" onclick="deleteFuelRecord('${date}', ${item.index})" title="삭제">
-                            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `).join('');
+// ========== 정비/주유/기타 관리 목록 로직 ==========
+const MAINT_FUEL_KIND_CONFIG = {
+    maint: {
+        containerId: 'maintListContainer',
+        dataKey: 'maintItems',
+        label: '정비',
+        recordClass: 'maint-record',
+        dayClass: 'maint-day',
+        amount: item => parseCurrencyValue(item.fare),
+        title: item => escapeDetailText(item.name || '정비'),
+        notes: item => [item.payment || '카드', item.category, item.mileage ? `누적 ${item.mileage}km` : ''],
+        icon: () => '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>',
+        editAction: (date, idx) => `openMaintRecordModal('${date}', ${idx})`,
+        deleteAction: (date, idx) => `deleteMaintRecord('${date}', ${idx})`
+    },
+    fuel: {
+        containerId: 'fuelListContainer',
+        dataKey: 'fuelItems',
+        label: '주유',
+        recordClass: 'fuel-record',
+        dayClass: 'fuel-day',
+        amount: item => parseCurrencyValue(item.cost),
+        title: item => `${escapeDetailText(item.type || '주유')}${item.liter ? ` (${escapeDetailText(item.liter)}L)` : ''}`,
+        notes: item => [item.mileage ? `누적 ${item.mileage}km` : '', item.subsidy ? `보조금 ${parseCurrencyValue(item.subsidy).toLocaleString()}원` : ''],
+        icon: () => fuelIconSvg(),
+        editAction: (date, idx) => `openFuelDetailModal('${date}', ${idx})`,
+        deleteAction: (date, idx) => `deleteFuelRecord('${date}', ${idx})`
+    },
+    misc: {
+        containerId: 'miscListContainer',
+        dataKey: 'miscItems',
+        label: '기타',
+        recordClass: 'misc-record',
+        dayClass: 'misc-day',
+        amount: item => parseCurrencyValue(item.fare),
+        title: item => escapeDetailText(item.name || item.category || '기타'),
+        notes: item => [item.payment || '카드', item.category],
+        icon: () => '<svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>',
+        editAction: (date, idx) => `openMiscRecordModal('${date}', ${idx})`,
+        deleteAction: (date, idx) => `deleteMiscRecord('${date}', ${idx})`
+    }
+};
 
-        const div = document.createElement('div');
-        div.className = 'setting-section';
-        div.style.marginBottom = '10px';
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <strong style="color:var(--primary-color); font-size:1.1rem;">${date}</strong>
-            </div>
-            ${itemsHtml}
-        `;
-        container.appendChild(div);
-    });
+function getMaintFuelViewDate(kind) {
+    if (kind === 'fuel') return fuelViewDate;
+    if (kind === 'misc') return miscViewDate;
+    return maintViewDate;
 }
 
 function renderMaintList() {
@@ -3313,51 +4049,49 @@ function renderFuelList() {
     renderMaintFuelManagementList('fuel');
 }
 
+function renderMiscList() {
+    renderMaintFuelManagementList('misc');
+}
+
 function renderMaintFuelManagementList(kind) {
-    const isMaint = kind === 'maint';
-    const targetDate = isMaint ? maintViewDate : fuelViewDate;
+    const config = MAINT_FUEL_KIND_CONFIG[kind] || MAINT_FUEL_KIND_CONFIG.maint;
+    const targetDate = getMaintFuelViewDate(kind);
     const year = targetDate.getFullYear();
     const monthNumber = targetDate.getMonth() + 1;
     const month = String(monthNumber).padStart(2, '0');
     const prefix = `${year}-${month}-`;
-    const container = document.getElementById(isMaint ? 'maintListContainer' : 'fuelListContainer');
+    const container = document.getElementById(config.containerId);
+    if (!container) return;
     const grouped = [];
     let monthlyTotal = 0;
 
     Object.keys(workData).filter(date => date.startsWith(prefix)).sort().forEach(date => {
-        const source = isMaint ? workData[date].maintItems : workData[date].fuelItems;
+        const source = workData[date][config.dataKey];
         if (!source?.length) return;
         const items = source.map((item, index) => ({ ...item, index }));
-        const dailyTotal = items.reduce((sum, item) => sum + parseCurrencyValue(isMaint ? item.fare : item.cost), 0);
+        const dailyTotal = items.reduce((sum, item) => sum + config.amount(item), 0);
         monthlyTotal += dailyTotal;
         grouped.push({ date, items, dailyTotal });
     });
 
     if (grouped.length === 0) {
-        container.innerHTML = `<div class="empty-state">이번 달 등록된 ${isMaint ? '정비' : '주유'} 내역이 없습니다.</div>`;
+        container.innerHTML = `<div class="empty-state">이번 달 등록된 ${config.label} 내역이 없습니다.</div>`;
     } else {
         container.innerHTML = grouped.map(group => {
             const itemHtml = group.items.map(item => {
-                const amount = parseCurrencyValue(isMaint ? item.fare : item.cost);
-                const title = isMaint
-                    ? escapeDetailText(item.name || '정비')
-                    : `${escapeDetailText(item.type || '주유')}${item.liter ? ` (${escapeDetailText(item.liter)}L)` : ''}`;
-                const noteParts = isMaint
-                    ? [item.payment || '카드', item.category, item.mileage ? `누적 ${item.mileage}km` : '']
-                    : [item.mileage ? `누적 ${item.mileage}km` : '', item.subsidy ? `보조금 ${parseCurrencyValue(item.subsidy).toLocaleString()}원` : ''];
-                const notes = noteParts.filter(Boolean).map(value => `<span>${escapeDetailText(value)}</span>`).join('');
-                const icon = isMaint
-                    ? '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>'
-                    : fuelIconSvg();
-                const editAction = isMaint ? `openMaintRecordModal('${group.date}', ${item.index})` : `openFuelDetailModal('${group.date}', ${item.index})`;
-                const deleteAction = isMaint ? `deleteMaintRecord('${group.date}', ${item.index})` : `deleteFuelRecord('${group.date}', ${item.index})`;
-                return `<div class="management-record-item ${isMaint ? 'maint-record' : 'fuel-record'}">
+                const amount = config.amount(item);
+                const title = config.title(item);
+                const notes = config.notes(item).filter(Boolean).map(value => `<span>${escapeDetailText(value)}</span>`).join('');
+                const icon = config.icon();
+                const editAction = config.editAction(group.date, item.index);
+                const deleteAction = config.deleteAction(group.date, item.index);
+                return `<div class="management-record-item ${config.recordClass}">
                     <div class="management-record-head"><div class="management-record-title">${icon}<strong>${title}</strong></div><div class="management-record-actions"><button type="button" class="action-icon-btn" onclick="${editAction}" title="수정">${editDetailSvg()}</button><button type="button" class="action-icon-btn del" onclick="${deleteAction}" title="삭제">${deleteDetailSvg()}</button></div></div>
                     <div class="management-record-info"><div>${notes}</div><strong>${amount.toLocaleString()}원</strong></div>
                 </div>`;
             }).join('');
-            return `<section class="management-day-card ${isMaint ? 'maint-day' : 'fuel-day'}">
-                <div class="management-day-head"><strong>${group.date}</strong><div><span>${isMaint ? '정비' : '주유'} 합계</span><b>${group.dailyTotal.toLocaleString()}원</b></div></div>
+            return `<section class="management-day-card ${config.dayClass}">
+                <div class="management-day-head"><strong>${group.date}</strong><div><span>${config.label} 합계</span><b>${group.dailyTotal.toLocaleString()}원</b></div></div>
                 <div class="management-day-items">${itemHtml}</div>
             </section>`;
         }).join('');
@@ -3366,16 +4100,17 @@ function renderMaintFuelManagementList(kind) {
     const label = document.getElementById('maintFuelMonthLabel');
     const total = document.getElementById('maintFuelMonthTotal');
     if (label) {
-        label.textContent = `${monthNumber}월 ${isMaint ? '정비' : '주유'}`;
-        label.classList.toggle('fuel-color', !isMaint);
+        label.textContent = `${monthNumber}월 ${config.label}`;
+        label.classList.toggle('fuel-color', kind === 'fuel');
+        label.classList.toggle('misc-color', kind === 'misc');
     }
     if (total) total.textContent = `${monthlyTotal.toLocaleString()}원`;
 }
 
 function openMaintFuelCurrentAdd() {
-    const isMaint = document.getElementById('maintTabPanel').style.display !== 'none';
-    if (isMaint) openMaintRecordModal();
-    else openFuelDetailModal();
+    if (document.getElementById('maintTabPanel').style.display !== 'none') openMaintRecordModal();
+    else if (document.getElementById('fuelTabPanel').style.display !== 'none') openFuelDetailModal();
+    else openMiscRecordModal();
 }
 
 function openMaintFuelSelectModal() {
@@ -3400,6 +4135,11 @@ function selectMaintOption() {
 function selectFuelOption() {
     hideMaintFuelInlinePanelImmediately(document.getElementById('maintFuelSelectModal'));
     openFuelDetailModal(selectedDateKey);
+}
+
+function selectMiscOption() {
+    hideMaintFuelInlinePanelImmediately(document.getElementById('maintFuelSelectModal'));
+    openMiscRecordModal(selectedDateKey);
 }
 
 function openMaintFuelInlinePanel(panel) {
@@ -3558,7 +4298,7 @@ function saveFuelDetail() {
         }
 
         if (!workData[date]) {
-            workData[date] = { isOff: false, fixedCount: 0, palletCount: 0, callFares: [], maintItems: [], fuelItems: [], callDetails: [] };
+            workData[date] = { isOff: false, fixedCount: 0, palletCount: 0, maintItems: [], fuelItems: [], callDetails: [] };
         }
         if (!workData[date].fuelItems) {
             workData[date].fuelItems = [];
@@ -3587,116 +4327,6 @@ function deleteFuelRecord(date, index) {
         showToastMessage('삭제되었습니다.');
         buildCalendar();
     });
-}
-
-function renderMaintSummaryInMainModalLegacy() {
-    const container = document.getElementById('maintSummaryContainer');
-    const listCard = document.getElementById('maintSummaryList');
-
-    if (currentTempMaintItems.length === 0) {
-        container.style.display = 'none';
-        listCard.innerHTML = '';
-    } else {
-        container.style.display = 'block';
-        let html = '';
-        let total = 0;
-        currentTempMaintItems.forEach((item, idx) => {
-            const fareVal = parseCurrencyValue(item.fare);
-            total += fareVal;
-            
-            let subInfo = [];
-            if(item.category) subInfo.push(item.category);
-            if(item.mileage) subInfo.push(`누적 ${item.mileage}km`);
-            let subInfoHtml = subInfo.length > 0 ? `<div style="font-size: 0.8rem; color: var(--sub-text-color); margin-top: 4px;">${subInfo.join(' | ')}</div>` : '';
-
-            html += `
-                <div class="maint-summary-item" style="align-items: flex-start; padding: 8px 12px; margin-bottom: 6px; border-radius:12px; background-color: var(--card-bg); border: 1px solid var(--border-color); flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; width: 100%; align-items: flex-start;">
-                        <div>
-                            <div style="display:flex; align-items:center; gap:6px; font-weight: 700;">
-                                <svg class="inline-icon sm" viewBox="0 0 24 24" style="stroke: var(--sunday-color);"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
-                                ${item.name || '정비 항목'}
-                            </div>
-                            ${subInfoHtml}
-                        </div>
-                        <div style="display:flex; gap: 2px; flex-shrink: 0; margin-top: -4px; margin-right: -4px;">
-                            <button type="button" class="action-icon-btn" onclick="openMaintRecordModal('${selectedDateKey}', ${idx})" title="수정">
-                                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </button>
-                            <button type="button" class="action-icon-btn del" onclick="currentTempMaintItems.splice(${idx}, 1); renderMaintSummaryInMainModal(); autoSaveWorkRecord();" title="삭제">
-                                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div style="width: 100%; display:flex; justify-content: space-between; align-items: flex-end; margin-top: 8px;">
-                        <span style="font-size: 0.75rem; color: var(--sub-text-color); background: var(--input-bg); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${item.payment || '카드'}</span>
-                        <span style="font-weight: 700;">${fareVal.toLocaleString()}원</span>
-                    </div>
-                </div>
-            `;
-        });
-        html += `
-            <div class="maint-summary-item" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-color); font-weight:800; color: var(--sunday-color);">
-                <span>정비 합계</span>
-                <span>${total.toLocaleString()}원</span>
-            </div>
-        `;
-        listCard.innerHTML = html;
-    }
-}
-
-function renderFuelSummaryInMainModalLegacy() {
-    const container = document.getElementById('fuelSummaryContainer');
-    const listCard = document.getElementById('fuelSummaryList');
-
-    if (currentTempFuelItems.length === 0) {
-        container.style.display = 'none';
-        listCard.innerHTML = '';
-    } else {
-        container.style.display = 'block';
-        let html = '';
-        let total = 0;
-        currentTempFuelItems.forEach((item, idx) => {
-            const costVal = parseCurrencyValue(item.cost);
-            total += costVal;
-            
-            let subInfo = [];
-            if(item.mileage) subInfo.push(`누적 ${item.mileage}km`);
-            let subInfoHtml = subInfo.length > 0 ? `<div style="font-size: 0.8rem; color: var(--sub-text-color); margin-top: 4px;">${subInfo.join(' | ')}</div>` : '';
-
-            html += `
-                <div class="maint-summary-item" style="align-items: flex-start; padding: 8px 12px; margin-bottom: 6px; border-radius:12px; background-color: var(--card-bg); border: 1px solid var(--border-color); flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; width: 100%; align-items: flex-start;">
-                        <div>
-                            <div style="display:flex; align-items:center; gap:6px; font-weight: 700;">
-                                ${fuelIconSvg('inline-icon sm', 'stroke: var(--primary-color);')}
-                                ${item.type} ${item.liter ? `(${item.liter}L)` : ''}
-                            </div>
-                            ${subInfoHtml}
-                        </div>
-                        <div style="display:flex; gap: 2px; flex-shrink: 0; margin-top: -4px; margin-right: -4px;">
-                            <button type="button" class="action-icon-btn" onclick="openFuelDetailModal('${selectedDateKey}', ${idx})" title="수정">
-                                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </button>
-                            <button type="button" class="action-icon-btn del" onclick="currentTempFuelItems.splice(${idx}, 1); renderFuelSummaryInMainModal(); autoSaveWorkRecord();" title="삭제">
-                                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div style="width: 100%; text-align: right; font-weight: 700; margin-top: 8px;">
-                        ${costVal.toLocaleString()}원
-                    </div>
-                </div>
-            `;
-        });
-        html += `
-            <div class="maint-summary-item" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-color); font-weight:800; color: var(--primary-color);">
-                <span>주유 합계</span>
-                <span>${total.toLocaleString()}원</span>
-            </div>
-        `;
-        listCard.innerHTML = html;
-    }
 }
 
 function renderMaintSummaryInMainModal() {
@@ -3751,6 +4381,33 @@ function renderFuelSummaryInMainModal() {
         </div>`;
     }).join('');
     listCard.innerHTML = `${items}<div class="maint-fuel-total fuel-total-color"><strong>주유 합계</strong><strong>${total.toLocaleString()}원</strong></div>`;
+}
+
+function renderMiscSummaryInMainModal() {
+    const container = document.getElementById('miscSummaryContainer');
+    const listCard = document.getElementById('miscSummaryList');
+    if (!container || !listCard) return;
+    if (currentTempMiscItems.length === 0) {
+        container.style.display = 'none';
+        listCard.innerHTML = '';
+        return;
+    }
+
+    container.style.display = 'block';
+    let total = 0;
+    const items = currentTempMiscItems.map((item, idx) => {
+        const amount = parseCurrencyValue(item.fare);
+        total += amount;
+        const detail = [item.category].filter(Boolean).map(escapeDetailText).join(' · ');
+        return `<div class="maint-fuel-item misc-item-card">
+            <div class="maint-fuel-head">
+                <div class="maint-fuel-title misc-title-color"><svg class="maint-fuel-icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"></path></svg><strong>${escapeDetailText(item.name || item.category || '기타')}</strong></div>
+                <div class="maint-fuel-actions"><button type="button" class="action-icon-btn" onclick="openMiscRecordModal('${selectedDateKey}', ${idx})" title="수정">${editDetailSvg()}</button><button type="button" class="action-icon-btn del" onclick="currentTempMiscItems.splice(${idx}, 1); renderMiscSummaryInMainModal(); autoSaveWorkRecord();" title="삭제">${deleteDetailSvg()}</button></div>
+            </div>
+            <div class="maint-fuel-info"><div><span class="maint-payment-badge">${escapeDetailText(item.payment || '카드')}</span>${detail ? `<span class="maint-fuel-note">${detail}</span>` : ''}</div><strong>${amount.toLocaleString()}원</strong></div>
+        </div>`;
+    }).join('');
+    listCard.innerHTML = `${items}<div class="maint-fuel-total misc-total-color"><strong>기타 합계</strong><strong>${total.toLocaleString()}원</strong></div>`;
 }
 
 function showSettings(fromPage) {
@@ -3974,24 +4631,50 @@ function toggleSubRunCountPresetSettings() {
     setSettingsGroupExpanded(setting, !!toggle?.checked, 'flex');
 }
 
-function showToastMessage(msg = "저장되었습니다.") {
+function hideToastMessage() {
     const toast = document.getElementById('toastMessage');
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 1200);
+    toast?.classList.remove('show', 'retryable');
+    toastActionCallback = null;
+    if (toastHideTimer) clearTimeout(toastHideTimer);
+    toastHideTimer = null;
 }
 
-let smoothSettingsSaveTimer = null;
+function showToastMessage(msg = "저장되었습니다.", options = {}) {
+    const toast = document.getElementById('toastMessage');
+    if (!toast) return;
+    const text = document.getElementById('toastMessageText');
+    const actionButton = document.getElementById('toastActionBtn');
+    if (text) text.textContent = msg;
+    else toast.textContent = msg;
+
+    const hasAction = typeof options.action === 'function' && actionButton;
+    toastActionCallback = hasAction ? options.action : null;
+    toast.classList.toggle('retryable', !!hasAction);
+    if (actionButton) {
+        actionButton.textContent = options.actionLabel || '다시 시도';
+        actionButton.classList.toggle('hidden', !hasAction);
+    }
+    toast.classList.add('show');
+    if (toastHideTimer) clearTimeout(toastHideTimer);
+    toastHideTimer = setTimeout(hideToastMessage, options.duration || 1200);
+}
+
+function executeToastAction() {
+    const action = toastActionCallback;
+    hideToastMessage();
+    if (!action) return;
+    Promise.resolve().then(action).catch(error => showRetryableSaveError(error, action));
+}
+
 function saveSettingsSmoothly() {
-    window.clearTimeout(smoothSettingsSaveTimer);
-    smoothSettingsSaveTimer = window.setTimeout(() => {
-        saveSettings();
-    }, 430);
+    queueBackgroundSave('settings', commitSettings, 430);
 }
 
 function saveSettings() {
+    queueBackgroundSave('settings', commitSettings);
+}
+
+function commitSettings() {
     const settings = getUserSettings();
     
     const mainInputModeBtn = document.getElementById('btnInputModeFare');
@@ -4041,6 +4724,10 @@ function saveSettings() {
 }
 
 function savePersonalInfo() {
+    queueBackgroundSave('personal-info', commitPersonalInfo);
+}
+
+function commitPersonalInfo() {
     const settings = getUserSettings();
     settings.bizName = document.getElementById('bizName').value;
     settings.bizNumber = document.getElementById('bizNumber').value;
@@ -4173,7 +4860,7 @@ function updateToggleDependencies(type) {
     } else {
         const subFixedToggle = document.getElementById('subFixedToggle');
         const subCallDetailToggle = document.getElementById('subCallDetailToggle');
-        const subCallDetailSubSettings = document.getElementById('subCallDetailSubSettings') || document.getElementById('subPaymentToggleContainer');
+        const subCallDetailSubSettings = document.getElementById('subCallDetailSubSettings');
         const subCallDetailDependencyHint = document.getElementById('subCallDetailDependencyHint');
         const subDetailToggles = [
             'subPaymentToggle',
@@ -4209,15 +4896,24 @@ function updateToggleDependencies(type) {
 }
 
 const APP_BACKUP_TYPE = 'plaintext-transport-log';
-const APP_BACKUP_VERSION = 2;
+const APP_BACKUP_VERSION = 3;
 const APP_BACKUP_JSON_KEYS = new Set([
     'userSettings',
     'workData',
     'taxInvoiceRecords',
     'messageTemplateCustomBodies',
-    'supportInquiries'
+    'supportInquiries',
+    'normalizedSchemaMeta',
+    'entityUsers',
+    'entityVehicles',
+    'entityDailyLogs',
+    'entityTransportDetails',
+    'entityMaintenanceRecords',
+    'entityFuelRecords',
+    'entityClients',
+    'entityTaxInvoices'
 ]);
-const APP_BACKUP_TEXT_KEYS = new Set(['theme', 'reportShareMessagePattern']);
+const APP_BACKUP_TEXT_KEYS = new Set(['theme', 'reportShareMessagePattern', 'normalizedUserId']);
 
 function isBackupRecord(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -4240,7 +4936,8 @@ function readBackupJsonStorage(key, fallback) {
     }
 }
 
-function exportData() {
+async function exportData() {
+    await flushAllBackgroundSaves();
     const storageData = {};
     const storageKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
         .filter(key => key && isAppBackupStorageKey(key));
@@ -4266,6 +4963,7 @@ function exportData() {
         workData: readBackupJsonStorage('workData', {}),
         subWorkData,
         taxInvoiceRecords: readBackupJsonStorage('taxInvoiceRecords', []),
+        normalizedEntities: getNormalizedEntitySnapshot(),
         theme: localStorage.getItem('theme') || 'light',
         storageData
     };
@@ -4386,6 +5084,7 @@ function importData(event) {
                     || readBackupJsonStorage(`workData_${activeLogId}`, {});
             }
             normalizeLegacyData();
+            syncNormalizedEntityStore();
 
             const restoredTheme = localStorage.getItem('theme') || 'light';
             setTheme(restoredTheme);
@@ -4443,6 +5142,7 @@ function buildCalendar() {
     let monthTotalPalletFare = 0;
     let monthTotalMaintFare = 0;
     let monthTotalFuelFare = 0;
+    let monthTotalMiscFare = 0;
     let monthTotalCommission = 0;
     let monthTotalDistance = 0; 
     let monthTotalUnpaid = 0; // 미수금 총액 합산 변수 추가
@@ -4529,14 +5229,7 @@ function buildCalendar() {
                     dayPalletFare += record.palletCount * palletUnitPrice;
                 }
                 
-                if (record.callFares && record.callFares.length > 0) {
-                    dayWorkCount += record.callFares.length;
-                    const callSum = record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
-                    dayFare += callSum;
-                    dayDefaultFare += callSum;
-                }
-
-                monthTotalDistance += parseFloat(record.dailyDistance) || 0;
+                monthTotalDistance += getRecordTotalDistance(record);
                 
                 if (record.callDetails && record.callDetails.length > 0) {
                     record.callDetails.forEach(detail => {
@@ -4553,12 +5246,12 @@ function buildCalendar() {
 
                         let gross = parseCurrencyValue(detail.fare);
                         
-                        // 미수금 로직 (결제 기능이 켜져있고, 수금이 아닐 때 합산)
+                        // 미수금 로직 (결제 기능이 켜져있고, payments 기준으로 완납이 아닐 때 잔액을 합산)
                         if (savedSettings.paymentOn) {
-                            let payStatus = detail.paymentStatus || '미수';
-                            if (payStatus === '미수') {
+                            const paymentSummary = getDetailPaymentSummary(detail);
+                            if (paymentSummary.status !== 'paid') {
                                 hasUnpaidToday = true;
-                                monthTotalUnpaid += gross;
+                                monthTotalUnpaid += paymentSummary.remainingAmount;
                             }
                         }
 
@@ -4617,20 +5310,25 @@ function buildCalendar() {
 
                 let dayMaintSum = 0;
                 let dayFuelSum = 0;
-                
+                let dayMiscSum = 0;
+
                 if (record.maintItems && record.maintItems.length > 0) {
                     dayMaintSum = record.maintItems.reduce((a, b) => a + parseCurrencyValue(b.fare), 0);
                 }
                 if (record.fuelItems && record.fuelItems.length > 0) {
                     dayFuelSum = record.fuelItems.reduce((a, b) => a + parseCurrencyValue(b.cost), 0);
                 }
-                
-                if (dayMaintSum > 0 || dayFuelSum > 0) {
+                if (record.miscItems && record.miscItems.length > 0) {
+                    dayMiscSum = record.miscItems.reduce((a, b) => a + parseCurrencyValue(b.fare), 0);
+                }
+
+                if (dayMaintSum > 0 || dayFuelSum > 0 || dayMiscSum > 0) {
                     monthTotalMaintFare += dayMaintSum;
                     monthTotalFuelFare += dayFuelSum;
+                    monthTotalMiscFare += dayMiscSum;
                     const expBadge = document.createElement('span');
                     expBadge.classList.add('maint-badge');
-                    expBadge.textContent = formatFareShort(dayMaintSum + dayFuelSum);
+                    expBadge.textContent = formatFareShort(dayMaintSum + dayFuelSum + dayMiscSum);
                     cell.appendChild(expBadge);
                 }
 
@@ -4644,6 +5342,12 @@ function buildCalendar() {
         } else {
             cell.classList.add('empty');
         }
+    }
+
+    {
+        const { fareAdjustment, commAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, savedSettings);
+        monthTotalFare += fareAdjustment;
+        monthTotalCommission -= commAdjustment;
     }
 
     // 하단 미수금 미니 카드 노출 처리
@@ -4677,10 +5381,10 @@ function buildCalendar() {
     }
 
     const isDistanceOn = activeLogId === 'main' ? !!savedSettings.distanceOn : !!savedSettings.subDistanceOn;
-    updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare, monthTotalFuelFare, monthTotalCommission, subCarComm, subCarCommLabel, fixedBaseFare, defaultBaseFare, monthFareByClient, monthCommByClient, clientCommLabels, monthTotalDistance, isDistanceOn);
+    updateSummary(monthTotalWork, monthTotalFare, monthTotalPalletFare, monthTotalMaintFare, monthTotalFuelFare, monthTotalCommission, subCarComm, subCarCommLabel, fixedBaseFare, defaultBaseFare, monthFareByClient, monthCommByClient, clientCommLabels, monthTotalDistance, isDistanceOn, monthTotalMiscFare);
 }
 
-function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, fuelTotal = 0, commissionTotal = 0, subCarComm = 0, subCarCommLabel = '', fixedBaseFare = 0, defaultBaseFare = 0, monthFareByClient = {}, monthCommByClient = {}, clientCommLabels = {}, monthTotalDistance = 0, isDistanceOn = false) {
+function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, fuelTotal = 0, commissionTotal = 0, subCarComm = 0, subCarCommLabel = '', fixedBaseFare = 0, defaultBaseFare = 0, monthFareByClient = {}, monthCommByClient = {}, clientCommLabels = {}, monthTotalDistance = 0, isDistanceOn = false, miscTotal = 0) {
     document.getElementById('summaryTotalWork').textContent = `총 ${totalCount}회 운행`;
     
     const distanceRow = document.getElementById('summaryDistanceRow');
@@ -4714,16 +5418,17 @@ function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, fuelTotal
             `;
         }
         for (let client in monthFareByClient) {
+            const isFixedMonthly = clientCommLabels[client] === '월정액 계약';
             html += `
                 <div class="summary-row">
-                    <span>${client} 기본 운송료</span>
+                    <span>${escapeDetailText(client)} ${isFixedMonthly ? '월정액 정산' : '기본 운송료'}</span>
                     <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
                 </div>
             `;
             if (monthCommByClient[client] > 0) {
                 html += `
                     <div class="summary-row summary-client-commission-row">
-                        <span class="summary-client-commission-label">${client} 수수료 (${clientCommLabels[client]})</span>
+                        <span class="summary-client-commission-label">${escapeDetailText(client)} 수수료 (${clientCommLabels[client]})</span>
                         <span class="summary-value">- ${monthCommByClient[client].toLocaleString()} 원</span>
                     </div>
                 `;
@@ -4775,6 +5480,14 @@ function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, fuelTotal
         document.getElementById('summaryFuelFare').textContent = `${fuelTotal.toLocaleString()} 원`;
     } else if (fuelRow) {
         fuelRow.style.display = 'none';
+    }
+
+    const miscRow = document.getElementById('summaryMiscRow');
+    if (miscTotal > 0 && miscRow) {
+        miscRow.style.display = 'flex';
+        document.getElementById('summaryMiscFare').textContent = `${miscTotal.toLocaleString()} 원`;
+    } else if (miscRow) {
+        miscRow.style.display = 'none';
     }
 
     updateOverdueNotification();
@@ -4872,36 +5585,33 @@ function openModal(dateKey, month, day) {
     const isMain = activeLogId === 'main';
     const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
     const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
-    const callOn = isMain ? savedSettings.callOn : savedSettings.subCallOn;
     const callDetailOn = isMain ? savedSettings.callDetailOn : savedSettings.subCallDetailOn;
     
     document.getElementById('modalFixedSection').style.display = fixedOn ? 'block' : 'none';
     document.getElementById('modalPalletSection').style.display = (fixedOn && palletOn) ? 'block' : 'none';
-    document.getElementById('modalCallSection').style.display = callOn ? 'block' : 'none';
     document.getElementById('modalCallDetailSection').style.display = callDetailOn ? 'block' : 'none';
     renderFixedCountQuickButtons(savedSettings, isMain);
 
     const record = workData[dateKey];
-    const callContainer = document.getElementById('callListContainer');
-    callContainer.innerHTML = '';
 
     currentTempMaintItems = [];
     currentTempCallDetails = [];
     currentTempFuelItems = [];
+    currentTempMiscItems = [];
 
     if (record) {
         setOffState(!!record.isOff);
         document.getElementById('modalFixedCountInput').value = record.fixedCount || '';
         document.getElementById('modalPalletCount').value = record.palletCount || '';
 
-        if (record.callFares && record.callFares.length > 0) {
-            record.callFares.forEach(val => addCallInputRow(val));
-        }
         if (record.maintItems && record.maintItems.length > 0) {
             currentTempMaintItems = JSON.parse(JSON.stringify(record.maintItems));
         }
         if (record.fuelItems && record.fuelItems.length > 0) {
             currentTempFuelItems = JSON.parse(JSON.stringify(record.fuelItems));
+        }
+        if (record.miscItems && record.miscItems.length > 0) {
+            currentTempMiscItems = JSON.parse(JSON.stringify(record.miscItems));
         }
         if (record.callDetails && record.callDetails.length > 0) {
             currentTempCallDetails = JSON.parse(JSON.stringify(record.callDetails));
@@ -4916,6 +5626,7 @@ function openModal(dateKey, month, day) {
 
     renderMaintSummaryInMainModal();
     renderFuelSummaryInMainModal();
+    renderMiscSummaryInMainModal();
     renderCallDetailSummaryInMainModal();
     
     hideAllPages();
@@ -4944,263 +5655,14 @@ function setOffState(off) {
     }
 }
 
-function updateOdometerDistance(shouldSave = true) {
-    const startInput = document.getElementById('modalStartOdometer');
-    const endInput = document.getElementById('modalEndOdometer');
-    const resultEl = document.getElementById('modalDailyDistanceResult');
-
-    if (!startInput || !endInput || !resultEl) {
-        return 0;
-    }
-
-    const startValue = parseCurrencyValue(startInput.value);
-    const endValue = parseCurrencyValue(endInput.value);
-    const hasStartValue = startInput.value.trim() !== '';
-    const hasEndValue = endInput.value.trim() !== '';
-
-    resultEl.classList.remove('error');
-
-    if (!hasStartValue || !hasEndValue) {
-        resultEl.textContent = '입력 대기';
-        return 0;
-    }
-
-    if (endValue < startValue) {
-        resultEl.textContent = '계기판 수치 확인';
-        resultEl.classList.add('error');
-        return 0;
-    }
-
-    const dailyDistance = endValue - startValue;
-    resultEl.textContent = `${dailyDistance.toLocaleString()} km`;
-
-    if (shouldSave && !isOffSelected) {
-        autoSaveWorkRecord();
-    }
-
-    return dailyDistance;
-}
-
-function handleOdometerPhoto(input, type) {
-    const file = input.files && input.files[0];
-
-    if (!file) {
-        return;
-    }
-
-    const previewId = type === 'start' ? 'startOdometerPreview' : 'endOdometerPreview';
-    const preview = document.getElementById(previewId);
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-        preview.src = event.target.result;
-        preview.classList.remove('hidden');
-        showToastMessage('계기판 사진이 선택되었습니다. AI/OCR API 연결 후 숫자가 자동 입력됩니다.');
-    };
-
-    reader.readAsDataURL(file);
-}
-
-function addCallInputRow(val = '') {
-    if (isOffSelected) setOffState(false);
-    const container = document.getElementById('callListContainer');
-    const div = document.createElement('div');
-    div.className = 'call-item-row';
-    div.innerHTML = `
-        <input type="text" class="input-box call-fare-input" inputmode="numeric" placeholder="운송료 입력" value="${val}" oninput="formatCurrencyInput(this); autoSaveWorkRecord();">
-        <button type="button" class="btn-del" onclick="this.parentElement.remove(); autoSaveWorkRecord();">삭제</button>
-    `;
-    container.appendChild(div);
-    autoSaveWorkRecord();
-}
-
-function renderCallDetailSummaryInMainModalLegacy() {
-    const container = document.getElementById('callDetailSummaryContainer');
-    const listCard = document.getElementById('callDetailSummaryList');
-    const dailyDistanceEl = document.getElementById('modalDailyDistance');
-
-    if (currentTempCallDetails.length === 0) {
-        container.style.display = 'none';
-        listCard.innerHTML = '';
-        if (dailyDistanceEl) dailyDistanceEl.textContent = `일일 운행거리: 0 km`;
-    } else {
-        container.style.display = 'block';
-        const fragment = document.createDocumentFragment();
-        let total = 0;
-        let dailyDist = 0;
-        let totalComm = 0; 
-        
-        const settings = getActiveLogSettings();
-        
-        currentTempCallDetails.forEach((item, index) => {
-            const fareVal = parseCurrencyValue(item.fare);
-            total += fareVal;
-            dailyDist += parseFloat(item.distanceKm) || 0;
-            
-            // 운행 거리 뱃지
-            let distBadge = '';
-            if (settings.distanceOn && (item.distanceType || item.distanceKm)) {
-                distBadge = `<span style="font-size:0.75rem; background:var(--input-bg); padding:2px 6px; border-radius:4px; border:1px solid var(--border-color); color:var(--text-color); margin-left:6px;">${item.distanceType || ''} ${item.distanceKm ? item.distanceKm + 'km' : ''}</span>`;
-            }
-
-            // 수수료 텍스트 및 전화번호(미수 전화용)
-            let commText = '';
-            let clientPhone = '';
-            if (item.client) {
-                const clientObj = settings.clients?.find(c => c.companyName === item.client);
-                if (clientObj) {
-                    if (clientObj.phone) clientPhone = clientObj.phone;
-                    if (clientObj.commEnabled) {
-                        const valStr = clientObj.commType === 'direct' ? parseCurrencyValue(clientObj.commValue).toLocaleString() + '원' : clientObj.commValue + '%';
-                        commText = `<span style="color:var(--sunday-color); font-size:0.8rem;">(수수료 ${valStr})</span>`;
-                        
-                        let comm = 0;
-                        if (clientObj.commType === 'direct') {
-                            comm = parseCurrencyValue(clientObj.commValue);
-                        } else {
-                            comm = Math.floor(fareVal * (parseFloat(clientObj.commValue) / 100));
-                        }
-                        totalComm += comm;
-                    }
-                }
-            }
-
-            // 운행 시간 표시
-            let timeHtml = '';
-            if (settings.timeOn && (item.departureTime || item.arrivalTime)) {
-                let diffText = '';
-                if (item.departureTime && item.arrivalTime) {
-                    const [dh, dm] = item.departureTime.split(':').map(Number);
-                    const [ah, am] = item.arrivalTime.split(':').map(Number);
-                    let dMin = dh * 60 + dm;
-                    let aMin = ah * 60 + am;
-                    if (aMin < dMin) aMin += 24 * 60; 
-                    const diff = aMin - dMin;
-                    const hrs = Math.floor(diff / 60);
-                    const mins = diff % 60;
-                    diffText = ` <span style="font-weight:700; color:var(--primary-color);">(${hrs > 0 ? hrs + '시간 ' : ''}${mins > 0 ? mins + '분' : (hrs > 0 ? '' : '0분')})</span>`;
-                }
-                timeHtml = `<div style="font-size: 0.85rem; color: var(--sub-text-color); margin-top: 4px;">운행시간: ${item.departureTime || '-'} ~ ${item.arrivalTime || '-'} ${diffText}</div>`;
-            }
-
-            // 플랫폼 및 계산서 뱃지
-            let badgesHtml = '';
-            if (settings.paymentOn && item.receipt) badgesHtml += `<span class="detail-badge">${item.receipt}</span>`;
-            if (settings.platformOn && item.platform) badgesHtml += `<span class="detail-badge">${item.platform}</span>`;
-            if (settings.cargoTonnageOn && item.cargoTonnage) badgesHtml += `<span class="detail-badge">${item.cargoTonnage}톤</span>`;
-
-            // 결제 상태 (미수/수금)
-            let payStatus = item.paymentStatus || '미수';
-            let isUnpaid = payStatus === '미수';
-            let cardClass = isUnpaid ? 'maint-summary-item unpaid-card' : 'maint-summary-item';
-            let statusBtn = '';
-            
-            if (settings.paymentOn) {
-                let phoneBtn = '';
-                if (isUnpaid) {
-                    if (clientPhone) {
-                        phoneBtn = `<a href="tel:${clientPhone}" class="call-phone-btn" onclick="event.stopPropagation();" title="전화걸기">
-                                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                                    </a>`;
-                    } else {
-                        phoneBtn = `<button type="button" class="call-phone-btn" onclick="showConfirmModal('거래처에 등록된 연락처가 없습니다.', null); event.stopPropagation();" title="전화걸기(연락처 없음)">
-                                        <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-                                    </button>`;
-                    }
-                }
-                
-                statusBtn = `<div style="display:flex; align-items:center; gap:6px;">
-                                ${phoneBtn}
-                                <button type="button" onclick="toggleCallPaymentStatus(${index})" class="payment-toggle-btn ${isUnpaid ? 'unpaid' : 'paid'}">${isUnpaid ? '미수' : '수금'}</button>
-                             </div>`;
-            } else {
-                cardClass = 'maint-summary-item'; 
-            }
-
-            const itemDiv = document.createElement('div');
-            itemDiv.className = cardClass;
-            itemDiv.style.cssText = 'align-items: flex-start; padding:12px; margin-bottom:12px; border-radius:12px; background-color: var(--card-bg); border: 1px solid var(--border-color);';
-            itemDiv.innerHTML = `
-                <div style="flex:1; width: 100%;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                        <div style="font-weight: 700; color: var(--primary-color); display:flex; align-items:center; gap:6px;">
-                            ${item.loadLoc || '상차지 미상'} ➔ ${item.unloadLoc || '하차지 미상'} 
-                            ${distBadge}
-                        </div>
-                        <div style="display:flex; gap: 2px; flex-shrink: 0; margin-top: -4px; margin-right: -4px;">
-                            <button type="button" class="action-icon-btn" onclick="openCallDetailModal(${index})" title="수정">
-                                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </button>
-                            <button type="button" class="action-icon-btn del" onclick="deleteCallDetail(${index})" title="삭제">
-                                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-color);">
-                            운송료: ${fareVal.toLocaleString()}원
-                        </div>
-                    </div>
-                    
-                    <div style="font-size: 0.85rem; color: var(--sub-text-color);">
-                        거래처: ${item.client || '-'} ${commText}
-                    </div>
-                    
-                    ${timeHtml}
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px;">
-                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">${badgesHtml}</div>
-                        <div>${statusBtn}</div>
-                    </div>
-                </div>
-            `;
-            fragment.appendChild(itemDiv);
-        });
-
-        listCard.innerHTML = '';
-        listCard.appendChild(fragment);
-
-        let commSummaryHtml = '';
-        if (totalComm > 0) {
-            commSummaryHtml = `
-                <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.85rem; color: var(--sunday-color); margin-top: 6px; font-weight: 700;">
-                    <span>수수료</span>
-                    <span>- ${totalComm.toLocaleString()}원</span>
-                </div>
-            `;
-        }
-
-        const summaryDiv = document.createElement('div');
-        summaryDiv.className = 'maint-summary-item';
-        summaryDiv.style.cssText = 'margin-top: 10px; padding: 10px 4px 0 4px; border-top: 1px dashed var(--border-color); font-weight:800; color: var(--primary-color); flex-direction: column;';
-        summaryDiv.innerHTML = `
-            <div style="display: flex; justify-content: space-between; width: 100%;">
-                <span>세부 내역 합계 (${currentTempCallDetails.length}건)</span>
-                <span>${total.toLocaleString()}원</span>
-            </div>
-            ${commSummaryHtml}
-            <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.85rem; color: var(--text-color); margin-top: 6px;">
-                <span>일일 운행거리</span>
-                <span>${dailyDist} km</span>
-            </div>
-        `;
-        listCard.appendChild(summaryDiv);
-        
-        if (dailyDistanceEl) dailyDistanceEl.style.display = 'none';
-    }
-}
-
 function renderCallDetailSummaryInMainModal() {
     const container = document.getElementById('callDetailSummaryContainer');
     const listCard = document.getElementById('callDetailSummaryList');
-    const dailyDistanceEl = document.getElementById('modalDailyDistance');
     if (!container || !listCard) return;
 
     if (currentTempCallDetails.length === 0) {
         container.style.display = 'none';
         listCard.innerHTML = '';
-        if (dailyDistanceEl) dailyDistanceEl.textContent = '일일 운행거리: 0 km';
         return;
     }
 
@@ -5246,10 +5708,9 @@ function renderCallDetailSummaryInMainModal() {
         const commission = getCommission(item, fare);
         const vat = item.vatExempt ? 0 : Math.round(fare * 0.1);
         const insuranceFee = parseCurrencyValue(item.insuranceFee);
-        const finalTotal = fare - commission.amount - insuranceFee + vat;
         const distance = parseFloat(item.distanceKm) || 0;
         const client = getClientInfo(item.client);
-        const unpaid = (item.paymentStatus || '미수') === '미수';
+        const unpaid = getDetailPaymentSummary(item).status !== 'paid';
         totalFare += fare;
         totalCommission += commission.amount;
         totalInsuranceFee += insuranceFee;
@@ -5258,7 +5719,7 @@ function renderCallDetailSummaryInMainModal() {
 
         const phoneButton = settings.paymentOn && unpaid
             ? (client?.phone
-                ? `<a href="tel:${client.phone}" class="call-phone-btn detail-call-phone" onclick="event.stopPropagation()" title="전화걸기">${callPhoneSvg()}</a>`
+                ? `<a href="tel:${escapeDetailText(client.phone)}" class="call-phone-btn detail-call-phone" onclick="event.stopPropagation()" title="전화걸기">${callPhoneSvg()}</a>`
                 : `<button type="button" class="call-phone-btn detail-call-phone" onclick="showConfirmModal('거래처에 등록된 연락처가 없습니다.', null); event.stopPropagation()" title="연락처 없음">${callPhoneSvg()}</button>`)
             : '';
         const messageButton = settings.paymentOn && unpaid
@@ -5299,14 +5760,25 @@ function renderCallDetailSummaryInMainModal() {
             <div><b>일일 운행거리</b><strong>${totalDistance} km</strong></div>
             ${totalCommission ? `<div class="commission-row"><b>수수료</b><strong>- ${totalCommission.toLocaleString()}원</strong></div>` : ''}
             ${totalInsuranceFee ? `<div class="commission-row"><b>산재보험료</b><strong>- ${totalInsuranceFee.toLocaleString()}원</strong></div>` : ''}
-            <div><b>부가세(10%)</b><strong>${totalVat.toLocaleString()}원</strong></div>
+            <div><b>부가세(공급가액 기준 10%)</b><strong>${totalVat.toLocaleString()}원</strong></div>
             <div class="summary-grand-total"><b>세부 내역 합계 (${currentTempCallDetails.length}건)</b><strong>${grandTotal.toLocaleString()}원</strong></div>
         </div>`;
-    if (dailyDistanceEl) dailyDistanceEl.style.display = 'none';
 }
 
 function escapeDetailText(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+
+// onclick="fn('${value}')" 처럼 인라인 핸들러의 작은따옴표 문자열 인자로 사용자 입력값을 넣을 때 쓴다.
+// 1) JS 문자열 리터럴 이스케이프(백슬래시/따옴표/줄바꿈) → 2) HTML 속성 이스케이프 순서로 처리해야
+// onclick="..." 속성 자체를 깨거나 안의 JS 문자열 경계를 깨는 인젝션을 동시에 막을 수 있다.
+function escapeForInlineHandlerArg(value) {
+    const jsEscaped = String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+    return escapeDetailText(jsEscaped);
 }
 
 function callPhoneSvg() {
@@ -5434,93 +5906,45 @@ function calculateCallDetailComm() {
     }
 }
 
-function selectCallDetailBtn(groupName, value, isEditInit = false) {
-    let container, hiddenInput;
-    if (groupName === 'receipt') {
-        container = document.getElementById('callReceiptGroup');
-        hiddenInput = document.getElementById('callReceiptValue');
-    } else if (groupName === 'distance') {
-        container = document.getElementById('callDistanceGroup');
-        hiddenInput = document.getElementById('callDistanceType');
-        
-        // 사용자가 직접 '혼짐'을 클릭했을 때 (초기화 단계 제외)
-        if (value === '혼짐' && !isEditInit) {
-            const isAlreadyActive = hiddenInput.value === value;
-            if (!isAlreadyActive) {
-                openMixedLoadModal(); // 3차 모달 호출
-            } else {
-                hiddenInput.value = '';
-                container.querySelectorAll('.dark-pill-btn').forEach(btn => btn.classList.remove('active'));
-                document.getElementById('callLinkedLoadIndex').value = '-1';
-            }
-            return;
-        }
+// 운송료 입력창 바로 아래에 "부가세 포함 예상 금액"을 실시간으로 보여준다.
+// 계산 로직은 기존 vat = Math.round(fare * 0.1)과 동일하게 맞춰 표시용으로만 재사용한다.
+function updateCallDetailVatPreview() {
+    const fareInput = document.getElementById('callDetailFare');
+    const previewEl = document.getElementById('callDetailVatPreview');
+    if (!fareInput || !previewEl) return;
+
+    const fare = parseCurrencyValue(fareInput.value);
+    if (!fare) {
+        previewEl.style.display = 'none';
+        previewEl.textContent = '';
+        return;
     }
-    if(!container || !hiddenInput) return;
+
+    const vatExemptToggle = document.getElementById('callVatExemptToggle');
+    const isVatExempt = !!vatExemptToggle?.checked;
+
+    if (isVatExempt) {
+        previewEl.textContent = '면세 거래로 부가세가 적용되지 않습니다.';
+        previewEl.style.display = 'block';
+        return;
+    }
+
+    const vat = Math.round(fare * 0.1);
+    previewEl.textContent = `부가세 포함 ${(fare + vat).toLocaleString()}원`;
+    previewEl.style.display = 'block';
+}
+
+function selectCallReceipt(value) {
+    const container = document.getElementById('callReceiptGroup');
+    const hiddenInput = document.getElementById('callReceiptValue');
+    if (!container || !hiddenInput) return;
 
     const isAlreadyActive = hiddenInput.value === value;
-    container.querySelectorAll('.dark-pill-btn').forEach(btn => btn.classList.remove('active'));
-    
-    if (isAlreadyActive) {
-        hiddenInput.value = ''; 
-        if (groupName === 'distance') document.getElementById('callLinkedLoadIndex').value = '-1';
-    } else {
-        hiddenInput.value = value;
-        const activeBtn = Array.from(container.querySelectorAll('.dark-pill-btn')).find(btn => btn.textContent.trim() === value);
-        if(activeBtn) activeBtn.classList.add('active');
-        if (groupName === 'distance' && value !== '혼짐') document.getElementById('callLinkedLoadIndex').value = '-1';
-    }
-}
-
-function openMixedLoadModal() {
-    const container = document.getElementById('mixedLoadListContainer');
-    container.innerHTML = '';
-    
-    const currentIndex = parseInt(document.getElementById('callDetailEditIndex').value, 10);
-    
-    let html = `
-        <label style="display:flex; align-items:center; gap:8px; padding:10px; background:var(--hover-bg); border-radius:8px; cursor:pointer;">
-            <input type="radio" name="mixedLoadTarget" value="pending" checked>
-            <span style="font-weight:700;">+ 추가 예정 (새로운 혼짐 기준)</span>
-        </label>
-    `;
-    
-    currentTempCallDetails.forEach((item, idx) => {
-        if (idx !== currentIndex) {
-            const title = `${item.loadLoc || '상차지 미상'} ➔ ${item.unloadLoc || '하차지 미상'}`;
-            html += `
-                <label style="display:flex; align-items:center; gap:8px; padding:10px; background:var(--input-bg); border:1px solid var(--border-color); border-radius:8px; cursor:pointer;">
-                    <input type="radio" name="mixedLoadTarget" value="${idx}">
-                    <span style="font-weight:600; font-size:0.9rem;">${title}</span>
-                </label>
-            `;
-        }
+    hiddenInput.value = isAlreadyActive ? '' : value;
+    container.querySelectorAll('.dark-pill-btn').forEach(button => {
+        button.classList.toggle('active', !isAlreadyActive && button.textContent.trim() === value);
     });
-    
-    container.innerHTML = html;
-    document.getElementById('mixedLoadModal').classList.remove('hidden');
 }
-
-function closeMixedLoadModal() {
-    document.getElementById('mixedLoadModal').classList.add('hidden');
-}
-
-function saveMixedLoad() {
-    const selected = document.querySelector('input[name="mixedLoadTarget"]:checked');
-    if (selected) {
-        document.getElementById('callLinkedLoadIndex').value = selected.value;
-        
-        const container = document.getElementById('callDistanceGroup');
-        const hiddenInput = document.getElementById('callDistanceType');
-        
-        hiddenInput.value = '혼짐';
-        container.querySelectorAll('.dark-pill-btn').forEach(btn => btn.classList.remove('active'));
-        const activeBtn = Array.from(container.querySelectorAll('.dark-pill-btn')).find(btn => btn.textContent.trim() === '혼짐');
-        if (activeBtn) activeBtn.classList.add('active');
-    }
-    closeMixedLoadModal();
-}
-
 function openCallDetailModal(index = -1) {
     if (isOffSelected) setOffState(false);
     
@@ -5555,10 +5979,12 @@ function openCallDetailModal(index = -1) {
     }
 
     document.getElementById('callDetailEditIndex').value = index;
-    
+
     document.getElementById('callLoadLoc').value = '';
     document.getElementById('callUnloadLoc').value = '';
     document.getElementById('callDetailFare').value = '';
+    clearCallDetailRequiredError();
+    if (document.getElementById('callEndOdometer')) document.getElementById('callEndOdometer').classList.remove('input-error');
     document.getElementById('callClient').value = '';
     document.getElementById('callRemarks').value = '';
     if(document.getElementById('callCargoTonnage')) document.getElementById('callCargoTonnage').value = '';
@@ -5573,8 +5999,6 @@ function openCallDetailModal(index = -1) {
     if(document.getElementById('callPaymentDueDate')) document.getElementById('callPaymentDueDate').value = '';
     
     if(document.getElementById('callReceiptValue')) document.getElementById('callReceiptValue').value = '';
-    if(document.getElementById('callDistanceType')) document.getElementById('callDistanceType').value = '';
-    if(document.getElementById('callLinkedLoadIndex')) document.getElementById('callLinkedLoadIndex').value = '-1';
     if(document.getElementById('callPlatform')) document.getElementById('callPlatform').value = '';
     
     document.querySelectorAll('#callReceiptGroup .dark-pill-btn').forEach(b => b.classList.remove('active'));
@@ -5596,7 +6020,7 @@ function openCallDetailModal(index = -1) {
         if(document.getElementById('callInsuranceFee')) document.getElementById('callInsuranceFee').value = item.insuranceFee ? parseCurrencyValue(item.insuranceFee).toLocaleString() : '';
         if(document.getElementById('callPaymentDueDate')) document.getElementById('callPaymentDueDate').value = item.paymentDueDate || '';
         
-        if (item.receipt) selectCallDetailBtn('receipt', item.receipt, true);
+        if (item.receipt) selectCallReceipt(item.receipt);
         if (item.platform && document.getElementById('callPlatform')) document.getElementById('callPlatform').value = item.platform;
     }
     
@@ -5629,6 +6053,7 @@ function openCallDetailModal(index = -1) {
         });
     }
     calculateCallDetailComm();
+    updateCallDetailVatPreview();
 }
 
 function closeCallDetailModal() {
@@ -5656,6 +6081,23 @@ function setCallPlatform(platformName) {
     document.querySelectorAll('.call-platform-quick-list .dark-pill-btn').forEach(button => {
         button.classList.toggle('active', button.textContent.trim() === input.value);
     });
+}
+
+// 필수 입력 필드 인라인 오류 표시(.input-error)를 다루는 범용 헬퍼.
+// id 또는 엘리먼트를 직접 받아, 값이 비어있으면 표시하고(markFieldError) 사용자가 입력하면 지운다(clearFieldError).
+function markFieldError(idOrEl) {
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (el && el.classList) el.classList.add('input-error');
+}
+
+function clearFieldError(idOrEl) {
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (el && el.classList) el.classList.remove('input-error');
+}
+
+function clearCallDetailRequiredError(input) {
+    [document.getElementById('callDetailFare'), document.getElementById('callLoadLoc'), document.getElementById('callUnloadLoc')]
+        .forEach(clearFieldError);
 }
 
 function updateCallDetailDistance() {
@@ -5722,22 +6164,29 @@ function saveCallDetail() {
     const departureTime = document.getElementById('callDepartureTime') ? document.getElementById('callDepartureTime').value : '';
     const arrivalTime = document.getElementById('callArrivalTime') ? document.getElementById('callArrivalTime').value : '';
     const receipt = document.getElementById('callReceiptValue') ? document.getElementById('callReceiptValue').value : '';
-    const distanceType = document.getElementById('callDistanceType') ? document.getElementById('callDistanceType').value : '';
     const distanceKm = document.getElementById('callDistanceKm') ? document.getElementById('callDistanceKm').value.trim() : '';
     const startOdometer = document.getElementById('callStartOdometer') ? document.getElementById('callStartOdometer').value.trim() : '';
     const endOdometer = document.getElementById('callEndOdometer') ? document.getElementById('callEndOdometer').value.trim() : '';
     const vatExempt = document.getElementById('callVatExemptToggle') ? document.getElementById('callVatExemptToggle').checked : false;
     const insuranceFee = document.getElementById('callInsuranceFee') ? document.getElementById('callInsuranceFee').value.trim() : '';
-    const linkedLoadIndex = document.getElementById('callLinkedLoadIndex') ? document.getElementById('callLinkedLoadIndex').value : '-1';
     const platform = document.getElementById('callPlatform') ? document.getElementById('callPlatform').value.trim() : '';
 
-    if (!fare && !loadLoc && !unloadLoc) {
-        showConfirmModal('최소한 운송료나 상/하차지는 입력해야 합니다.', null);
+    const fareInput = document.getElementById('callDetailFare');
+    const loadLocInput = document.getElementById('callLoadLoc');
+    const unloadLocInput = document.getElementById('callUnloadLoc');
+    const missingRequired = !fare && !loadLoc && !unloadLoc;
+    [fareInput, loadLocInput, unloadLocInput].forEach(input => {
+        if (input) input.classList.toggle('input-error', missingRequired);
+    });
+    if (missingRequired) {
+        if (fareInput) fareInput.focus();
         return;
     }
 
     const existingItem = idx >= 0 && currentTempCallDetails[idx] ? currentTempCallDetails[idx] : null;
     const paymentStatus = existingItem ? (existingItem.paymentStatus || '미수') : '미수';
+    // 수금 이력(payments)은 이 화면에서 건드리지 않는 값이므로 수정 시에도 그대로 보존한다.
+    const payments = existingItem && Array.isArray(existingItem.payments) ? existingItem.payments : [];
 
     const newItem = {
         loadLoc,
@@ -5748,15 +6197,14 @@ function saveCallDetail() {
         departureTime,
         arrivalTime,
         receipt,
-        distanceType,
         distanceKm,
         startOdometer,
         endOdometer,
         vatExempt,
         insuranceFee,
-        linkedLoadIndex,
         platform,
         paymentStatus,
+        payments,
         paymentDueDate,
         cargoTonnage,
         workDate: selectedDateKey
@@ -5800,59 +6248,83 @@ function closeModal() {
     showMain();
 }
 
+let autoSaveStatusHideTimer = null;
+
+// #workModal 제목 아래 작은 자동저장 상태 텍스트 ("저장 중..." → "저장됨"/"저장 실패", 잠시 후 자동 소멸)
+function setAutoSaveStatus(state) {
+    const el = document.getElementById('autoSaveStatus');
+    if (!el) return;
+    if (autoSaveStatusHideTimer) {
+        clearTimeout(autoSaveStatusHideTimer);
+        autoSaveStatusHideTimer = null;
+    }
+    if (state === 'saving') {
+        el.textContent = '저장 중...';
+        el.classList.remove('error');
+        el.classList.add('visible');
+    } else if (state === 'saved') {
+        el.textContent = '저장됨';
+        el.classList.remove('error');
+        el.classList.add('visible');
+        autoSaveStatusHideTimer = setTimeout(() => el.classList.remove('visible'), 1200);
+    } else if (state === 'error') {
+        el.textContent = '저장 실패';
+        el.classList.add('error');
+        el.classList.add('visible');
+        autoSaveStatusHideTimer = setTimeout(() => el.classList.remove('visible'), 1800);
+    }
+}
+
 function autoSaveWorkRecord() {
     if (!selectedDateKey) return;
 
-    const savedSettings = getUserSettings();
-    const isMain = activeLogId === 'main';
-    const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
-    const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
-    const callOn = isMain ? savedSettings.callOn : savedSettings.subCallOn;
+    setAutoSaveStatus('saving');
 
-    let fixedCount = 0;
-    let palletCount = 0;
-    let callFares = [];
+    try {
+        const savedSettings = getUserSettings();
+        const isMain = activeLogId === 'main';
+        const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
+        const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
 
-    if (!isOffSelected) {
-        if (fixedOn) {
-            fixedCount = parseInt(document.getElementById('modalFixedCountInput').value, 10) || 0;
+        let fixedCount = 0;
+        let palletCount = 0;
 
-            if (palletOn) {
-                palletCount = parseInt(document.getElementById('modalPalletCount').value, 10) || 0;
+        if (!isOffSelected) {
+            if (fixedOn) {
+                fixedCount = parseInt(document.getElementById('modalFixedCountInput').value, 10) || 0;
+
+                if (palletOn) {
+                    palletCount = parseInt(document.getElementById('modalPalletCount').value, 10) || 0;
+                }
             }
         }
 
-        if (callOn) {
-            const inputs = document.querySelectorAll('.call-fare-input');
+        const maintItems = currentTempMaintItems;
+        const fuelItems = currentTempFuelItems;
+        const miscItems = currentTempMiscItems;
+        const callDetails = currentTempCallDetails;
 
-            inputs.forEach(input => {
-                if (input.value.trim() !== '') {
-                    callFares.push(input.value.trim());
-                }
-            });
+        if (!isOffSelected && fixedCount === 0 && palletCount === 0 && maintItems.length === 0 && fuelItems.length === 0 && miscItems.length === 0 && callDetails.length === 0) {
+            delete workData[selectedDateKey];
+        } else {
+            workData[selectedDateKey] = {
+                isOff: isOffSelected,
+                fixedCount,
+                palletCount,
+                maintItems,
+                fuelItems,
+                miscItems,
+                callDetails
+            };
         }
+
+        saveDataToStorage();
+        buildCalendar();
+        setAutoSaveStatus('saved');
+    } catch (error) {
+        console.error('자동 저장 실패:', error);
+        setAutoSaveStatus('error');
     }
-
-    const maintItems = currentTempMaintItems;
-    const fuelItems = currentTempFuelItems;
-    const callDetails = currentTempCallDetails;
-
-    if (!isOffSelected && fixedCount === 0 && palletCount === 0 && callFares.length === 0 && maintItems.length === 0 && fuelItems.length === 0 && callDetails.length === 0) {
-        delete workData[selectedDateKey];
-    } else {
-        workData[selectedDateKey] = {
-            isOff: isOffSelected,
-            fixedCount,
-            palletCount,
-            callFares,
-            maintItems,
-            fuelItems,
-            callDetails
-        };
-    }
-
-    saveDataToStorage();
-    buildCalendar();
 }
 
 function createTableHTML(items, showPallet) {
@@ -5978,14 +6450,7 @@ function buildReportPage(isForExport = false) {
                     dayFare += fAmt;
                     dayDefaultFare += fAmt;
                 }
-                if (record.callFares && record.callFares.length > 0) {
-                    dayWorkCount += record.callFares.length;
-                    let cAmt = record.callFares.reduce((a, b) => a + parseCurrencyValue(b), 0);
-                    dayFare += cAmt;
-                    dayDefaultFare += cAmt;
-                }
-
-                totalMonthDistance += parseFloat(record.dailyDistance) || 0;
+                totalMonthDistance += getRecordTotalDistance(record);
 
                 if (record.callDetails && record.callDetails.length > 0) {
                     record.callDetails.forEach(detail => {
@@ -6053,6 +6518,12 @@ function buildReportPage(isForExport = false) {
         }
     }
 
+    {
+        const { fareAdjustment, commAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, savedSettings);
+        totalFare += fareAdjustment;
+        totalCommission -= commAdjustment;
+    }
+
     const container = document.getElementById('reportTableContainer');
     container.innerHTML = '';
 
@@ -6110,16 +6581,17 @@ function buildReportPage(isForExport = false) {
         `;
     }
     for (let client in monthFareByClient) {
+        const isFixedMonthlyReport = clientCommLabels[client] === '월정액 계약';
         baseFareHtml += `
             <div class="summary-row">
-                <span>${client} 기본 운송료</span>
+                <span>${escapeDetailText(client)} ${isFixedMonthlyReport ? '월정액 정산' : '기본 운송료'}</span>
                 <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
             </div>
         `;
         if (monthCommByClient[client] > 0) {
             baseFareHtml += `
                 <div class="summary-row">
-                    <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${client} 수수료 (${clientCommLabels[client]})</span>
+                    <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${escapeDetailText(client)} 수수료 (${clientCommLabels[client]})</span>
                     <span class="summary-value">- ${monthCommByClient[client].toLocaleString()} 원</span>
                 </div>
             `;
@@ -6129,7 +6601,7 @@ function buildReportPage(isForExport = false) {
     summaryBox.innerHTML = `
         ${baseFareHtml}
         <div class="summary-row">
-            <span>부가세 (10%)</span>
+            <span>부가세 (공급가액 기준 10%)</span>
             <span class="summary-value">${totalVat.toLocaleString()} 원</span>
         </div>
         <div class="summary-row total">
@@ -6221,9 +6693,9 @@ function createDetailTableHTML(items, isForExport, totalItems, showClientColumn 
                 ${items.length > 0 ? items.map(item => `
                     <tr>
                         <td class="detail-date-cell" style="padding: ${cellPadding};">${item.dateStr}</td>
-                        <td class="detail-text-cell detail-location-cell" style="padding: ${cellPadding};">${item.loadLoc}</td>
-                        <td class="detail-text-cell detail-location-cell" style="padding: ${cellPadding};">${item.unloadLoc}</td>
-                        ${showClientColumn ? `<td class="detail-text-cell" style="padding: ${cellPadding};">${item.client}</td>` : ''}
+                        <td class="detail-text-cell detail-location-cell" style="padding: ${cellPadding};">${escapeDetailText(item.loadLoc)}</td>
+                        <td class="detail-text-cell detail-location-cell" style="padding: ${cellPadding};">${escapeDetailText(item.unloadLoc)}</td>
+                        ${showClientColumn ? `<td class="detail-text-cell" style="padding: ${cellPadding};">${escapeDetailText(item.client)}</td>` : ''}
                         <td class="amount detail-amount-cell" style="padding: ${cellPadding};">${item.fare.toLocaleString()}원</td>
                     </tr>
                 `).join('') : `<tr><td colspan="${showClientColumn ? 5 : 4}" style="text-align:center; padding: 15px;">해당 내역이 없습니다.</td></tr>`}
@@ -6307,6 +6779,12 @@ function viewDetailReport(isForExport) {
         }
     }
 
+    {
+        const { fareAdjustment, commAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, savedSettings);
+        totalFare += fareAdjustment;
+        totalCommission -= commAdjustment;
+    }
+
     let tableHTML = '';
     const showClientColumn = clientFilter === 'ALL';
 
@@ -6355,16 +6833,17 @@ function viewDetailReport(isForExport) {
         `;
     }
     for (let client in monthFareByClient) {
+        const isFixedMonthlyReport = clientCommLabels[client] === '월정액 계약';
         baseFareHtml += `
             <div class="summary-row">
-                <span>${client} 기본 운송료</span>
+                <span>${escapeDetailText(client)} ${isFixedMonthlyReport ? '월정액 정산' : '기본 운송료'}</span>
                 <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
             </div>
         `;
         if (monthCommByClient[client] > 0) {
             baseFareHtml += `
                 <div class="summary-row">
-                    <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${client} 수수료 (${clientCommLabels[client]})</span>
+                    <span style="padding-left: 10px; font-size: 0.9rem; color: var(--sub-text-color);">└ ${escapeDetailText(client)} 수수료 (${clientCommLabels[client]})</span>
                     <span class="summary-value">- ${monthCommByClient[client].toLocaleString()} 원</span>
                 </div>
             `;
@@ -6374,7 +6853,7 @@ function viewDetailReport(isForExport) {
     summaryBox.innerHTML = `
         ${baseFareHtml}
         <div class="summary-row">
-            <span>부가세 (10%)</span>
+            <span>부가세 (공급가액 기준 10%)</span>
             <span class="summary-value">${vat.toLocaleString()} 원</span>
         </div>
         <div class="summary-row total">
@@ -6409,7 +6888,7 @@ function toggleNewDriverLinkSettings() {
         const settings = getUserSettings();
         if (!isOwnerAccountType(settings.accountType)) {
             driverLinkToggle.checked = false;
-            showConfirmModal('개인 차주 또는 운송사·운영 사장 유형에서 사용할 수 있습니다.', null);
+            showConfirmModal('차주 유형에서 사용할 수 있습니다.', null);
             setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), false);
             return;
         }
@@ -6545,35 +7024,48 @@ function editCar(idx) {
 }
 
 // 앱 초기화 구문
-normalizeLegacyData(); 
+normalizeLegacyData();
+normalizeLegacyAccountType();
+try {
+    syncNormalizedEntityStore();
+} catch (error) {
+    console.error('정규화 데이터 초기화 실패:', error);
+}
 loadSettings();
 initDateSelects();
-initMaintDateSelects(); 
+initMaintDateSelects();
 initFuelDateSelects();
+initMiscDateSelects();
 initCalendarDOM();
 buildCalendar();
 renderSubCarMenu();
 updateAccountRoleUI();
 
 // 스플래시 화면(시작 화면) 제어 로직
+// 이미 로그인된 재방문 유저는 매번 2초씩 기다릴 필요가 없으므로 대기 없이 짧게 페이드아웃하고,
+// 최초 진입(계정 유형 미선택/로그인 전) 유저에게만 기존 브랜딩 노출 시간을 유지한다.
 window.addEventListener('load', () => {
     const splashScreen = document.getElementById('splashScreen');
 
     if (splashScreen) {
+        const settings = getUserSettings();
+        const isReturningUser = !!settings.isLoggedIn;
+        const holdMs = isReturningUser ? 0 : 1500;
+        const fadeMs = isReturningUser ? 200 : 500;
+
         setTimeout(() => {
+            splashScreen.style.transition = `opacity ${fadeMs}ms ease`;
             splashScreen.style.opacity = '0';
-            splashScreen.style.transition = 'opacity 0.5s ease';
 
             setTimeout(() => {
                 splashScreen.style.display = 'none';
 
-                const settings = getUserSettings();
                 updateOverdueNotification(true);
 
                 if (!settings.accountType) showAccountTypePage('login');
                 else if (!settings.isLoggedIn) showLocalLoginPage();
-            }, 500);
-        }, 1500);
+            }, fadeMs);
+        }, holdMs);
     }
 });
 
@@ -6593,16 +7085,33 @@ function handleLogout() {
     });
 }
 
+// 운행 일지 카드의 미수/수금 빠른 토글. payments 원장을 기준으로 동작하도록 맞춰서
+// 미수금 관리 화면(부분입금 포함)과 상태가 어긋나지 않게 한다.
 function toggleCallPaymentStatus(index) {
-    if (index >= 0 && currentTempCallDetails[index]) {
-        let currentStatus = currentTempCallDetails[index].paymentStatus || '미수';
-        currentTempCallDetails[index].paymentStatus = (currentStatus === '미수') ? '수금' : '미수';
-        
-        // UI 즉시 업데이트
-        renderCallDetailSummaryInMainModal();
-        if (!document.getElementById('workModal').classList.contains('hidden')) {
-            autoSaveWorkRecord();
+    if (index < 0 || !currentTempCallDetails[index]) return;
+
+    const detail = currentTempCallDetails[index];
+    const summary = getDetailPaymentSummary(detail);
+
+    if (!Array.isArray(detail.payments)) detail.payments = [];
+
+    if (summary.status === 'paid') {
+        // 완전 취소: 이 카드에서 쌓인 입금 기록을 전부 초기화
+        detail.payments = [];
+    } else {
+        // 빠른 전액 수금 처리: 남은 금액을 한 건의 결제로 등록
+        const fare = parseCurrencyValue(detail.fare);
+        const remaining = Math.max(fare - summary.paidAmount, 0);
+        if (remaining > 0) {
+            detail.payments.push({ id: generateLocalId('pay'), amount: remaining, paidAt: new Date().toISOString(), note: '' });
         }
+    }
+    syncDetailPaymentStatus(detail);
+
+    // UI 즉시 업데이트
+    renderCallDetailSummaryInMainModal();
+    if (!document.getElementById('workModal').classList.contains('hidden')) {
+        autoSaveWorkRecord();
     }
 }
 
@@ -6749,7 +7258,40 @@ function selectReceivableTab(tab) {
 let currentReceivableTab = 'monthly';
 let currentReceivableDetail = null;
 
+// 결제 상태 계산: detail.payments 배열(부분입금 이력)을 기준으로 입금액/잔액/상태를 도출한다.
+// payments 배열이 없는 예전 기록은 detail.paymentStatus만으로 하위호환 변환한다.
+function getDetailPaymentSummary(detail) {
+    const fare = parseCurrencyValue(detail?.fare);
+
+    if (!Array.isArray(detail?.payments)) {
+        const legacyPaid = (detail?.paymentStatus || '미수') !== '미수';
+        return {
+            paidAmount: legacyPaid ? fare : 0,
+            remainingAmount: legacyPaid ? 0 : fare,
+            status: legacyPaid ? 'paid' : 'unpaid' // 'unpaid' | 'partial' | 'paid'
+        };
+    }
+
+    const paidAmount = detail.payments.reduce((sum, payment) => sum + (parseCurrencyValue(payment.amount) || 0), 0);
+    const remainingAmount = Math.max(fare - paidAmount, 0);
+    let status = 'unpaid';
+    if (paidAmount > 0 && remainingAmount > 0) status = 'partial';
+    else if (paidAmount > 0 && remainingAmount <= 0) status = 'paid';
+
+    return { paidAmount, remainingAmount, status };
+}
+
+// payments 배열을 바꾼 뒤에는 항상 호출: 레거시 paymentStatus('미수'/'수금 완료') 필드를
+// 새 상태와 계속 동기화해 다른 화면이 paymentStatus만 봐도 완료 여부가 어긋나지 않게 한다.
+function syncDetailPaymentStatus(detail) {
+    const summary = getDetailPaymentSummary(detail);
+    detail.paymentStatus = summary.status === 'paid' ? '수금 완료' : '미수';
+    return summary;
+}
+
 function getReceivableItems() {
+    if (!getActiveLogSettings().paymentOn) return [];
+
     const items = [];
 
     Object.keys(workData).forEach(dateKey => {
@@ -6760,7 +7302,8 @@ function getReceivableItems() {
         }
 
         record.callDetails.forEach((detail, detailIndex) => {
-            if ((detail.paymentStatus || '미수') !== '미수') {
+            const paymentSummary = getDetailPaymentSummary(detail);
+            if (paymentSummary.status === 'paid') {
                 return;
             }
 
@@ -6769,6 +7312,10 @@ function getReceivableItems() {
                 detailIndex,
                 client: detail.client || '미지정 거래처',
                 fare: parseCurrencyValue(detail.fare),
+                paidAmount: paymentSummary.paidAmount,
+                remainingAmount: paymentSummary.remainingAmount,
+                paymentSummaryStatus: paymentSummary.status,
+                payments: Array.isArray(detail.payments) ? detail.payments : [],
                 paymentDueDate: detail.paymentDueDate || '',
                 workDate: detail.workDate || dateKey,
                 loadLoc: detail.loadLoc || '',
@@ -6834,19 +7381,8 @@ function updateOverdueNotification(announce = false) {
     if (localStorage.getItem('lastOverdueReceivableAlert') === alertKey) return;
 
     localStorage.setItem('lastOverdueReceivableAlert', alertKey);
-    const total = overdueItems.reduce((sum, item) => sum + item.fare, 0);
+    const total = overdueItems.reduce((sum, item) => sum + item.remainingAmount, 0);
     showToastMessage(`연체 미수금 ${overdueItems.length}건 · ${total.toLocaleString()}원이 있습니다.`);
-}
-
-function openOverdueReceivables() {
-    const overdueItems = getOverdueReceivableItems();
-    if (overdueItems.length === 0) {
-        showToastMessage('연체된 미수금이 없습니다.');
-        return;
-    }
-    hideAllPages();
-    document.getElementById('receivablesManagementPage').classList.remove('hidden');
-    selectReceivableTab('due');
 }
 
 function renderNotificationPanel() {
@@ -6862,7 +7398,7 @@ function renderNotificationPanel() {
     }
 
     container.innerHTML = overdueItems.map(item => `
-        <div class="notification-swipe-shell" data-notification-key="${getNotificationItemKey(item)}">
+        <div class="notification-swipe-shell" data-notification-key="${escapeDetailText(getNotificationItemKey(item))}">
             <div class="notification-delete-backdrop" aria-hidden="true"><span>삭제</span><span>삭제</span></div>
             <button type="button" class="notification-panel-item" onclick="handleNotificationItemClick(event)">
                 <div class="notification-panel-item-head">
@@ -6872,7 +7408,7 @@ function renderNotificationPanel() {
                 <p class="notification-panel-item-message">입금 예정일이 지난 미수금입니다. 정산 내역을 확인해 주세요.</p>
                 <div class="notification-panel-item-meta">
                     <span>입금 예정일 ${item.paymentDueDate.replace(/-/g, '.')}</span>
-                    <b>${item.fare.toLocaleString()}원</b>
+                    <b>${item.remainingAmount.toLocaleString()}원</b>
                 </div>
             </button>
         </div>
@@ -7066,7 +7602,7 @@ function renderReceivablesManagement(tab) {
                 };
             }
 
-            grouped[groupKey].total += item.fare;
+            grouped[groupKey].total += item.remainingAmount;
             grouped[groupKey].count += 1;
             grouped[groupKey].items.push(item);
         });
@@ -7083,7 +7619,7 @@ function renderReceivablesManagement(tab) {
             return `
                 <div class="receivable-group-card">
                     <div class="receivable-group-head">
-                        <div class="receivable-group-title">${group.client}</div>
+                        <div class="receivable-group-title">${escapeDetailText(group.client)}</div>
                         <div class="receivable-group-period">${year}년 ${parseInt(month, 10)}월 운행분</div>
                     </div>
                     <div class="receivable-group-summary">
@@ -7093,8 +7629,8 @@ function renderReceivablesManagement(tab) {
                         <span class="receivable-summary-count">${group.count}건</span>
                     </div>
                     <div class="receivable-card-actions">
-                        <button type="button" class="receivable-detail-btn" onclick="openReceivableDetail('${encodeURIComponent(group.client).replace(/'/g, '%27')}', '${group.monthKey}')">미수금 상세</button>
-                        <button type="button" class="receivable-complete-btn" onclick="markMonthlyReceivablesPaid('${group.client.replace(/'/g, "\\'")}', '${group.monthKey}')">입금 완료 처리</button>
+                        <button type="button" class="receivable-detail-btn" onclick="openReceivableDetail('${encodeURIComponent(group.client)}', '${group.monthKey}')">미수금 상세</button>
+                        <button type="button" class="receivable-complete-btn" onclick="markMonthlyReceivablesPaid('${escapeForInlineHandlerArg(group.client)}', '${group.monthKey}')">입금 완료 처리</button>
                     </div>
                 </div>
             `;
@@ -7127,12 +7663,12 @@ function renderReceivablesManagement(tab) {
             <div class="receivable-item-card">
                 <div class="receivable-item-row">
                     <div>
-                        <div class="receivable-item-client">${item.client}</div>
+                        <div class="receivable-item-client">${escapeDetailText(item.client)}</div>
                         <div class="receivable-item-info">${workMonth} 운행분</div>
                         <div class="receivable-item-info">입금 예정일: ${item.paymentDueDate.replace(/-/g, '.')}</div>
                         <div class="receivable-dday">${getDdayText(item.paymentDueDate)}</div>
                     </div>
-                    <div class="receivable-item-amount">${item.fare.toLocaleString()}원</div>
+                    <div class="receivable-item-amount">${item.remainingAmount.toLocaleString()}원</div>
                 </div>
             </div>
         `;
@@ -7166,7 +7702,7 @@ function renderReceivableDetail() {
     const items = getCurrentReceivableDetailItems();
     const { clientName, monthKey } = currentReceivableDetail;
     const [year, month] = monthKey.split('-');
-    const total = items.reduce((sum, item) => sum + item.fare, 0);
+    const total = items.reduce((sum, item) => sum + item.remainingAmount, 0);
     const dueDates = items.map(item => item.paymentDueDate).filter(Boolean).sort();
 
     document.getElementById('receivableDetailClient').textContent = clientName;
@@ -7194,28 +7730,133 @@ function renderReceivableDetail() {
             ? `<span>입금 예정 ${item.paymentDueDate.replace(/-/g, '.')}</span><b>${getDdayText(item.paymentDueDate)}</b>`
             : '<span>입금 예정일 미등록</span>';
 
+        const isPartial = item.paymentSummaryStatus === 'partial';
+        const statusText = isPartial
+            ? `${item.paidAmount.toLocaleString()}원 입금 · ${item.remainingAmount.toLocaleString()}원 남음`
+            : '미수';
+        const payments = Array.isArray(item.payments) ? item.payments : [];
+        const historyRows = payments.map(payment => {
+            const paidAtText = payment.paidAt
+                ? new Date(payment.paidAt).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : '-';
+            return `<div class="receivable-payment-history-row"><span>${escapeDetailText(paidAtText)}</span><span>${parseCurrencyValue(payment.amount).toLocaleString()}원</span></div>`;
+        }).join('');
+
         return `
             <article class="receivable-detail-item">
                 <div class="receivable-detail-item-top">
                     <time datetime="${item.workDate}">${item.workDate.replace(/-/g, '.')}</time>
-                    <strong>${item.fare.toLocaleString()}원</strong>
+                    <strong>${item.remainingAmount.toLocaleString()}원</strong>
                 </div>
                 <div class="receivable-detail-route">${route}</div>
                 <div class="receivable-detail-due">${due}</div>
                 ${item.remarks ? `<p class="receivable-detail-remarks">${escapeDetailText(item.remarks)}</p>` : ''}
-                <button type="button" class="receivable-item-paid-btn" onclick="markReceivableItemPaid('${item.dateKey}', ${item.detailIndex})">이 건 입금 완료</button>
+                <div class="receivable-payment-status ${isPartial ? 'partial' : 'unpaid'}">${statusText} <span class="receivable-original-fare">(전체 ${item.fare.toLocaleString()}원)</span></div>
+                ${payments.length ? `<button type="button" class="receivable-history-toggle-btn" onclick="togglePaymentHistory(this)">입금 내역 보기 (${payments.length}건)</button>
+                <div class="receivable-payment-history hidden">${historyRows}</div>` : ''}
+                <div class="receivable-item-actions">
+                    <button type="button" class="receivable-item-paid-btn" onclick="markReceivableItemPaid('${item.dateKey}', ${item.detailIndex})">이 건 입금 완료</button>
+                    <button type="button" class="receivable-item-partial-btn" onclick="togglePartialPaymentInput(this)">부분 입금 처리</button>
+                    ${payments.length ? `<button type="button" class="receivable-item-undo-btn" onclick="undoLastPayment('${item.dateKey}', ${item.detailIndex})">취소</button>` : ''}
+                </div>
+                <div class="receivable-partial-input-row hidden">
+                    <input type="text" inputmode="numeric" class="input-box receivable-partial-amount" placeholder="입금액 입력" oninput="formatCurrencyInput(this)">
+                    <button type="button" class="receivable-partial-confirm-btn" onclick="confirmPartialPayment(this, '${item.dateKey}', ${item.detailIndex})">확인</button>
+                </div>
             </article>`;
     }).join('');
 }
 
+function togglePartialPaymentInput(btnEl) {
+    const row = btnEl.closest('.receivable-detail-item')?.querySelector('.receivable-partial-input-row');
+    if (!row) return;
+    row.classList.toggle('hidden');
+    if (!row.classList.contains('hidden')) {
+        row.querySelector('input')?.focus();
+    }
+}
+
+function togglePaymentHistory(btnEl) {
+    btnEl.closest('.receivable-detail-item')?.querySelector('.receivable-payment-history')?.classList.toggle('hidden');
+}
+
+// 부분 입금 등록: payments 배열에 한 건을 추가한다. 남은 금액을 초과하는 입력은 막는다.
+function addPartialPayment(dateKey, detailIndex, amount) {
+    const detail = workData[dateKey]?.callDetails?.[detailIndex];
+    if (!detail) return;
+
+    const value = parseCurrencyValue(amount);
+    if (!(value > 0)) {
+        showToastMessage('입금액을 올바르게 입력해 주세요.');
+        return;
+    }
+
+    const summary = getDetailPaymentSummary(detail);
+    if (value > summary.remainingAmount) {
+        showToastMessage('남은 금액보다 큰 금액은 입력할 수 없습니다.');
+        return;
+    }
+
+    if (!Array.isArray(detail.payments)) {
+        // 레거시 데이터 이전: payments 없이 이미 완료 처리된 기록이 있었다면 결제 이력 1건으로 보존
+        detail.payments = [];
+        if ((detail.paymentStatus || '미수') !== '미수') {
+            const fare = parseCurrencyValue(detail.fare);
+            if (fare > 0) {
+                detail.payments.push({ id: generateLocalId('pay'), amount: fare, paidAt: new Date().toISOString(), note: '(이전 기록)' });
+            }
+        }
+    }
+
+    detail.payments.push({ id: generateLocalId('pay'), amount: value, paidAt: new Date().toISOString(), note: '' });
+    syncDetailPaymentStatus(detail);
+
+    saveDataToStorage();
+    buildCalendar();
+    renderReceivableDetail();
+    showToastMessage('부분 입금을 등록했습니다.');
+}
+
+function confirmPartialPayment(btnEl, dateKey, detailIndex) {
+    const input = btnEl.closest('.receivable-partial-input-row')?.querySelector('input');
+    if (!input) return;
+    addPartialPayment(dateKey, detailIndex, input.value);
+}
+
+// 가장 최근에 추가된 입금 기록 1건만 되돌린다 (전체 초기화가 아님).
+function undoLastPayment(dateKey, detailIndex) {
+    const detail = workData[dateKey]?.callDetails?.[detailIndex];
+    if (!detail || !Array.isArray(detail.payments) || detail.payments.length === 0) {
+        showToastMessage('되돌릴 입금 기록이 없습니다.');
+        return;
+    }
+
+    showConfirmModal('가장 최근 입금 기록 1건을 취소하시겠습니까?', () => {
+        detail.payments.pop();
+        syncDetailPaymentStatus(detail);
+        saveDataToStorage();
+        buildCalendar();
+        renderReceivableDetail();
+        showToastMessage('입금 기록을 취소했습니다.');
+    });
+}
+
+// "이 건 입금 완료": 남은 금액 전액을 결제 이력 한 건으로 등록해 완납 처리한다.
+// (부분입금이 이미 있는 상태에서 눌러도 잔액만큼만 추가되므로 중복 합산되지 않는다.)
 function markReceivableItemPaid(dateKey, detailIndex) {
     const detail = workData[dateKey]?.callDetails?.[detailIndex];
-    if (!detail || (detail.paymentStatus || '미수') !== '미수') {
+    const summary = detail ? getDetailPaymentSummary(detail) : null;
+    if (!detail || summary.status === 'paid') {
         showToastMessage('이미 처리된 내역입니다.');
         return renderReceivableDetail();
     }
 
-    detail.paymentStatus = '수금 완료';
+    if (!Array.isArray(detail.payments)) detail.payments = [];
+    if (summary.remainingAmount > 0) {
+        detail.payments.push({ id: generateLocalId('pay'), amount: summary.remainingAmount, paidAt: new Date().toISOString(), note: '' });
+    }
+    syncDetailPaymentStatus(detail);
+
     saveDataToStorage();
     buildCalendar();
     renderReceivableDetail();
@@ -7237,14 +7878,20 @@ function markMonthlyReceivablesPaid(clientName, monthKey, stayOnDetail = false) 
 
         record.callDetails.forEach(detail => {
             const workDate = detail.workDate || dateKey;
-
-            if (
-                (detail.paymentStatus || '미수') === '미수' &&
-                (detail.client || '미지정 거래처') === clientName &&
-                workDate.slice(0, 7) === monthKey
-            ) {
-                detail.paymentStatus = '수금 완료';
+            if ((detail.client || '미지정 거래처') !== clientName || workDate.slice(0, 7) !== monthKey) {
+                return;
             }
+
+            const summary = getDetailPaymentSummary(detail);
+            if (summary.status === 'paid') {
+                return;
+            }
+
+            if (!Array.isArray(detail.payments)) detail.payments = [];
+            if (summary.remainingAmount > 0) {
+                detail.payments.push({ id: generateLocalId('pay'), amount: summary.remainingAmount, paidAt: new Date().toISOString(), note: '' });
+            }
+            syncDetailPaymentStatus(detail);
         });
     });
 
@@ -7271,6 +7918,7 @@ function getTaxInvoiceRecords() {
 
 function saveTaxInvoiceRecords(records) {
     localStorage.setItem('taxInvoiceRecords', JSON.stringify(records));
+    scheduleNormalizedEntitySync();
 }
 
 function getTaxInvoiceFlowMeta(flow = currentTaxInvoiceFlow) {
@@ -7303,16 +7951,20 @@ function getDriverCarWorkData(car, settings) {
     return readWorkDataStorage(`workData_${car.number}`);
 }
 
-function getMonthlyDriverTotals(data, monthKey) {
+// link(연동 기사 할당 정보)가 주어지면 assignmentStart/End 밖의 날짜는 집계에서 제외한다.
+// 소속기사 개인 조회가 아니라 "차주가 연동 기사의 기록을 집계"할 때만 쓰이는 함수다.
+function getMonthlyDriverTotals(data, monthKey, link = null) {
     let grossAmount = 0;
     let insuranceAmount = 0;
     let count = 0;
     Object.entries(data || {}).forEach(([dateKey, record]) => {
         if (!dateKey.startsWith(monthKey) || !record || typeof record !== 'object') return;
+        if (!isDateWithinAssignment(dateKey, link?.assignmentStart, link?.assignmentEnd)) return;
         const details = Array.isArray(record.callDetails) ? record.callDetails : [];
         details.forEach(detail => {
             const workDate = detail.workDate || dateKey;
             if (!workDate.startsWith(monthKey)) return;
+            if (!isDateWithinAssignment(workDate, link?.assignmentStart, link?.assignmentEnd)) return;
             grossAmount += parseCurrencyValue(detail.fare);
             insuranceAmount += parseCurrencyValue(detail.insuranceFee);
             count += 1;
@@ -7322,6 +7974,30 @@ function getMonthlyDriverTotals(data, monthKey) {
         count += Number(record.fixedCount || record.count || 0);
     });
     return { grossAmount, insuranceAmount, count };
+}
+
+// 거래처 월정액(정액) 계약 반영: 건별로 합산된 거래처 운송료를 월 정액으로 대체하고,
+// 해당 거래처의 건별 수수료 합산분은 차감한다. 그 달에 운행 기록이 있는 거래처에만 적용된다.
+function applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, settings) {
+    let fareAdjustment = 0;
+    let commAdjustment = 0;
+    (settings.clients || []).forEach(client => {
+        if (!client?.fixedMonthlyOn) return;
+        const name = client.companyName;
+        if (!name || !Object.prototype.hasOwnProperty.call(monthFareByClient, name)) return;
+
+        const fixedAmount = parseCurrencyValue(client.fixedMonthlyAmount);
+        const previousFare = monthFareByClient[name] || 0;
+        fareAdjustment += (fixedAmount - previousFare);
+        monthFareByClient[name] = fixedAmount;
+
+        if (monthCommByClient[name]) {
+            commAdjustment += monthCommByClient[name];
+            monthCommByClient[name] = 0;
+        }
+        clientCommLabels[name] = '월정액 계약';
+    });
+    return { fareAdjustment, commAdjustment };
 }
 
 function calculateDriverVehicleCommission(car, grossAmount, count) {
@@ -7359,7 +8035,8 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
     return cars.filter(car => car.type === 'sub').flatMap(car => {
         const mode = getEffectiveDriverSettlementMode(car, settings);
         if ((flow === 'purchase' && mode !== 'company') || (flow === 'commission' && mode !== 'driver_direct')) return [];
-        const totals = getMonthlyDriverTotals(getDriverCarWorkData(car, settings), monthKey);
+        const link = (settings.driverLinks || []).find(item => item.id === car.driverLinkId || item.vehicleNumber === car.number);
+        const totals = getMonthlyDriverTotals(getDriverCarWorkData(car, settings), monthKey, link);
         if (totals.grossAmount <= 0) return [];
         const commissionAmount = calculateDriverVehicleCommission(car, totals.grossAmount, totals.count);
         const insuranceAmount = car.insuranceOn ? totals.insuranceAmount : 0;
@@ -7521,8 +8198,8 @@ function renderTaxInvoices() {
             <div class="tax-invoice-card-money"><span>공급가액 <b>${Number(item.supplyAmount).toLocaleString()}원</b></span><span>세액 <b>${Number(item.taxAmount).toLocaleString()}원</b></span><strong><small>합계</small>${Number(item.totalAmount).toLocaleString()}원</strong></div>
             <div class="tax-invoice-card-actions">
                 <button type="button" onclick="openTaxInvoiceDraft('${partyKey}')">${item.status === 'issued' ? '내용 보기' : draftActionLabel}</button>
-                <button type="button" onclick="exportTaxInvoiceCsv('${partyKey}')">엑셀 저장</button>
-                ${item.status === 'issued' ? `<button type="button" onclick="changeTaxInvoiceStatus('${partyKey}', 'draft')">${cancelLabel}</button>` : `<button type="button" class="primary" onclick="changeTaxInvoiceStatus('${partyKey}', 'issued')">${flowMeta.completeLabel}</button>`}
+                <button type="button" onclick="runSaveAction(this, 'tax-invoice-export-${partyKey}', () => exportTaxInvoiceCsv('${partyKey}'))">엑셀 저장</button>
+                ${item.status === 'issued' ? `<button type="button" onclick="runSaveAction(this, 'tax-invoice-status-${partyKey}', () => changeTaxInvoiceStatus('${partyKey}', 'draft'))">${cancelLabel}</button>` : `<button type="button" class="primary" onclick="runSaveAction(this, 'tax-invoice-status-${partyKey}', () => changeTaxInvoiceStatus('${partyKey}', 'issued'))">${flowMeta.completeLabel}</button>`}
             </div>
         </article>`;
     }).join('');
@@ -7664,10 +8341,6 @@ function changeTaxInvoiceStatus(encodedPartyKey, status) {
     showToastMessage(status === 'issued' ? `${getTaxInvoiceFlowMeta(item.flow).completeLabel}로 표시했습니다.` : '처리 전 상태로 되돌렸습니다.');
 }
 
-function csvCell(value) {
-    return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
-
 function loadTaxInvoiceExcelLibrary() {
     if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
     return new Promise((resolve, reject) => {
@@ -7726,7 +8399,6 @@ async function exportTaxInvoiceCsv(encodedPartyKey) {
         const thinBlue = { style:'thin', color:{argb:'FF8EA9D6'} };
         const mediumBlue = { style:'medium', color:{argb:'FF365B9D'} };
         const allThin = { top:thinBlue,left:thinBlue,bottom:thinBlue,right:thinBlue };
-        const labelFill = 'FFF3F5F9';
         const supplierFill = 'FFFFFFFF';
         const supplierSectionFill = 'FFFFD9D9';
         const supplierLabelFill = 'FFFFF2F2';
@@ -7897,7 +8569,7 @@ async function exportTaxInvoiceCsv(encodedPartyKey) {
         showToastMessage('세금계산서 엑셀 파일을 저장했습니다.');
     } catch (error) {
         console.error('세금계산서 엑셀 저장 실패:', error);
-        showConfirmModal('엑셀 파일 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.', null);
+        throw error;
     }
 }
 
@@ -7929,6 +8601,10 @@ function openClientModal(index = -1) {
         document.getElementById('clientCommValue').value = client.commValue || '';
         toggleClientComm();
 
+        document.getElementById('clientFixedMonthlyToggle').checked = !!client.fixedMonthlyOn;
+        document.getElementById('clientFixedMonthlyAmount').value = client.fixedMonthlyAmount ? parseCurrencyValue(client.fixedMonthlyAmount).toLocaleString() : '';
+        toggleClientFixedMonthly();
+
         const savedPaymentTerm = client.paymentTerm || 'next_month_end';
         document.getElementById('clientPaymentTerm').value = savedPaymentTerm === 'second_month_end' ? 'second_month_day' : savedPaymentTerm;
         document.getElementById('clientPaymentTermValue').value = savedPaymentTerm === 'second_month_end' ? '31' : (client.paymentTermValue || '');
@@ -7951,6 +8627,10 @@ function openClientModal(index = -1) {
         document.getElementById('clientCommToggle').checked = false;
         setClientCommType('percent');
         document.getElementById('clientCommValue').value = '';
+
+        document.getElementById('clientFixedMonthlyToggle').checked = false;
+        document.getElementById('clientFixedMonthlyAmount').value = '';
+        toggleClientFixedMonthly();
 
         document.getElementById('clientPaymentTerm').value = 'next_month_end';
         document.getElementById('clientPaymentTermValue').value = '';
@@ -7979,21 +8659,32 @@ function saveClient() {
     const commEnabled = isPinned ? document.getElementById('clientCommToggle').checked : false;
     const commType = document.getElementById('clientCommType').value;
     const commValue = document.getElementById('clientCommValue').value.trim();
+    const fixedMonthlyOn = document.getElementById('clientFixedMonthlyToggle').checked;
+    const fixedMonthlyAmount = document.getElementById('clientFixedMonthlyAmount').value.trim();
     const paymentTerm = document.getElementById('clientPaymentTerm').value;
     const paymentTermValue = document.getElementById('clientPaymentTermValue').value.trim();
 
     if (!companyName) {
+        markFieldError('clientCompanyName');
         showConfirmModal('거래처명을 입력해 주세요.', null);
         return;
     }
 
     if (taxInvoiceEnabled && !bizNumber) {
+        markFieldError('clientBizNumber');
         showConfirmModal('세금계산서를 사용하려면 사업자 번호를 입력해 주세요.', null);
         return;
     }
 
     if (commEnabled && !commValue) {
+        markFieldError('clientCommValue');
         showConfirmModal('수수료 수치 또는 금액을 입력해 주세요.', null);
+        return;
+    }
+
+    if (fixedMonthlyOn && !fixedMonthlyAmount) {
+        markFieldError('clientFixedMonthlyAmount');
+        showConfirmModal('월정액 계약 금액을 입력해 주세요.', null);
         return;
     }
 
@@ -8030,6 +8721,8 @@ function saveClient() {
         commEnabled,
         commType,
         commValue,
+        fixedMonthlyOn,
+        fixedMonthlyAmount,
         paymentTerm,
         paymentTermValue
     };
