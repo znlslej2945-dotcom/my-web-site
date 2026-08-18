@@ -4646,7 +4646,7 @@ function showToastMessage(msg = "저장되었습니다.", options = {}) {
     }
     toast.classList.add('show');
     if (toastHideTimer) clearTimeout(toastHideTimer);
-    toastHideTimer = setTimeout(hideToastMessage, options.duration || 1200);
+    toastHideTimer = setTimeout(hideToastMessage, options.duration || 2000);
 }
 
 function executeToastAction() {
