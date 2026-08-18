@@ -6263,7 +6263,7 @@ function setAutoSaveStatus(state) {
         el.classList.remove('error');
         el.classList.add('visible');
     } else if (state === 'saved') {
-        el.textContent = '저장됨';
+        el.textContent = '저장되었습니다.';
         el.classList.remove('error');
         el.classList.add('visible');
         autoSaveStatusHideTimer = setTimeout(() => el.classList.remove('visible'), 1200);

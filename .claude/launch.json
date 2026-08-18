@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "my-web-site",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/znlsl/AppData/Local/Temp/claude/C--Users-znlsl-OneDrive-------Plaintext/0b42bc1e-c955-4a48-a91b-7d55c3a3da03/scratchpad/static-server.js"],
+      "port": 5500
+    }
+  ]
+}

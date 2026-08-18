@@ -1299,11 +1299,11 @@ body {
 }
 
 .autosave-status {
-    font-size: 0.72rem;
-    font-weight: 500;
+    font-size: 0.95rem;
+    font-weight: 600;
     color: var(--sub-text-color);
-    height: 14px;
-    line-height: 14px;
+    height: 20px;
+    line-height: 20px;
     opacity: 0;
     transition: opacity 0.25s ease;
 }
