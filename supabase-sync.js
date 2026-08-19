@@ -394,9 +394,10 @@ async function backfillDriverWorkDataToOwnerVehicle(vehicleId) {
         data = {};
     }
 
+    const dates = Object.keys(data).sort();
     let count = 0;
     let failed = 0;
-    for (const date of Object.keys(data)) {
+    for (const date of dates) {
         try {
             await upsertDailyLogRecordToSupabase(client, user.id, vehicleId, date, data[date]);
             count++;
@@ -405,6 +406,29 @@ async function backfillDriverWorkDataToOwnerVehicle(vehicleId) {
             console.error('과거 운행기록 재업로드 실패:', date, error);
         }
     }
+
+    // 차주 쪽 "기록 조회" 화면은 driver_links.assignment_start~assignment_end 기간 안의
+    // 날짜만 보여준다(isDateWithinAssignment). 초대를 처음 만들 때 할당 시작일은 보통
+    // "오늘"로 잡히는데, 방금 백필한 과거 기록은 그보다 이른 날짜라서 실제로 DB에는
+    // 있어도 기록 조회 화면에서는 필터링돼 안 보이는 문제가 있었다(월매출 등 다른 집계는
+    // 이 필터를 안 써서 정상으로 보였음 — 실제로 재현해서 확인). 백필한 기록 중 가장 이른
+    // 날짜가 지금 할당 시작일보다 이르면 할당 시작일을 그 날짜로 앞당긴다.
+    const earliestDate = dates[0];
+    if (earliestDate && count > 0) {
+        try {
+            const settings = getUserSettings();
+            const linkSupabaseId = settings.employerLink?.supabaseId;
+            if (linkSupabaseId) {
+                const { data: linkRow } = await client.from('driver_links').select('assignment_start').eq('id', linkSupabaseId).maybeSingle();
+                if (linkRow?.assignment_start && earliestDate < linkRow.assignment_start) {
+                    await client.from('driver_links').update({ assignment_start: earliestDate, updated_at: new Date().toISOString() }).eq('id', linkSupabaseId);
+                }
+            }
+        } catch (error) {
+            console.error('할당 시작일 보정 실패(운행기록 자체는 반영됨):', error);
+        }
+    }
+
     return { count, failed };
 }
 
@@ -753,6 +777,19 @@ async function hydrateFromSupabaseAndMigrate() {
 
     const settings = await initSettingsFromSupabase(user.id);
     await initWorkDataFromSupabase(settings.cars || []);
+
+    // 차주 계정이면 기사 연동 목록도 로그인 시점에 서버 기준으로 갱신해 둔다.
+    // 이걸 안 하면 settings.driverLinks가 예전 캐시(연동 전 상태 등)에 머물러 있어서,
+    // 로그인 직후 햄버거 메뉴에 "OOOO 관리"(연동 기사 바로가기) 항목이 빠져 보이고,
+    // "기사 연동 관리" 화면을 한 번 들어갔다 나와야만(그 화면이 자체적으로 동기화하므로) 나타나는
+    // 문제가 있었다.
+    if (typeof isOwnerAccountType === 'function' && isOwnerAccountType(settings.accountType) && typeof syncDriverLinksFromSupabase === 'function') {
+        try {
+            await syncDriverLinksFromSupabase();
+        } catch (error) {
+            console.error('[Supabase] 로그인 시 기사 연동 목록 갱신 실패(기존 캐시로 계속 진행):', error);
+        }
+    }
 
     // 지금 화면에 보이는 로그(activeLogId)를 새로 불러온 데이터로 갱신
     if (typeof loadWorkDataForLog === 'function') {
