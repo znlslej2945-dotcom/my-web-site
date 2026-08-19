@@ -374,6 +374,40 @@ function resolveVehicleIdForLogId(logId) {
     return car?.supabaseId || null;
 }
 
+// 소속 기사가 차주와 "방금" 연동됐을 때, 그 이전에 이미 이 기기에 기록해둔 과거 운행기록
+// (오늘 이전 것 포함)을 전부 차주가 소유한 vehicle_id로 다시 업로드한다. 연동 전에 저장된
+// 기록은 그 시점의 vehicle_id(기사 본인 소유의 별도 차량 행, 또는 아직 연동 전이라 로컬만)를
+// 그대로 가지고 있어서, 연동 이후 것만 자동으로 차주 쪽에서 보이고 과거 기록은 계속 안
+// 보이는 문제가 있었다 — 그래서 연동 시점에 한 번 전체를 다시 밀어 넣는다. 매번 로그인할
+// 때마다 돌리기엔 무거우니(기록이 많으면 매번 전부 재업로드) 연동 직후 1회, 그리고 필요하면
+// 사용자가 "과거 기록 다시 동기화" 버튼으로 수동 재실행한다.
+async function backfillDriverWorkDataToOwnerVehicle(vehicleId) {
+    if (!vehicleId) return { count: 0, failed: 0 };
+    const user = await getSupabaseUser();
+    if (!user) return { count: 0, failed: 0 };
+
+    const client = await getSupabaseClient();
+    let data = {};
+    try {
+        data = JSON.parse(localStorage.getItem('workData') || '{}') || {};
+    } catch (error) {
+        data = {};
+    }
+
+    let count = 0;
+    let failed = 0;
+    for (const date of Object.keys(data)) {
+        try {
+            await upsertDailyLogRecordToSupabase(client, user.id, vehicleId, date, data[date]);
+            count++;
+        } catch (error) {
+            failed++;
+            console.error('과거 운행기록 재업로드 실패:', date, error);
+        }
+    }
+    return { count, failed };
+}
+
 // 하루치 기록(daily_logs 1건 + 하위 콜상세/정비/유류/기타 배열)을 통째로 업서트한다.
 // 하위 레코드는 "그날의 daily_log_id에 속한 것 전부 삭제 후 현재 배열을 다시 삽입"하는
 // 방식으로 맞춘다 — 로컬 배열 항목에 안정적인 서버 id가 없어 항목 단위로 매칭하는 것보다

@@ -1638,6 +1638,42 @@ async function connectEmployedDriver() {
     // 차주가 이미 차량관리/사업자정보에 입력해둔 값을 기사 쪽에도 그대로 채워 넣어서
     // 같은 정보를 두 번 입력하지 않게 한다(기사 개인정보 — 이름/연락처/계좌 — 는 그대로 둠).
     await applyEmployerAutoFilledInfo(linkedRow.owner_id, linkedRow.vehicle_id);
+
+    // 연동 "이전"에 이미 이 기기에 기록해둔 과거 운행 기록(오늘 이전 것 포함)도 차주가
+    // 볼 수 있게, 지금 시점에 전부 차주 소유 차량으로 다시 업로드한다. 안 이러면 연동 이후에
+    // 새로 쓴 기록만 보이고 과거 기록은 영원히 안 보인다.
+    if (typeof backfillDriverWorkDataToOwnerVehicle === 'function') {
+        try {
+            const { count } = await backfillDriverWorkDataToOwnerVehicle(linkedRow.vehicle_id);
+            if (count > 0) showToastMessage(`이전에 작성한 운행 기록 ${count}건도 사장님께 함께 반영했습니다.`);
+        } catch (error) {
+            console.error('과거 운행기록 반영 실패(연결 자체는 완료됨):', error);
+        }
+    }
+}
+
+// 이미 연동돼 있는 기사가 "과거 기록 다시 동기화"를 눌렀을 때 쓴다. 연동 시점에 자동으로
+// 한 번 돌긴 하지만, 그 전에 실패했거나(오프라인 등) 이 업데이트 이전에 이미 연동해둔
+// 계정을 위해 수동으로 다시 실행할 수 있게 남겨둔다.
+async function resyncEmployedDriverWorkData() {
+    const settings = getUserSettings();
+    const vehicleId = settings.employerLink?.vehicleId;
+    if (settings.employerLink?.status !== 'linked' || !vehicleId) {
+        showToastMessage('연동된 사장님이 없습니다.');
+        return;
+    }
+    if (typeof backfillDriverWorkDataToOwnerVehicle !== 'function') {
+        showToastMessage('동기화 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+    }
+    const { count, failed } = await backfillDriverWorkDataToOwnerVehicle(vehicleId);
+    if (failed > 0) {
+        showToastMessage(`${count}건 반영, ${failed}건은 실패했습니다. 잠시 후 다시 시도해 주세요.`);
+    } else if (count > 0) {
+        showToastMessage(`운행 기록 ${count}건을 사장님께 다시 반영했습니다.`);
+    } else {
+        showToastMessage('반영할 운행 기록이 없습니다.');
+    }
 }
 
 // 기사가 차주와 연동되면 차주가 입력한 사업자정보/차량정보를 기사 쪽 화면에도 자동으로
