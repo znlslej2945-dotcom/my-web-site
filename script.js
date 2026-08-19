@@ -5,7 +5,7 @@ const appState = {
     miscViewDate: new Date(),
     selectedDateKey: null,
     activeLogId: 'main',
-    workData: JSON.parse(localStorage.getItem('workData')) || {},
+    workData: loadWorkDataForLog('main'),
     previousPage: 'main',
     isOffSelected: false,
     currentTempMaintItems: [],
@@ -1480,12 +1480,12 @@ function switchCarLog(carNum) {
         if(bannerImg) bannerImg.style.display = 'inline-block';
         if(bannerTxt) bannerTxt.innerText = '운행 일지';
         if(bannerTxt) bannerTxt.classList.remove('sub-banner-text');
-        workData = JSON.parse(localStorage.getItem('workData')) || {};
+        workData = loadWorkDataForLog('main');
     } else {
         if(bannerImg) bannerImg.style.display = 'none';
         if(bannerTxt) bannerTxt.innerText = `${getShortCarNum(carNum)} 운행 일지`;
         if(bannerTxt) bannerTxt.classList.add('sub-banner-text');
-        workData = JSON.parse(localStorage.getItem('workData_' + carNum)) || {};
+        workData = loadWorkDataForLog(carNum);
     }
     
     normalizeLegacyData();
@@ -1499,6 +1499,20 @@ function switchCarLog(carNum) {
     overlay.classList.remove('show');
 }
 
+// workData(운행 기록) 저장소 접근의 유일한 경계 지점. Supabase 연동 시 이 두 함수
+// 내부만 localStorage → API 호출로 바꾸면 되고, 나머지 코드(운행 기록 계산, 화면
+// 렌더링 등 workData를 메모리에서 읽고 쓰는 수백 곳)는 전혀 손댈 필요가 없다.
+// logId는 'main' 또는 서브 차량 번호(car.number)다.
+function loadWorkDataForLog(logId) {
+    const key = logId === 'main' ? 'workData' : 'workData_' + logId;
+    return JSON.parse(localStorage.getItem(key)) || {};
+}
+
+function saveWorkDataForLog(logId, data) {
+    const key = logId === 'main' ? 'workData' : 'workData_' + logId;
+    localStorage.setItem(key, JSON.stringify(data));
+}
+
 function saveDataToStorage() {
     writeWorkDataStoreForLog(activeLogId, workData);
 }
@@ -1507,16 +1521,20 @@ function saveDataToStorage() {
 // 다뤄야 할 때 쓰는 헬퍼. logId는 'main' 또는 서브 차량 번호(car.number)다.
 // activeLogId와 같은 로그를 읽을 때는 이미 메모리에 로드돼 수정 중인 전역 workData를
 // 그대로 반환한다(참조를 공유하므로 그 자리에서 바로 수정해도 화면과 어긋나지 않는다).
+// (다른 로그를 읽을 때는 readWorkDataStorage의 JSON 파싱 오류 방어를 그대로 쓰기 위해
+// loadWorkDataForLog가 아니라 readWorkDataStorage를 계속 사용한다 — 동작을 바꾸지 않기 위함)
 function readWorkDataStoreForLog(logId) {
     if (logId === activeLogId) return workData;
     return readWorkDataStorage(logId === 'main' ? 'workData' : 'workData_' + logId);
 }
 
 // 특정 로그의 운행 기록 저장소를 저장한다. saveDataToStorage()가 activeLogId에 대해 하던
-// 일을 임의의 logId에 대해서도 똑같이 할 수 있도록 일반화한 버전이다.
+// 일을 임의의 logId에 대해서도 똑같이 할 수 있도록 일반화한 버전이다. 실제 저장(키 계산
+// + setItem)은 saveWorkDataForLog에 위임하고, 여기서는 그 위에 얹히는 부가 로직(고용
+// 기사 연동 사본 동기화, 정규화 스토어 동기화 예약)만 처리한다.
 function writeWorkDataStoreForLog(logId, data) {
+    saveWorkDataForLog(logId, data);
     if (logId === 'main') {
-        localStorage.setItem('workData', JSON.stringify(data));
         const settings = getUserSettings();
         const employerLink = settings.accountType === 'employed_driver' && settings.employerLink?.status === 'linked'
             ? settings.employerLink
@@ -1525,8 +1543,6 @@ function writeWorkDataStoreForLog(logId, data) {
             ? (employerLink.inviteCode || String(employerLink.ownerPhone || '').replace(/\D/g, ''))
             : '';
         if (connectionKey) localStorage.setItem(`linkedDriverWorkData_${connectionKey}`, JSON.stringify(data));
-    } else {
-        localStorage.setItem('workData_' + logId, JSON.stringify(data));
     }
     scheduleNormalizedEntitySync();
 }
@@ -2086,6 +2102,7 @@ function showMain(skipRedirect = false) {
 
     document.getElementById('menuReportBtn').style.display = 'flex';
     setActiveNav('main');
+    checkBackupReminder();
 }
 
 let utilityReturnPage = 'main';
@@ -2137,6 +2154,8 @@ function showMyPage(preserveReturnLog = false) {
             ? summaryParts.join(' · ')
             : '대표자 및 사업자 정보 관리';
     }
+
+    renderBackupStatus();
 
     hideAllPages();
     document.getElementById('myPage').classList.remove('hidden');
@@ -4976,6 +4995,76 @@ function readBackupJsonStorage(key, fallback) {
     }
 }
 
+const BACKUP_REMINDER_DAYS = 14;
+
+function getLastBackupDate() {
+    const iso = localStorage.getItem('lastBackupAt');
+    if (!iso) return null;
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// 마지막 백업 이후 지난 일수. 백업한 적이 없으면 null.
+function getDaysSinceLastBackup() {
+    const lastBackup = getLastBackupDate();
+    if (!lastBackup) return null;
+    return Math.floor((Date.now() - lastBackup.getTime()) / 86400000);
+}
+
+function formatBackupDateText(date) {
+    return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+}
+
+function getTodayDateKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+// 마이페이지 백업 카드의 "마지막 백업: ..." 상태 텍스트를 갱신한다.
+// 14일 넘게 지났으면(또는 아예 없으면) --sunday-color로 강조한다.
+function renderBackupStatus() {
+    const el = document.getElementById('lastBackupStatus');
+    if (!el) return;
+    const lastBackup = getLastBackupDate();
+    const days = getDaysSinceLastBackup();
+    el.textContent = lastBackup ? `마지막 백업: ${formatBackupDateText(lastBackup)}` : '아직 백업한 적 없음';
+    el.classList.toggle('overdue', !lastBackup || days >= BACKUP_REMINDER_DAYS);
+}
+
+// 메인 화면 상단의 백업 유도 배너를 조건에 따라 보이거나 숨긴다.
+// - 백업한 적이 없거나 마지막 백업으로부터 BACKUP_REMINDER_DAYS일이 넘게 지났으면 노출.
+// - 단, 오늘 이미 닫기(dismissBackupReminder)를 눌렀다면 당일 안에는 다시 띄우지 않는다.
+function checkBackupReminder() {
+    const banner = document.getElementById('backupReminderBanner');
+    if (!banner) return;
+
+    const lastBackup = getLastBackupDate();
+    const days = getDaysSinceLastBackup();
+    const needsBackup = !lastBackup || days >= BACKUP_REMINDER_DAYS;
+
+    if (!needsBackup || localStorage.getItem('backupReminderDismissedDate') === getTodayDateKey()) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    const titleEl = document.getElementById('backupReminderTitle');
+    const textEl = document.getElementById('backupReminderText');
+    if (!lastBackup) {
+        titleEl.textContent = '아직 백업한 적이 없어요.';
+        textEl.textContent = '지금 이 브라우저에만 데이터가 저장되어 있습니다. 기기를 바꾸거나 브라우저 데이터가 지워지면 기록이 사라질 수 있어요.';
+    } else {
+        titleEl.textContent = `마지막 백업으로부터 ${days}일이 지났어요.`;
+        textEl.textContent = '최신 데이터로 다시 백업해 주세요.';
+    }
+    banner.classList.remove('hidden');
+}
+
+// 배너 닫기: 완전히 없애지 않고 "오늘 하루만" 숨긴다 — 조건이 여전히 유효하면 다음날 다시 뜬다.
+function dismissBackupReminder() {
+    localStorage.setItem('backupReminderDismissedDate', getTodayDateKey());
+    document.getElementById('backupReminderBanner')?.classList.add('hidden');
+}
+
 async function exportData() {
     await flushAllBackgroundSaves();
     const storageData = {};
@@ -5019,6 +5108,11 @@ async function exportData() {
     downloadAnchor.remove();
     setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
     showToastMessage('백업 파일을 저장했습니다.');
+
+    // 백업 유도 배너/마이페이지 상태 텍스트가 방금 백업한 결과를 바로 반영하도록 갱신한다.
+    localStorage.setItem('lastBackupAt', new Date().toISOString());
+    renderBackupStatus();
+    checkBackupReminder();
 }
 
 function parseBackupStorageJson(key, value) {
@@ -7151,6 +7245,7 @@ initCalendarDOM();
 buildCalendar();
 renderSubCarMenu();
 updateAccountRoleUI();
+checkBackupReminder();
 
 // 스플래시 화면(시작 화면) 제어 로직
 // 이미 로그인된 재방문 유저는 매번 2초씩 기다릴 필요가 없으므로 대기 없이 짧게 페이드아웃하고,
