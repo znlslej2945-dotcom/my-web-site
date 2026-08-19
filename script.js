@@ -8766,11 +8766,15 @@ function readWorkDataStorage(key) {
     }
 }
 
+// 이 차량이 초대 코드로 연동된 기사차량이든 아니든, 실제 운행 기록은 항상 같은 로컬 키
+// (workData_<차량번호>)에서 읽는다. 연동된 기사차량의 경우 그 키는 initWorkDataFromSupabase()가
+// 로그인/새로고침 때마다 Supabase(daily_logs/transport_details, vehicle_id 기준)에서 실제
+// 기사가 작성한 기록을 그대로 받아와 채워둔다 — settings.cars의 모든 차량(메인+기사차량)을
+// car.supabaseId 기준으로 동일하게 처리하기 때문에 여기서 따로 분기할 필요가 없다.
+// (예전엔 여기서 getLinkedDriverRecordData()라는, 이미 삭제된 로컬 전용 함수를 불렀는데 —
+// 그 함수가 없어지면서 연동된 기사차량이 있는 계정의 미수금/월매출/세금계산서 집계가 전부
+// ReferenceError로 깨지고 있었다. 실제로 재현해서 확인하고 고쳤다.)
 function getDriverCarWorkData(car, settings) {
-    if (car.driverLinkId || car.driverLinkEnabled) {
-        const link = (settings.driverLinks || []).find(item => item.id === car.driverLinkId || item.vehicleNumber === car.number);
-        if (link) return getLinkedDriverRecordData(link);
-    }
     return readWorkDataStorage(`workData_${car.number}`);
 }
 
