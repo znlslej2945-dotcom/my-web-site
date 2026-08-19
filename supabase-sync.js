@@ -346,8 +346,17 @@ async function initSettingsFromSupabase(userId) {
 
 // ---------- workData(운행 기록) <-> daily_logs/transport_details/... ----------
 
+// 소속 기사가 차주와 연동돼 있으면 'main' 로그의 운행기록은 기사 본인의 별도 vehicles
+// 행이 아니라 차주가 실제로 소유한 vehicle_id로 저장돼야 한다 — 그래야 차주가 자기
+// 차량 기준으로 그 기록을 조회할 수 있다(daily_logs/transport_details의 RLS는 vehicle_id를
+// 통해 "그 차량을 소유한 차주"에게 조회를 허용하지, user_id로 직접 허용하지 않는다).
+// 안 그러면 기사 본인 소유의(연동과 무관한) 별도 vehicles 행에 기록이 쌓여서 차주가 영원히
+// 못 보는 문제가 있었다(실제로 재현해서 확인).
 function resolveVehicleIdForLogId(logId) {
     const settings = getUserSettings();
+    if (logId === 'main' && settings.accountType === 'employed_driver' && settings.employerLink?.status === 'linked' && settings.employerLink?.vehicleId) {
+        return settings.employerLink.vehicleId;
+    }
     const cars = Array.isArray(settings.cars) ? settings.cars : [];
     const car = logId === 'main'
         ? cars.find(c => c.type === 'main')
@@ -710,4 +719,167 @@ async function hydrateFromSupabaseAndMigrate() {
     if (typeof buildCalendar === 'function') buildCalendar();
     if (typeof renderSubCarMenu === 'function') renderSubCarMenu();
     if (typeof updateAccountRoleUI === 'function') updateAccountRoleUI();
+}
+
+// ============================================================================
+// 기사 연동(driver_links) — 차주-기사차량 초대 코드 연결
+// ============================================================================
+// script.js의 "기사 연동 관리"(차주 쪽)와 "소속 연결"(기사 쪽) 화면은 원래 한 브라우저
+// 안에서만 동작하는 시뮬레이션(로컬 driverLinks 배열 + employerLink 객체)이었다. 여기서는
+// 그 둘을 실제 Supabase driver_links 테이블로 이어준다. UI/로컬 캐시 모양은 최대한 그대로
+// 유지하고, "실제로 서버에 반영됐는가"가 중요한 지점(초대 생성, 코드 연결)만 반드시
+// await해서 실패를 사용자에게 알린다. 상태 변경(해제 등)은 다른 저장 로직처럼 로컬 우선 +
+// 백그라운드 동기화로 처리한다.
+
+function getDriverLinkErrorMessage(error) {
+    // redeem_driver_invite_code()의 RAISE EXCEPTION 메시지는 한글로 그대로 내려오므로
+    // 우선 사용하고, 그 외(네트워크 등)는 기존 공용 메시지 헬퍼로 폴백한다.
+    return error?.message || (typeof getSaveErrorMessage === 'function' ? getSaveErrorMessage(error) : '처리 중 오류가 발생했습니다.');
+}
+
+// 같은 차량에 할당 기간이 겹치는 "연동 해제되지 않은" 다른 초대/연결이 있는지 서버 기준으로
+// 확인한다. script.js의 assignmentRangesOverlap()을 그대로 재사용한다(로컬 오버랩 판정 공식은
+// 이미 검증된 로직이라 새로 만들지 않는다).
+async function findOverlappingDriverLinkOnSupabase(vehicleId, start, end, excludeSupabaseId) {
+    const client = await getSupabaseClient();
+    const { data, error } = await client
+        .from('driver_links')
+        .select('id, assignment_start, assignment_end, status, driver_id')
+        .eq('vehicle_id', vehicleId)
+        .neq('status', 'disconnected');
+    if (error) throw error;
+
+    return (data || []).find(row => {
+        if (excludeSupabaseId && row.id === excludeSupabaseId) return false;
+        if (!row.assignment_start) return false;
+        return typeof assignmentRangesOverlap === 'function'
+            ? assignmentRangesOverlap(start, end || '', row.assignment_start, row.assignment_end || '')
+            : false;
+    }) || null;
+}
+
+// 초대를 새로 만들거나(기존 supabaseId 없음) 이미 있는 초대를 수정한다(있음).
+// 신규 생성 시 invite_code가 다른 pending 초대와 충돌하면(23505) 코드를 새로 뽑아 재시도한다.
+// 수정 시에는 update 대상에 status를 아예 넣지 않는다 — supabase-js의 update()는 넘긴
+// 컬럼만 SET하므로, status를 빼면 pending/linked 어느 쪽이든 지금 값 그대로 유지된다.
+async function upsertDriverLinkOnSupabase({ supabaseId, vehicleId, inviteCode, assignmentStart, assignmentEnd }) {
+    const client = await getSupabaseClient();
+    const user = await getSupabaseUser();
+    if (!user) throw new Error('로그인이 필요합니다.');
+
+    const baseRow = {
+        owner_id: user.id,
+        vehicle_id: vehicleId,
+        assignment_start: assignmentStart,
+        assignment_end: assignmentEnd || null,
+        updated_at: new Date().toISOString()
+    };
+
+    if (supabaseId) {
+        const row = { ...baseRow, invite_code: inviteCode };
+        const { data, error } = await client.from('driver_links').update(row).eq('id', supabaseId).select().single();
+        if (error) throw error;
+        return data;
+    }
+
+    let code = inviteCode;
+    let lastError = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const { data, error } = await client
+            .from('driver_links')
+            .insert({ ...baseRow, invite_code: code, status: 'pending' })
+            .select()
+            .single();
+        if (!error) return data;
+        // 23505 = unique_violation. pending 코드가 이미 다른 초대에서 쓰이는 중이면 새로 뽑아 재시도.
+        if (error.code === '23505') {
+            lastError = error;
+            code = String(Math.floor(100000 + Math.random() * 900000));
+            continue;
+        }
+        throw error;
+    }
+    throw lastError || new Error('초대 코드 생성에 반복적으로 실패했습니다.');
+}
+
+async function updateDriverLinkStatusOnSupabase(supabaseId, status) {
+    if (!supabaseId) return;
+    const client = await getSupabaseClient();
+    const row = { status, updated_at: new Date().toISOString() };
+    const { error } = await client.from('driver_links').update(row).eq('id', supabaseId);
+    if (error) throw error;
+}
+
+async function deleteDriverLinkOnSupabase(supabaseId) {
+    if (!supabaseId) return;
+    const client = await getSupabaseClient();
+    const { error } = await client.from('driver_links').delete().eq('id', supabaseId);
+    if (error) throw error;
+}
+
+// 차주 화면(기사 연동 관리)을 열 때 서버 기준으로 로컬 driverLinks 캐시를 새로 맞춘다.
+// 특히 "기사가 코드를 입력해서 연결했는지"는 오직 서버에서만 알 수 있으므로, 이 동기화가
+// 곧 "연결 완료 여부 확인" 역할을 한다.
+async function syncDriverLinksFromSupabase() {
+    const user = await getSupabaseUser();
+    if (!user) return;
+    try {
+        const client = await getSupabaseClient();
+        const { data, error } = await client
+            .from('driver_links')
+            .select('*')
+            .eq('owner_id', user.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        const settings = getUserSettings();
+        const cars = Array.isArray(settings.cars) ? settings.cars : [];
+        const localLinks = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+        const localBySupabaseId = new Map(localLinks.filter(l => l.supabaseId).map(l => [l.supabaseId, l]));
+
+        // 연결된(driver_id가 있는) 행은 실제 기사 이름/연락처를 profiles에서 채워 보여준다
+        // (SQL의 "차주는 연동된 기사의 프로필을 조회 가능" 정책이 있어야 값이 온다).
+        const linkedDriverIds = [...new Set((data || []).filter(row => row.driver_id).map(row => row.driver_id))];
+        let driverProfiles = new Map();
+        if (linkedDriverIds.length) {
+            const { data: profileRows } = await client.from('profiles').select('id, name, phone').in('id', linkedDriverIds);
+            driverProfiles = new Map((profileRows || []).map(p => [p.id, p]));
+        }
+
+        const merged = (data || []).map(row => {
+            const existing = localBySupabaseId.get(row.id) || null;
+            const car = cars.find(c => c.supabaseId === row.vehicle_id);
+            const driverProfile = row.driver_id ? driverProfiles.get(row.driver_id) : null;
+            return {
+                ...(existing || {}),
+                id: existing?.id || row.id,
+                supabaseId: row.id,
+                driverName: driverProfile?.name || existing?.driverName || '',
+                phone: driverProfile?.phone || existing?.phone || '',
+                inviteCode: row.invite_code,
+                vehicleId: row.vehicle_id,
+                vehicleNumber: car?.number || existing?.vehicleNumber || '',
+                assignmentStart: row.assignment_start,
+                assignmentEnd: row.assignment_end,
+                status: row.status,
+                linkedAt: row.linked_at,
+                updatedAt: row.updated_at,
+                createdAt: row.created_at
+            };
+        });
+
+        settings.driverLinks = merged;
+        localStorage.setItem('userSettings', JSON.stringify(settings));
+    } catch (error) {
+        console.error('기사 연동 목록 동기화 실패(로컬 캐시로 계속 진행):', error);
+    }
+}
+
+// 기사 쪽에서 6자리 초대 코드를 입력해 연결을 완료한다. 성공하면 연결된 driver_links 행
+// (owner_id/vehicle_id 포함)을 반환하고, 실패하면 예외를 던진다(호출부가 메시지를 보여줌).
+async function redeemDriverInviteCode(code) {
+    const client = await getSupabaseClient();
+    const { data, error } = await client.rpc('redeem_driver_invite_code', { p_code: code });
+    if (error) throw error;
+    return data;
 }

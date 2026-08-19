@@ -1199,11 +1199,6 @@ function generateDriverInviteCode() {
     if (input) input.value = code;
 }
 
-function generateCarDriverInviteCode() {
-    const input = document.getElementById('carLinkInviteCode');
-    if (input) input.value = String(Math.floor(100000 + Math.random() * 900000));
-}
-
 function populateLinkedDriverVehicleOptions() {
     const datalist = document.getElementById('linkedDriverVehicleOptions');
     if (!datalist) return;
@@ -1217,7 +1212,13 @@ function populateLinkedDriverVehicleOptions() {
 function showDriverConnectionManagement(returnPage = 'main') {
     const settings = getUserSettings();
     if (!isOwnerAccountType(settings.accountType)) {
-        showConfirmModal('차주 유형에서 사용할 수 있습니다.', null);
+        // 소속 기사 계정은 이 화면(차주 전용 초대 관리)을 쓸 수 없다 — 경고 모달로 막고 끝내는
+        // 대신, 본인이 차주와 연동된 상태를 그대로 볼 수 있는 개인정보 페이지의 "소속 연결"
+        // 카드로 데려간다.
+        showPersonalInfo(personalInfoReturnPage);
+        requestAnimationFrame(() => {
+            document.getElementById('employedDriverLinkCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
         return;
     }
     driverConnectionReturnPage = ['personal', 'car', 'myPage'].includes(returnPage) ? returnPage : 'main';
@@ -1226,6 +1227,17 @@ function showDriverConnectionManagement(returnPage = 'main') {
     populateLinkedDriverVehicleOptions();
     renderLinkedDriverList();
     setActiveNav(['personal', 'myPage'].includes(driverConnectionReturnPage) ? 'personal' : 'main');
+
+    // 서버 기준 최신 연동 상태로 갱신한다 — 특히 기사가 그동안 코드를 입력해서 연결을
+    // 완료했는지는 오직 서버 조회로만 알 수 있다. 화면을 막지 않도록 기다리지 않고
+    // 백그라운드로 돌리고, 끝나면(그리고 아직 이 화면이 보이는 중이면) 다시 그린다.
+    if (typeof syncDriverLinksFromSupabase === 'function') {
+        syncDriverLinksFromSupabase().then(() => {
+            if (!document.getElementById('driverConnectionManagementPage')?.classList.contains('hidden')) {
+                renderLinkedDriverList();
+            }
+        });
+    }
 }
 
 function goBackFromDriverConnectionManagement() {
@@ -1247,7 +1259,11 @@ function resetLinkedDriverForm() {
     generateDriverInviteCode();
 }
 
-function saveLinkedDriverInvitation() {
+// 초대 저장은 실제로 Supabase에 반영돼야만 의미가 있다(기사가 이 코드로 찾는 대상 자체가
+// 그 행이므로) — 그래서 로컬-먼저-저장이 아니라 Supabase 저장을 반드시 기다린 뒤에만 로컬
+// driverLinks에 반영한다. 실패하면 로컬은 건드리지 않고 에러를 그대로 던져서(runSaveAction이
+// 재시도 모달을 보여줌) 사용자가 "초대는 했는데 실제로는 안 만들어진" 상태를 겪지 않게 한다.
+async function saveLinkedDriverInvitation() {
     const name = document.getElementById('linkedDriverName')?.value.trim() || '';
     const phone = document.getElementById('linkedDriverPhone')?.value.trim() || '';
     const inviteCode = document.getElementById('linkedDriverInviteCode')?.value.trim() || '';
@@ -1256,11 +1272,16 @@ function saveLinkedDriverInvitation() {
     const assignmentEnd = document.getElementById('linkedDriverAssignmentEnd')?.value || '';
     const editId = document.getElementById('linkedDriverEditId')?.value || '';
 
-    if (!name || !vehicleNumber || !assignmentStart || (!phone && !inviteCode)) {
+    if (!name || !vehicleNumber || !assignmentStart) {
         if (!name) markFieldError('linkedDriverName');
         if (!vehicleNumber) markFieldError('linkedDriverVehicle');
         if (!assignmentStart) markFieldError('linkedDriverAssignmentStart');
-        showToastMessage('기사, 연결 수단, 차량과 시작일을 입력해 주세요.');
+        showToastMessage('기사 이름, 할당 차량, 시작일을 입력해 주세요.');
+        return;
+    }
+    if (!/^\d{6}$/.test(inviteCode)) {
+        markFieldError('linkedDriverInviteCode');
+        showToastMessage('"코드 생성" 버튼으로 6자리 초대 코드를 만들어 주세요.');
         return;
     }
     if (assignmentEnd && assignmentEnd < assignmentStart) {
@@ -1270,6 +1291,7 @@ function saveLinkedDriverInvitation() {
 
     const settings = getUserSettings();
     const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+    const editing = editId ? links.find(link => link.id === editId) : null;
 
     const conflictingLink = findOverlappingDriverLink(links, vehicleNumber, assignmentStart, assignmentEnd, editId);
     if (conflictingLink) {
@@ -1277,29 +1299,50 @@ function saveLinkedDriverInvitation() {
         return;
     }
 
-    const existingIndex = links.findIndex(link => link.id === editId);
-    const previous = existingIndex >= 0 ? links[existingIndex] : null;
+    const car = (settings.cars || []).find(item => item.number === vehicleNumber);
+    if (!car?.supabaseId) {
+        showToastMessage('선택한 차량이 아직 클라우드에 동기화되지 않았습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+    }
+
+    // 로컬 캐시뿐 아니라 서버 기준으로도 한 번 더 겹치는 할당이 있는지 확인한다(다른 기기에서
+    // 만든 초대까지 포함해서).
+    const serverConflict = await findOverlappingDriverLinkOnSupabase(car.supabaseId, assignmentStart, assignmentEnd, editing?.supabaseId);
+    if (serverConflict) {
+        showToastMessage('같은 차량에 이미 겹치는 기간으로 연결되어 있거나 초대된 기록이 있습니다.');
+        return;
+    }
+
+    const savedRow = await upsertDriverLinkOnSupabase({
+        supabaseId: editing?.supabaseId || null,
+        vehicleId: car.supabaseId,
+        inviteCode,
+        assignmentStart,
+        assignmentEnd
+    });
+
     const nextLink = {
-        ...(previous || {}),
-        id: previous?.id || generateLocalId('driver'),
+        ...(editing || {}),
+        id: editing?.id || generateLocalId('driver'),
+        supabaseId: savedRow.id,
         driverName: name,
         phone,
-        inviteCode,
+        inviteCode: savedRow.invite_code,
+        vehicleId: savedRow.vehicle_id,
         vehicleNumber,
-        assignmentStart,
-        assignmentEnd,
-        status: previous?.status === 'linked' ? 'linked' : 'pending',
-        updatedAt: new Date().toISOString(),
-        createdAt: previous?.createdAt || new Date().toISOString()
+        assignmentStart: savedRow.assignment_start,
+        assignmentEnd: savedRow.assignment_end,
+        status: savedRow.status,
+        linkedAt: savedRow.linked_at,
+        updatedAt: savedRow.updated_at,
+        createdAt: editing?.createdAt || savedRow.created_at
     };
 
+    const existingIndex = links.findIndex(link => link.id === nextLink.id);
     if (existingIndex >= 0) links[existingIndex] = nextLink;
     else links.push(nextLink);
     settings.driverLinks = links;
-    const assignedCar = (settings.cars || []).find(car =>
-        (car.driverLinkId && car.driverLinkId === nextLink.id)
-        || car.number === nextLink.vehicleNumber
-    );
+    const assignedCar = (settings.cars || []).find(item => item.number === nextLink.vehicleNumber);
     if (assignedCar) {
         assignedCar.driverName = nextLink.driverName;
         assignedCar.driverPhone = nextLink.phone;
@@ -1330,6 +1373,8 @@ function editLinkedDriver(encodedId) {
     document.querySelector('.driver-invite-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// 상태 변경(해제/재초대 등)은 초대 생성과 달리 되돌릴 수 있고 급하지 않은 작업이라
+// 다른 저장 로직처럼 로컬을 먼저 반영하고 Supabase 반영은 백그라운드(best-effort)로 돌린다.
 function updateLinkedDriverStatus(id, status, message) {
     const settings = getUserSettings();
     const link = (settings.driverLinks || []).find(item => item.id === id);
@@ -1342,10 +1387,26 @@ function updateLinkedDriverStatus(id, status, message) {
     renderSubCarMenu();
     updateAccountRoleUI();
     if (message) showToastMessage(message);
+
+    if (link.supabaseId && typeof updateDriverLinkStatusOnSupabase === 'function') {
+        updateDriverLinkStatusOnSupabase(link.supabaseId, status).catch(error => {
+            console.error('기사 연동 상태 서버 반영 실패:', error);
+        });
+    }
 }
 
-function completeLinkedDriverConnection(encodedId) {
-    updateLinkedDriverStatus(decodeURIComponent(encodedId), 'linked', '기사 연결을 완료했습니다.');
+// "연결 완료"는 더 이상 차주가 스스로 누르는 버튼이 아니다(실제 연결은 기사가 코드를
+// 입력해야만 서버에서 일어난다). 이 버튼은 그 대신 서버 상태를 다시 확인해서 반영한다.
+async function refreshLinkedDriverConnection(encodedId) {
+    if (typeof syncDriverLinksFromSupabase === 'function') {
+        await syncDriverLinksFromSupabase();
+    }
+    renderLinkedDriverList();
+    renderSubCarMenu();
+    updateAccountRoleUI();
+    const link = getLinkedDriverById(decodeURIComponent(encodedId));
+    if (link?.status === 'linked') showToastMessage('기사와 연결이 확인되었습니다.');
+    else showToastMessage('아직 기사가 초대 코드를 입력하지 않았습니다.');
 }
 
 function disconnectLinkedDriver(encodedId) {
@@ -1363,12 +1424,19 @@ function deleteLinkedDriver(encodedId) {
     const id = decodeURIComponent(encodedId);
     showConfirmModal('해제된 기사 연결 항목을 목록에서 삭제하시겠습니까?', () => {
         const settings = getUserSettings();
-        settings.driverLinks = (settings.driverLinks || []).filter(link => link.id !== id);
+        const link = (settings.driverLinks || []).find(item => item.id === id);
+        settings.driverLinks = (settings.driverLinks || []).filter(item => item.id !== id);
         setUserSettings(settings);
         renderLinkedDriverList();
         renderSubCarMenu();
         updateAccountRoleUI();
         showToastMessage('기사 연결 항목을 삭제했습니다.');
+
+        if (link?.supabaseId && typeof deleteDriverLinkOnSupabase === 'function') {
+            deleteDriverLinkOnSupabase(link.supabaseId).catch(error => {
+                console.error('기사 연동 삭제 서버 반영 실패:', error);
+            });
+        }
     });
 }
 
@@ -1395,7 +1463,7 @@ function renderLinkedDriverList() {
         const connection = [link.phone, link.inviteCode ? `코드 ${link.inviteCode}` : ''].filter(Boolean).join(' · ');
         let actions = '';
         if (link.status === 'pending') {
-            actions = `<button type="button" class="primary" onclick="runSaveAction(this, 'driver-connect-${encodedId}', () => completeLinkedDriverConnection('${encodedId}'))">연결 완료</button><button type="button" onclick="editLinkedDriver('${encodedId}')">초대 수정</button><button type="button" class="danger" onclick="disconnectLinkedDriver('${encodedId}')">초대 취소</button>`;
+            actions = `<button type="button" class="primary" onclick="runSaveAction(this, 'driver-refresh-${encodedId}', () => refreshLinkedDriverConnection('${encodedId}'))">연결 상태 확인</button><button type="button" onclick="editLinkedDriver('${encodedId}')">초대 수정</button><button type="button" class="danger" onclick="disconnectLinkedDriver('${encodedId}')">초대 취소</button>`;
         } else if (link.status === 'linked') {
             actions = `<button type="button" class="primary" onclick="showLinkedDriverManagement('${encodedId}', true)">기록 조회</button><button type="button" onclick="editLinkedDriver('${encodedId}')">할당 변경</button><button type="button" class="danger" onclick="disconnectLinkedDriver('${encodedId}')">연동 해제</button>`;
         } else {
@@ -1403,24 +1471,6 @@ function renderLinkedDriverList() {
         }
         return `<article class="linked-driver-card"><div class="linked-driver-card-head"><div><strong>${escapeDetailText(link.driverName || '기사')}</strong><span>${escapeDetailText(connection || '연결 정보 없음')}</span></div><em class="${link.status}">${statusLabel}</em></div><div class="linked-driver-assignment"><span><small>할당 차량</small><b>${escapeDetailText(link.vehicleNumber || '-')}</b></span><span><small>할당 기간</small><b>${escapeDetailText(period)}</b></span></div><div class="linked-driver-state ${assignment.key}">${assignment.label}</div><div class="linked-driver-card-actions">${actions}</div></article>`;
     }).join('');
-}
-
-function getLinkedDriverRecordData(link) {
-    const connectionKey = link.inviteCode || String(link.phone || '').replace(/\D/g, '');
-    const storageKeys = [
-        connectionKey ? `linkedDriverWorkData_${connectionKey}` : '',
-        `linkedDriverWorkData_${link.id}`,
-        `workData_${link.vehicleNumber}`
-    ].filter(Boolean);
-    for (const key of storageKeys) {
-        try {
-            const value = JSON.parse(localStorage.getItem(key) || 'null');
-            if (value && typeof value === 'object') return value;
-        } catch (error) {
-            console.warn('연동 기사 기록 불러오기 실패:', error);
-        }
-    }
-    return {};
 }
 
 function getLinkedRecordSummary(record) {
@@ -1454,12 +1504,49 @@ function showLinkedDriverManagement(id, encoded = false) {
     setActiveNav('main');
 }
 
-function renderLinkedDriverRecords() {
+// 연동된 기사가 실제로 작성한 운행 기록을 Supabase(daily_logs+transport_details)에서
+// vehicle_id 기준으로 직접 조회한다. 예전에는 같은 브라우저의 localStorage만 봐서 다른
+// 기기에서 작성한 기록은 절대 보이지 않았다 — 이제 그 차량으로 기록된 실제 서버 데이터를 본다.
+async function fetchLinkedDriverRecordData(link) {
+    if (!link?.vehicleId || typeof getSupabaseClient !== 'function') return {};
+    try {
+        const client = await getSupabaseClient();
+        const [dailyRes, detailsRes] = await Promise.all([
+            client.from('daily_logs').select('work_date, raw, fixed_count, pallet_count, is_off').eq('vehicle_id', link.vehicleId),
+            client.from('transport_details').select('work_date, raw').eq('vehicle_id', link.vehicleId)
+        ]);
+        if (dailyRes.error) throw dailyRes.error;
+        if (detailsRes.error) throw detailsRes.error;
+
+        const byDate = {};
+        (dailyRes.data || []).forEach(row => {
+            byDate[row.work_date] = {
+                ...(row.raw && typeof row.raw === 'object' ? row.raw : {}),
+                isOff: !!row.is_off,
+                fixedCount: row.fixed_count || 0,
+                palletCount: row.pallet_count || 0,
+                callDetails: []
+            };
+        });
+        (detailsRes.data || []).forEach(row => {
+            if (byDate[row.work_date]) byDate[row.work_date].callDetails.push(row.raw && typeof row.raw === 'object' ? row.raw : {});
+        });
+        return byDate;
+    } catch (error) {
+        console.error('연동 기사 운행 기록 조회 실패:', error);
+        return {};
+    }
+}
+
+async function renderLinkedDriverRecords() {
     const link = getLinkedDriverById(activeLinkedDriverId);
     const list = document.getElementById('linkedDriverRecordList');
     if (!link || !list) return;
+    list.innerHTML = '<div class="linked-driver-empty">불러오는 중...</div>';
     const month = document.getElementById('linkedDriverRecordMonth')?.value || '';
-    const data = getLinkedDriverRecordData(link);
+    const data = await fetchLinkedDriverRecordData(link);
+    // 조회하는 동안 화면을 벗어났거나 다른 기사로 바뀌었으면 반영하지 않는다.
+    if (getLinkedDriverById(activeLinkedDriverId)?.id !== link.id || document.getElementById('linkedDriverManagementPage')?.classList.contains('hidden')) return;
     const records = Object.entries(data)
         .filter(([dateKey]) => (!month || dateKey.startsWith(month)) && isDateWithinAssignment(dateKey, link.assignmentStart, link.assignmentEnd))
         .sort(([a], [b]) => b.localeCompare(a))
@@ -1490,36 +1577,138 @@ function renderEmployedDriverLinkState() {
     document.getElementById('employerLinkedMeta').textContent = [settings.employerLink.ownerPhone, settings.employerLink.inviteCode ? `초대 코드 ${settings.employerLink.inviteCode}` : ''].filter(Boolean).join(' · ');
 }
 
-function connectEmployedDriver() {
+// 실제 연결은 서버(redeem_driver_invite_code RPC)에서만 일어난다 — 전화번호만으로는
+// 아직 실제로 연결해 주는 수단이 없으므로(차주 쪽에서 코드 없이 검색할 방법이 없음),
+// 반드시 6자리 초대 코드가 있어야 진행한다.
+async function connectEmployedDriver() {
     const inviteCode = document.getElementById('employerInviteCode')?.value.trim() || '';
     const ownerPhone = document.getElementById('employerPhone')?.value.trim() || '';
     if (!inviteCode && !ownerPhone) {
-        showToastMessage('초대 코드 또는 사장님 전화번호를 입력해 주세요.');
+        showToastMessage('사장님께 받은 초대 코드를 입력해 주세요.');
         return;
     }
+    if (!/^\d{6}$/.test(inviteCode)) {
+        showToastMessage('사장님께 받은 6자리 초대 코드를 정확히 입력해 주세요.');
+        return;
+    }
+    if (typeof redeemDriverInviteCode !== 'function') {
+        showToastMessage('연결 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+    }
+
+    let linkedRow;
+    try {
+        linkedRow = await redeemDriverInviteCode(inviteCode);
+    } catch (error) {
+        console.error('기사 연동 실패:', error);
+        showToastMessage(getDriverLinkErrorMessage(error));
+        return;
+    }
+
+    // 연결 자체는 이미 완료됐으니, 상대방(차주) 이름 조회가 실패해도 연결 결과는 그대로 살린다.
+    let ownerName = '연동된 운송사';
+    let ownerPhoneResolved = ownerPhone;
+    try {
+        const client = await getSupabaseClient();
+        const { data: ownerProfile } = await client.from('profiles').select('name, phone, business_name').eq('id', linkedRow.owner_id).maybeSingle();
+        if (ownerProfile) {
+            ownerName = ownerProfile.business_name || ownerProfile.name || ownerName;
+            ownerPhoneResolved = ownerProfile.phone || ownerPhoneResolved;
+        }
+    } catch (error) {
+        console.error('연동된 차주 정보 조회 실패(연결 자체는 완료됨):', error);
+    }
+
     const settings = getUserSettings();
     settings.employerLink = {
-        id: generateLocalId('employer'),
+        id: linkedRow.id,
+        supabaseId: linkedRow.id,
         status: 'linked',
-        ownerName: settings.bizName || '연동된 운송사',
-        ownerPhone,
+        ownerId: linkedRow.owner_id,
+        ownerName,
+        ownerPhone: ownerPhoneResolved,
         inviteCode,
-        linkedAt: new Date().toISOString()
+        vehicleId: linkedRow.vehicle_id,
+        linkedAt: linkedRow.linked_at || new Date().toISOString()
     };
     setUserSettings(settings);
     renderEmployedDriverLinkState();
     showToastMessage('소속 사장님과 연결했습니다.');
+
+    // 차주가 이미 차량관리/사업자정보에 입력해둔 값을 기사 쪽에도 그대로 채워 넣어서
+    // 같은 정보를 두 번 입력하지 않게 한다(기사 개인정보 — 이름/연락처/계좌 — 는 그대로 둠).
+    await applyEmployerAutoFilledInfo(linkedRow.owner_id, linkedRow.vehicle_id);
+}
+
+// 기사가 차주와 연동되면 차주가 입력한 사업자정보/차량정보를 기사 쪽 화면에도 자동으로
+// 채운다. 기사 본인의 개인정보(이름/연락처/은행계좌)는 절대 건드리지 않는다 — 그건 말
+// 그대로 기사 개인의 정보이기 때문이다. 연동 직후 1회, 그리고 개인정보 화면을 열 때마다
+// (showPersonalInfo에서) 최신값으로 다시 채운다.
+async function applyEmployerAutoFilledInfo(ownerId, vehicleId) {
+    if (!ownerId || typeof getSupabaseClient !== 'function') return;
+    try {
+        const client = await getSupabaseClient();
+        const [{ data: ownerProfile }, vehicleResult] = await Promise.all([
+            client.from('profiles').select('business_name, business_number, business_address, business_type, business_item, business_email').eq('id', ownerId).maybeSingle(),
+            vehicleId ? client.from('vehicles').select('number, tonnage').eq('id', vehicleId).maybeSingle() : Promise.resolve({ data: null })
+        ]);
+
+        const settings = getUserSettings();
+        let changed = false;
+
+        if (ownerProfile) {
+            const bizFieldMap = {
+                bizName: ownerProfile.business_name,
+                bizNumber: ownerProfile.business_number,
+                bizAddress: ownerProfile.business_address,
+                bizType: ownerProfile.business_type,
+                bizItem: ownerProfile.business_item,
+                bizEmail: ownerProfile.business_email
+            };
+            Object.entries(bizFieldMap).forEach(([key, value]) => {
+                if (value && settings[key] !== value) { settings[key] = value; changed = true; }
+            });
+        }
+
+        const vehicle = vehicleResult?.data;
+        if (vehicle) {
+            const cars = Array.isArray(settings.cars) ? settings.cars : [];
+            let mainCar = cars.find(c => c.type === 'main');
+            if (!mainCar) {
+                mainCar = { type: 'main' };
+                cars.push(mainCar);
+                changed = true;
+            }
+            if (vehicle.number && mainCar.number !== vehicle.number) { mainCar.number = vehicle.number; changed = true; }
+            if (vehicle.tonnage && mainCar.tonnage !== vehicle.tonnage) { mainCar.tonnage = vehicle.tonnage; changed = true; }
+            settings.cars = cars;
+        }
+
+        if (changed) {
+            setUserSettings(settings);
+            if (typeof loadSettings === 'function') loadSettings();
+        }
+    } catch (error) {
+        console.error('차주 사업자정보/차량정보 자동입력 실패:', error);
+    }
 }
 
 function disconnectEmployedDriver() {
     showConfirmModal('소속 연동을 해제하시겠습니까? 작성한 운행 기록은 삭제되지 않습니다.', () => {
         const settings = getUserSettings();
+        const linkSupabaseId = settings.employerLink?.supabaseId;
         settings.employerLink = null;
         setUserSettings(settings);
         document.getElementById('employerInviteCode').value = '';
         document.getElementById('employerPhone').value = '';
         renderEmployedDriverLinkState();
         showToastMessage('소속 연동을 해제했습니다.');
+
+        if (linkSupabaseId && typeof updateDriverLinkStatusOnSupabase === 'function') {
+            updateDriverLinkStatusOnSupabase(linkSupabaseId, 'disconnected').catch(error => {
+                console.error('소속 연동 해제 서버 반영 실패:', error);
+            });
+        }
     });
 }
 
@@ -2355,6 +2544,28 @@ function showPersonalInfo(fromPage) {
     hideAllPages();
     document.getElementById('personalInfoPage').classList.remove('hidden');
     setActiveNav('personal');
+
+    // 소속 기사이고 이미 연동돼 있으면, 차주 쪽 사업자정보/차량정보가 그 사이 바뀌었을 수
+    // 있으니 화면을 열 때마다 최신값으로 다시 채운다(화면을 막지 않게 백그라운드로).
+    const settings = getUserSettings();
+    const link = settings.employerLink;
+    if (link?.status === 'linked' && typeof applyEmployerAutoFilledInfo === 'function') {
+        const ownerId = link.ownerId || null;
+        if (ownerId) {
+            applyEmployerAutoFilledInfo(ownerId, link.vehicleId);
+        } else if (typeof getSupabaseClient === 'function' && link.supabaseId) {
+            // ownerId를 아직 로컬에 캐싱해두지 않은(예전에 연결된) 경우 driver_links에서 다시 읽어온다.
+            (async () => {
+                try {
+                    const client = await getSupabaseClient();
+                    const { data } = await client.from('driver_links').select('owner_id, vehicle_id').eq('id', link.supabaseId).maybeSingle();
+                    if (data?.owner_id) await applyEmployerAutoFilledInfo(data.owner_id, data.vehicle_id);
+                } catch (error) {
+                    console.error('연동된 차주 정보 재조회 실패:', error);
+                }
+            })();
+        }
+    }
 }
 
 function goBackFromPersonalInfo() {
@@ -3607,14 +3818,27 @@ function saveNewCar() {
         return;
     }
 
-    const driverLinkEnabled = carType === 'sub' && document.getElementById('newDriverLinkToggle').checked;
+    const previousCar = editingCarIndex > -1 ? settings.cars[editingCarIndex] : null;
+    // 기사 초대의 생성/수정/해제는 이제 "기사 연동 관리" 화면(Supabase와 실제로 연동됨)
+    // 한 곳에서만 한다. 예전엔 여기서도 로컬 전용으로 새 초대를 만들 수 있었는데, 그렇게
+    // 만든 코드는 실제로는 어디에도 저장되지 않아 기사가 연결할 수 없었다(가짜 초대) — 그래서
+    // 여기서는 기존에 이미 연결/초대된 상태가 있으면 그 상태만 읽어서 표시용으로만 쓰고,
+    // 새로 만들거나 바꾸지 않는다. driverLinkEnabled도 체크박스가 아니라 "실제로 연결/초대된
+    // 상태가 있는지"로 결정한다(체크박스는 이제 정보 패널을 펼치는 UI 토글일 뿐이다).
+    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+    const existingLink = links.find(link =>
+        (previousCar?.driverLinkId && link.id === previousCar.driverLinkId)
+        || (!previousCar?.driverLinkId && previousCar?.number && link.vehicleNumber === previousCar.number && link.status !== 'disconnected')
+    ) || null;
+    const driverLinkId = existingLink?.id || '';
+    const driverLinkEnabled = carType === 'sub' && !!existingLink;
     const logEnabled = carType === 'main' ? true : (!driverLinkEnabled && document.getElementById('newLogToggle').checked);
     const insuranceOn = carType === 'sub' ? document.getElementById('newCarInsuranceToggle').checked : false;
-    
+
     const commEnabled = document.getElementById('newCarCommToggle') ? document.getElementById('newCarCommToggle').checked : false;
     const commType = document.getElementById('newCarCommType').value;
     const commission = commEnabled ? document.getElementById('newCarCommission').value.trim() : '';
-    
+
     let infoType = 'existing';
     let personalInfo = null;
 
@@ -3633,64 +3857,15 @@ function saveNewCar() {
         }
     }
 
-    const previousCar = editingCarIndex > -1 ? settings.cars[editingCarIndex] : null;
-    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
-    const existingLinkIndex = links.findIndex(link =>
-        (previousCar?.driverLinkId && link.id === previousCar.driverLinkId)
-        || (!previousCar?.driverLinkId && previousCar?.number && link.vehicleNumber === previousCar.number && link.status !== 'disconnected')
-    );
-    const existingLink = existingLinkIndex >= 0 ? links[existingLinkIndex] : null;
-    let driverLinkId = existingLink?.id || '';
-
-    if (driverLinkEnabled) {
-        const inviteCode = document.getElementById('carLinkInviteCode').value.trim();
-        const assignmentStart = document.getElementById('carLinkAssignmentStart').value;
-        const assignmentEnd = document.getElementById('carLinkAssignmentEnd').value;
-
-        if (!assignmentStart) {
-            showToastMessage('기사 할당 시작일을 입력해 주세요.');
-            return;
-        }
-        if (assignmentEnd && assignmentEnd < assignmentStart) {
-            showToastMessage('할당 종료일은 시작일 이후로 선택해 주세요.');
-            return;
-        }
-
-        const conflictingLink = findOverlappingDriverLink(links, num, assignmentStart, assignmentEnd, existingLink?.id);
-        if (conflictingLink) {
-            showToastMessage(`같은 차량에 ${conflictingLink.driverName || '다른 기사'}의 할당 기간(${conflictingLink.assignmentStart}~${conflictingLink.assignmentEnd || '계속'})과 겹칩니다.`);
-            return;
-        }
-
-        const now = new Date().toISOString();
-        const nextLink = {
-            ...(existingLink || {}),
-            id: existingLink?.id || generateLocalId('driver'),
-            driverName,
-            phone: driverPhone,
-            inviteCode,
-            vehicleNumber: num,
-            assignmentStart,
-            assignmentEnd,
-            status: existingLink?.status === 'linked' ? 'linked' : 'pending',
-            updatedAt: now,
-            createdAt: existingLink?.createdAt || now
-        };
-        driverLinkId = nextLink.id;
-        if (existingLinkIndex >= 0) links[existingLinkIndex] = nextLink;
-        else links.push(nextLink);
-    } else if (existingLink) {
-        links[existingLinkIndex] = {
-            ...existingLink,
-            status: 'disconnected',
-            updatedAt: new Date().toISOString()
-        };
-    }
-    settings.driverLinks = links;
-
-    const carData = { 
-        number: num, 
-        tonnage: ton, 
+    // previousCar를 베이스로 스프레드해야 한다 — 그렇지 않으면 이 폼이 모르는 필드(특히
+    // Supabase에 연결된 뒤 붙는 supabaseId)가 저장할 때마다 사라진다. supabaseId가 사라지면
+    // 다음 저장 때 "새 차량"으로 오인해서 서버에 중복 insert되고, 그 상태에서 새로고침/재로그인
+    // (하이드레이션)할 때마다 중복된 행이 전부 로컬로 다시 들어와 차량 목록이 계속 불어난다
+    // (실제로 이 버그로 "차량이 무한증식"하는 문제가 재현되어 고쳤다).
+    const carData = {
+        ...(previousCar || {}),
+        number: num,
+        tonnage: ton,
         type: carType,
         driverName: driverName,
         driverPhone: driverPhone,
@@ -7217,6 +7392,9 @@ function toggleNewLogSettings() {
     setSettingsGroupExpanded(document.getElementById('newLogSettings'), isChecked);
 }
 
+// 이 체크박스는 이제 데이터를 바꾸지 않는다(실제 초대는 "기사 연동 관리" 화면에서만
+// 만들어진다) — 안내 패널을 펼치고 접는 UI 토글일 뿐이다. saveNewCar()는 이 체크 여부와
+// 무관하게 실제로 연결/초대된 상태가 있는지만 보고 driverLinkEnabled를 결정한다.
 function toggleNewDriverLinkSettings() {
     const driverLinkToggle = document.getElementById('newDriverLinkToggle');
     const isChecked = driverLinkToggle.checked;
@@ -7231,9 +7409,33 @@ function toggleNewDriverLinkSettings() {
         const logToggle = document.getElementById('newLogToggle');
         if (logToggle) logToggle.checked = false;
         setSettingsGroupExpanded(document.getElementById('newLogSettings'), false);
-        if (!document.getElementById('carLinkInviteCode').value) generateCarDriverInviteCode();
     }
     setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), isChecked);
+}
+
+// 차량 모달의 "기사연동" 상태 문구를 실제 연동 데이터 기준으로 갱신한다.
+function updateCarDriverLinkStatusText(existingLink) {
+    const el = document.getElementById('carDriverLinkStatusText');
+    if (!el) return;
+    if (!existingLink) {
+        el.textContent = '기사를 초대하고 이 차량에 할당합니다.';
+    } else if (existingLink.status === 'linked') {
+        el.textContent = `${existingLink.driverName || '기사'}와 연동 중입니다.`;
+    } else {
+        el.textContent = `${existingLink.driverName || '기사'} 초대가 대기 중입니다(코드 ${existingLink.inviteCode || '-'}).`;
+    }
+}
+
+// 차량 모달을 닫고 "기사 연동 관리" 화면으로 이동한다. 지금 편집 중인 차량이 이미 저장된
+// 차량(번호가 있음)이면 그 번호를 미리 채워서 바로 초대를 이어갈 수 있게 한다.
+function goToDriverConnectionManagementFromCarModal() {
+    const vehicleNumber = document.getElementById('newCarNumber')?.value.trim() || '';
+    closeCarModal();
+    showDriverConnectionManagement('car');
+    if (vehicleNumber) {
+        const vehicleInput = document.getElementById('linkedDriverVehicle');
+        if (vehicleInput) vehicleInput.value = vehicleNumber;
+    }
 }
 
 function selectInfoType(type) {
@@ -7260,10 +7462,7 @@ function resetCarForm() {
     document.getElementById('logToggleContainer').style.display = 'none';
     document.getElementById('newDriverLinkToggle').checked = false;
     toggleNewDriverLinkSettings();
-    document.getElementById('carLinkInviteCode').value = '';
-    document.getElementById('carLinkAssignmentStart').value = new Date().toISOString().slice(0, 10);
-    document.getElementById('carLinkAssignmentEnd').value = '';
-    generateCarDriverInviteCode();
+    updateCarDriverLinkStatusText(null);
     document.getElementById('newLogToggle').checked = false;
     toggleNewLogSettings();
     document.getElementById('newCarInsuranceToggle').checked = false;
@@ -7320,11 +7519,9 @@ function editCar(idx) {
         document.getElementById('newCarSettlementMode').value = car.settlementMode || 'default';
         document.getElementById('newCarSettlementMode').parentElement?._dropdownSync?.();
         updateDriverSettlementModeGuide();
-        document.getElementById('carLinkInviteCode').value = linkedDriver?.inviteCode || '';
-        document.getElementById('carLinkAssignmentStart').value = linkedDriver?.assignmentStart || new Date().toISOString().slice(0, 10);
-        document.getElementById('carLinkAssignmentEnd').value = linkedDriver?.assignmentEnd || '';
         document.getElementById('newDriverLinkToggle').checked = driverLinkEnabled;
         toggleNewDriverLinkSettings();
+        updateCarDriverLinkStatusText(linkedDriver || null);
 
         document.getElementById('newCarInsuranceToggle').checked = !!car.insuranceOn;
         
