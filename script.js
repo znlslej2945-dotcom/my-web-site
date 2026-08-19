@@ -653,6 +653,12 @@ function setLoginAuthMode(mode) {
         btn.setAttribute('aria-selected', String(selected));
     });
     document.getElementById('loginPasswordConfirmField')?.classList.toggle('hidden', loginAuthMode !== 'signup');
+    // 초대코드 입력란은 "회원가입 + 소속 기사"일 때만 보여준다. 로그인 모드에서는 항상 숨긴다 —
+    // 인증(로그인)과 소속 연결은 별개의 단계이며, 이미 연결돼 있던 기존 기사가 코드를 몰라도
+    // 전화번호/비밀번호만으로 로그인할 수 있어야 한다.
+    const settings = getUserSettings();
+    const showInviteField = loginAuthMode === 'signup' && settings.accountType === 'employed_driver';
+    document.getElementById('loginInviteField')?.classList.toggle('hidden', !showInviteField);
     const continueButton = document.getElementById('loginContinueBtn');
     if (continueButton) continueButton.textContent = loginAuthMode === 'signup' ? '가입하고 시작하기' : '로그인';
     updateLoginContinueState();
@@ -676,10 +682,10 @@ function showLocalLoginPage() {
     const passwordConfirmInput = document.getElementById('loginPasswordConfirm');
     if (passwordInput) passwordInput.value = '';
     if (passwordConfirmInput) passwordConfirmInput.value = '';
-    const employedDriver = settings.accountType === 'employed_driver';
-    document.getElementById('loginInviteField')?.classList.toggle('hidden', !employedDriver);
+    // 초대코드는 이번 로그인/가입 시도마다 새로 입력받는다(과거 캐시값을 재사용하지 않음) —
+    // 연결 여부는 로그인 이후 서버 데이터(driver_links)로 판단하지, 이 입력란 값으로 판단하지 않는다.
     const inviteInput = document.getElementById('loginInviteCode');
-    if (inviteInput) inviteInput.value = employedDriver ? (settings.employerLink?.inviteCode || '') : '';
+    if (inviteInput) inviteInput.value = '';
     setLoginAuthMode(typeof getDefaultAuthMode === 'function' ? getDefaultAuthMode(settings) : 'signup');
 }
 
@@ -690,10 +696,14 @@ function updateLoginContinueState() {
     const inviteDigits = document.getElementById('loginInviteCode')?.value.replace(/\D/g, '') || '';
     const password = document.getElementById('loginPassword')?.value || '';
     const passwordConfirm = document.getElementById('loginPasswordConfirm')?.value || '';
-    const needsInvite = settings.accountType === 'employed_driver';
-    const passwordOk = password.length >= 6 && (loginAuthMode !== 'signup' || password === passwordConfirm);
+    const isSignup = loginAuthMode === 'signup';
+    // 초대코드는 "회원가입 + 소속기사"일 때만, 그것도 선택 입력이다 — 아예 안 써도 되지만
+    // (회원가입 후 나중에 연결해도 됨), 일부만 입력한 채로는 진행하지 못하게 막는다.
+    // 로그인 모드에서는 이 조건 자체가 절대 버튼 활성화를 막지 않는다.
+    const inviteFilledPartially = isSignup && settings.accountType === 'employed_driver' && inviteDigits.length > 0 && inviteDigits.length < 6;
+    const passwordOk = password.length >= 6 && (!isSignup || password === passwordConfirm);
     const button = document.getElementById('loginContinueBtn');
-    if (button) button.disabled = !name || phoneDigits.length < 10 || !passwordOk || (needsInvite && inviteDigits.length !== 6);
+    if (button) button.disabled = !name || phoneDigits.length < 10 || !passwordOk || inviteFilledPartially;
 }
 
 async function completeLocalLogin() {
@@ -709,22 +719,29 @@ async function completeLocalLogin() {
         showToastMessage('비밀번호는 6자 이상 입력해 주세요.');
         return;
     }
-    if (loginAuthMode === 'signup' && password !== passwordConfirm) {
+    const isSignup = loginAuthMode === 'signup';
+    if (isSignup && password !== passwordConfirm) {
         showToastMessage('비밀번호 확인이 일치하지 않습니다.');
         return;
     }
     const settings = getUserSettings();
-    const inviteCode = document.getElementById('loginInviteCode')?.value.trim() || '';
-    if (settings.accountType === 'employed_driver' && !/^\d{6}$/.test(inviteCode)) {
-        showToastMessage('사장님에게 받은 6자리 초대코드를 입력해 주세요.');
+    // 초대코드는 "회원가입 + 소속기사"일 때만, 그것도 선택 입력으로 취급한다.
+    // 로그인 모드에서는 이 값 자체를 아예 쓰지 않는다 — 인증(로그인)과 소속 연결은 완전히
+    // 별개의 단계이며, 이미 연결된 적 있는 기존 기사가 코드를 몰라도 로그인할 수 있어야 한다.
+    const inviteCode = isSignup ? (document.getElementById('loginInviteCode')?.value.trim() || '') : '';
+    if (isSignup && settings.accountType === 'employed_driver' && inviteCode && !/^\d{6}$/.test(inviteCode)) {
+        showToastMessage('초대코드는 6자리 숫자로 입력해 주세요.');
         return;
     }
 
     // Supabase Auth 로그인/회원가입 (휴대전화번호는 내부적으로 가짜 이메일로 변환해서 사용)
+    // 여기서는 오직 "계정 인증"만 처리한다 — 기사 연결(redeemDriverInviteCode)은 인증이
+    // 완전히 끝난 뒤 별도 단계로 시도하며, 그 단계가 실패해도 여기서 만든 계정/로그인
+    // 상태는 절대 되돌리지 않는다.
     let authUser = null;
     if (typeof getSupabaseClient === 'function') {
         const email = phoneToFakeEmail(phone);
-        if (loginAuthMode === 'signup') {
+        if (isSignup) {
             const { data, error } = await supabaseSignUp(email, password);
             if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
             authUser = data?.user || null;
@@ -741,6 +758,8 @@ async function completeLocalLogin() {
     // 반드시 "신규 유저 여부" 판별보다 먼저 실행해야 한다 — 그래야 새 기기에서 재로그인하는
     // 기존 유저(이 기기엔 로컬 기록이 없음)를 신규 유저로 오인해서 온보딩 마법사를 다시
     // 띄우는 일이 없다.
+    // 소속기사라면 이 안에서 서버의 실제 driver_links를 조회해 employerLink를 복원한다
+    // (syncEmployerLinkFromSupabase) — 로컬에 없다고 임의로 새로 만들지 않는다.
     if (authUser && typeof hydrateFromSupabaseAndMigrate === 'function') {
         try {
             await hydrateFromSupabaseAndMigrate();
@@ -752,20 +771,15 @@ async function completeLocalLogin() {
     const settingsAfterHydration = getUserSettings();
     settingsAfterHydration.userName = name;
     settingsAfterHydration.userPhone = phone;
-    if (settingsAfterHydration.accountType === 'employed_driver') {
-        const existingLink = settingsAfterHydration.employerLink || {};
-        settingsAfterHydration.employerLink = {
-            ...existingLink,
-            id: existingLink.id || generateLocalId('employer'),
-            status: 'linked',
-            ownerName: existingLink.ownerName || '연동된 운송사',
-            ownerPhone: existingLink.ownerPhone || '',
-            inviteCode,
-            linkedAt: existingLink.linkedAt || new Date().toISOString()
-        };
-    }
-    // 완전 신규 유저(하이드레이션 후에도 온보딩 이력이 없는 경우) 여부를 값 변경 전에 판별
-    const isNewUser = !settingsAfterHydration.hasOwnProperty('onboardingCompleted');
+    // 신규 유저 여부는 "회원가입" 모드로 들어온 경우에만 판단한다(isSignup). "로그인"(이미
+    // 계정이 있어요) 탭은 사용자가 스스로 "나는 기존 계정이다"라고 명시적으로 선택한 것이므로,
+    // 그 경우엔 절대 온보딩을 다시 띄우면 안 된다 — hydrateFromSupabaseAndMigrate()가 네트워크
+    // 문제 등으로 실패/지연되면(위에서 catch만 하고 계속 진행함) settingsAfterHydration에
+    // onboardingCompleted가 아직 없을 수 있는데, 예전에는 이 값 하나만 보고 판단해서 그런
+    // 경우 이미 온보딩을 마친 기존 사용자가 재로그인할 때도 "신규 유저"로 오인되어 온보딩
+    // 마법사가 다시 나타나는 버그가 있었다(실제로 재현 가능한 경로로 확인됨). 로그인 탭으로
+    // 들어온 이상 hydrate 성공 여부와 무관하게 항상 기존 사용자로 취급한다.
+    const isNewUser = isSignup && !settingsAfterHydration.hasOwnProperty('onboardingCompleted');
 
     settingsAfterHydration.isLoggedIn = true;
     settingsAfterHydration.onboardingCompleted = true;
@@ -774,7 +788,27 @@ async function completeLocalLogin() {
     loadSettings();
     updateAccountRoleUI();
     renderSubCarMenu();
-    showToastMessage('로그인되었습니다.');
+
+    // 회원가입 + 소속기사 + 초대코드를 실제로 입력한 경우에만, 계정 생성이 끝난 뒤 "별도 단계"로
+    // 차주 연결을 시도한다(기존 connectEmployedDriver()가 쓰는 연결 로직을 그대로 재사용).
+    // 실패해도 토스트로만 안내하고, 이미 성공한 회원가입/로그인 자체는 절대 건드리지 않는다 —
+    // "연결 실패"와 "로그인 실패"는 완전히 다른 문제이기 때문이다.
+    if (isSignup && settingsAfterHydration.accountType === 'employed_driver' && /^\d{6}$/.test(inviteCode)) {
+        try {
+            await performEmployedDriverConnect(inviteCode);
+            showToastMessage('가입 및 사장님 연결이 모두 완료되었습니다.');
+        } catch (error) {
+            console.error('회원가입 직후 기사 연동 실패(계정 생성 자체는 완료됨):', error);
+            showToastMessage(`${getDriverLinkErrorMessage(error)} 마이페이지 > 소속 연결에서 다시 시도할 수 있어요.`);
+        }
+    } else {
+        showToastMessage('로그인되었습니다.');
+        const finalSettings = getUserSettings();
+        if (!isNewUser && finalSettings.accountType === 'employed_driver' && finalSettings.employerLink?.status !== 'linked') {
+            // 신규 유저는 곧 온보딩 화면으로 이동하므로 여기서 겹쳐 띄우지 않는다.
+            setTimeout(() => showToastMessage('아직 소속 사장님과 연결되지 않았어요. 마이페이지 > 소속 연결에서 연결해 주세요.'), 1500);
+        }
+    }
 
     // 신규 유저는 3문항 온보딩 마법사를 먼저 보여주고, 마법사 완료 시점에 showMain()을 호출한다.
     // 기존 유저(재로그인)는 마법사를 건너뛰고 바로 메인으로 이동한다.
@@ -1023,14 +1057,43 @@ function updateAccountRoleUI() {
     const ownerRole = isOwnerAccountType(settings.accountType);
     document.getElementById('employedDriverLinkCard')?.classList.toggle('hidden', settings.accountType !== 'employed_driver');
     document.getElementById('myPageDriverConnectionLink')?.classList.toggle('hidden', !ownerRole);
+    // 소속 연결 카드가 사업자정보 카드 자리를 대신 채우면서(아래 applyPersonalInfoRoleUI)
+    // 두 계정 종류 모두 카드 4개(정보1/정보2/연결또는사업자/계정)로 맞춰져 계정 카드 번호는
+    // 이제 역할과 무관하게 항상 '04'다.
     const accountCardNumber = document.getElementById('personalAccountCardNumber');
-    if (accountCardNumber) accountCardNumber.textContent = settings.accountType === 'employed_driver' ? '05' : '04';
+    if (accountCardNumber) accountCardNumber.textContent = '04';
 
     const loginButton = document.getElementById('personalLoginBtn');
     const logoutButton = document.getElementById('personalLogoutBtn');
     loginButton?.classList.toggle('hidden', !!settings.isLoggedIn);
     logoutButton?.classList.toggle('hidden', !settings.isLoggedIn);
     renderEmployedDriverLinkState();
+    applyPersonalInfoRoleUI(settings.accountType);
+}
+
+// 계정 종류에 따라 개인정보 화면의 카드 구성을 바꾼다.
+// - 차주(owner_driver): 기존과 동일하게 사업자정보 카드를 그대로 보여준다.
+// - 소속기사(employed_driver): 회사 사업자정보 카드를 숨기고(입력/수정 자체를 막음),
+//   "대표자·연락처" 카드를 기사 본인 정보 중심 문구로 바꿔서 재사용한다.
+// 중요: bizName 등 입력란은 DOM에서 "숨기기"만 할 뿐 제거하지 않는다 — loadSettings()가
+// 화면을 열 때마다 그 값을 그대로 채워 넣으므로, 숨겨진 채로 commitPersonalInfo()가 실행돼도
+// 기존 값(차주에게서 자동반영된 사업자정보 포함)이 그대로 왕복 저장될 뿐 손실되지 않는다.
+function applyPersonalInfoRoleUI(accountType) {
+    const isEmployedDriver = accountType === 'employed_driver';
+
+    document.getElementById('bizInfoCard')?.classList.toggle('hidden', isEmployedDriver);
+
+    const contactTitle = document.getElementById('contactCardTitle');
+    const contactDesc = document.getElementById('contactCardDesc');
+    const userNameLabel = document.getElementById('userNameLabel');
+    const contactIcon = document.getElementById('contactCardIcon');
+    const settlementIcon = document.getElementById('settlementCardIcon');
+
+    if (contactTitle) contactTitle.textContent = isEmployedDriver ? '기사 정보' : '대표자 · 연락처';
+    if (contactDesc) contactDesc.textContent = isEmployedDriver ? '본인 기본 정보' : '대표자 기본 정보';
+    if (userNameLabel) userNameLabel.textContent = isEmployedDriver ? '이름' : '성명 (대표자)';
+    if (contactIcon) contactIcon.textContent = isEmployedDriver ? '01' : '02';
+    if (settlementIcon) settlementIcon.textContent = isEmployedDriver ? '02' : '03';
 }
 
 function showConfirmModal(msg, callback, options = {}) {
@@ -1193,9 +1256,9 @@ function generateLocalId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function generateDriverInviteCode() {
+function generateDriverInviteCode(targetInputId = 'linkedDriverInviteCode') {
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    const input = document.getElementById('linkedDriverInviteCode');
+    const input = document.getElementById(targetInputId);
     if (input) input.value = code;
 }
 
@@ -1226,6 +1289,9 @@ function showDriverConnectionManagement(returnPage = 'main') {
     document.getElementById('driverConnectionManagementPage').classList.remove('hidden');
     populateLinkedDriverVehicleOptions();
     renderLinkedDriverList();
+    // 새 초대 작성 상태로 처음 들어왔다면(수정 중이 아니고 폼이 비어 있으면), 차량 관리에
+    // 이미 등록해 둔 기사차량 정보를 기본값으로 채워 같은 정보를 두 번 입력하지 않게 한다.
+    initializeLinkedDriverInvitationForm();
     setActiveNav(['personal', 'myPage'].includes(driverConnectionReturnPage) ? 'personal' : 'main');
 
     // 서버 기준 최신 연동 상태로 갱신한다 — 특히 기사가 그동안 코드를 입력해서 연결을
@@ -1257,12 +1323,187 @@ function resetLinkedDriverForm() {
     const saveButton = document.getElementById('linkedDriverSaveBtn');
     if (saveButton) saveButton.textContent = '초대 저장';
     generateDriverInviteCode();
+    // 폼을 완전히 비웠으니 자동입력 추적 상태도 초기화하고, 새 초대 기준으로 다시 채운다
+    // (기사차량이 1대뿐이면 그 차량 정보로, 여러 대면 차주가 직접 고를 때까지 비워 둔다).
+    linkedDriverFormAutoFilledVehicle = null;
+    initializeLinkedDriverInvitationForm();
+}
+
+// ---------- 차량 관리 ↔ 기사연동 기사 기본정보 자동입력 ----------
+// 목적: 차주가 "차량 관리 → 기사차량 등록"에서 이미 입력한 기사명/연락처를 "기사연동 관리"
+// 화면에서 다시 입력하지 않아도 되게 한다. Supabase/초대코드/RLS 등 기존 연동 로직은
+// 전혀 건드리지 않고, settings.cars에 이미 있는 값을 폼 기본값으로 재사용하기만 한다.
+
+// 기사차량(sub)에 저장된 기사 기본정보(이름/연락처)를 우선순위에 따라 뽑아낸다.
+// 차량 관리 모달이 최신 필드(car.driverName/driverPhone)에 저장하므로 그것을 우선 쓰고,
+// 레거시 데이터 호환을 위해 없으면 car.personalInfo?.driverName/phone까지 폴백한다.
+// 둘 다 없으면 빈 값을 그대로 반환한다(임의로 값을 만들어내지 않음).
+function getDriverInfoFromCar(car) {
+    if (!car) return { driverName: '', driverPhone: '' };
+    return {
+        driverName: car.driverName || car.personalInfo?.driverName || '',
+        driverPhone: car.driverPhone || car.personalInfo?.phone || ''
+    };
+}
+
+// 마지막으로 자동입력의 기준이 됐던 차량번호. 같은 차량번호에 대해 자동입력을 반복
+// 실행하지 않기 위해 기억해 둔다 — 차주가 이름/연락처를 직접 고친 뒤 다른 필드를
+// 입력하는 것만으로 다시 원래 값으로 되돌아가는 일이 없게 하기 위함(할당 차량이 실제로
+// "바뀔 때"만 다시 채운다).
+let linkedDriverFormAutoFilledVehicle = null;
+
+// 할당 차량 입력값(vehicleNumber)이 등록된 기사차량(sub) 번호와 정확히 일치할 때만 그
+// 차량의 기사 이름/연락처로 입력란을 채운다. 일치하는 차량이 없으면(입력이 아직 덜
+// 끝났거나 등록되지 않은 번호) 아무것도 하지 않는다. options.force가 없으면 직전과
+// 같은 차량번호에 대해서는 다시 실행하지 않는다.
+function prefillLinkedDriverFromVehicle(vehicleNumber, options = {}) {
+    const { force = false } = options;
+    if (!vehicleNumber) return false;
+    if (!force && linkedDriverFormAutoFilledVehicle === vehicleNumber) return false;
+
+    const settings = getUserSettings();
+    const car = (settings.cars || []).find(item => item.type === 'sub' && item.number === vehicleNumber);
+    if (!car) return false;
+
+    const info = getDriverInfoFromCar(car);
+    const nameInput = document.getElementById('linkedDriverName');
+    const phoneInput = document.getElementById('linkedDriverPhone');
+    if (nameInput) nameInput.value = info.driverName;
+    if (phoneInput) phoneInput.value = info.driverPhone;
+    linkedDriverFormAutoFilledVehicle = vehicleNumber;
+    return true;
+}
+
+// "할당 차량" 입력란(oninput)에서 호출된다. 기존 초대를 수정하는 중(linkedDriverEditId가
+// 있음)이면 절대 자동입력하지 않는다 — 자동입력은 "새 초대 작성" 상태에서만 동작해야
+// 기존 초대에 저장된 값을 실수로 덮어쓰지 않는다.
+function handleLinkedDriverVehicleInput(input) {
+    clearFieldError(input);
+    const editingId = document.getElementById('linkedDriverEditId')?.value || '';
+    if (editingId) return;
+    prefillLinkedDriverFromVehicle(input.value.trim());
+}
+
+// 기사연동 화면에 "새 초대 작성" 상태로 진입했을 때 실행한다(showDriverConnectionManagement
+// 진입 시, resetLinkedDriverForm 실행 시). 이미 수정 중이거나 폼에 뭔가 입력돼 있으면
+// 아무것도 하지 않는다. 등록된 기사차량(sub)이 정확히 1대뿐이면 그 차량 정보로 할당
+// 차량/이름/연락처를 미리 채워 준다 — 2대 이상이면 어떤 차량인지 임의로 추측하지 않고
+// 비워 둔 채로 차주가 직접 고르게 한다(고르는 순간은 handleLinkedDriverVehicleInput이 처리).
+function initializeLinkedDriverInvitationForm() {
+    const editingId = document.getElementById('linkedDriverEditId')?.value || '';
+    if (editingId) return; // 기존 초대 수정 중이면 절대 손대지 않는다.
+
+    const nameInput = document.getElementById('linkedDriverName');
+    const phoneInput = document.getElementById('linkedDriverPhone');
+    const vehicleInput = document.getElementById('linkedDriverVehicle');
+    const inviteCodeInput = document.getElementById('linkedDriverInviteCode');
+    if ((nameInput?.value || '') || (phoneInput?.value || '') || (vehicleInput?.value || '')) return;
+
+    // 새 초대 폼이 비어 있는 상태라면 "새로 입력" 버튼과 동일하게 초대 코드부터 준비해 둔다
+    // (기존 코드 생성 방식(generateDriverInviteCode)을 그대로 재사용 — 새로 만들지 않음).
+    if (inviteCodeInput && !inviteCodeInput.value && typeof generateDriverInviteCode === 'function') {
+        generateDriverInviteCode();
+    }
+
+    const subCars = (getUserSettings().cars || []).filter(car => car.type === 'sub' && car.number);
+    if (subCars.length !== 1) return; // 0대 또는 2대 이상이면 어떤 차량인지 임의로 채우지 않는다.
+
+    const car = subCars[0];
+    if (vehicleInput) vehicleInput.value = car.number;
+    prefillLinkedDriverFromVehicle(car.number, { force: true });
 }
 
 // 초대 저장은 실제로 Supabase에 반영돼야만 의미가 있다(기사가 이 코드로 찾는 대상 자체가
 // 그 행이므로) — 그래서 로컬-먼저-저장이 아니라 Supabase 저장을 반드시 기다린 뒤에만 로컬
 // driverLinks에 반영한다. 실패하면 로컬은 건드리지 않고 에러를 그대로 던져서(runSaveAction이
 // 재시도 모달을 보여줌) 사용자가 "초대는 했는데 실제로는 안 만들어진" 상태를 겪지 않게 한다.
+// 기사 초대 저장의 실제 처리(중복 확인 → driver_links upsert → 로컬 driverLinks/차량 반영)만
+// 담당하는 공용 함수다. "기사 연동 관리" 화면의 초대 폼(saveLinkedDriverInvitation)과, 차량
+// 등록 모달의 2차 기사연동 모달(saveCarDriverInvitation) 양쪽에서 이 함수 하나를 그대로
+// 재사용한다 — 기사연동 시스템을 하나 더 만들지 않기 위함. 형식 검증(빈 값/6자리 코드 등)은
+// 호출부가 각자의 입력 필드를 대상으로 먼저 하고, 여기서는 그 이후의 공통 로직만 담당한다.
+// 실패하면 toast로 이유를 보여준 뒤 null을 반환한다(예외를 던지지 않음).
+async function performSaveLinkedDriverInvitation({ name, phone, inviteCode, vehicleNumber, assignmentStart, assignmentEnd, editId }) {
+    const settings = getUserSettings();
+    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+    const editing = editId ? links.find(link => link.id === editId) : null;
+
+    const conflictingLink = findOverlappingDriverLink(links, vehicleNumber, assignmentStart, assignmentEnd, editId);
+    if (conflictingLink) {
+        showToastMessage(`같은 차량에 ${conflictingLink.driverName || '다른 기사'}의 할당 기간(${conflictingLink.assignmentStart}~${conflictingLink.assignmentEnd || '계속'})과 겹칩니다.`);
+        return null;
+    }
+
+    const car = (settings.cars || []).find(item => item.number === vehicleNumber);
+    if (!car?.supabaseId) {
+        showToastMessage('선택한 차량이 아직 클라우드에 동기화되지 않았습니다. 잠시 후 다시 시도해 주세요.');
+        return null;
+    }
+
+    let serverConflict;
+    try {
+        // 로컬 캐시뿐 아니라 서버 기준으로도 한 번 더 겹치는 할당이 있는지 확인한다(다른
+        // 기기에서 만든 초대까지 포함해서).
+        serverConflict = await findOverlappingDriverLinkOnSupabase(car.supabaseId, assignmentStart, assignmentEnd, editing?.supabaseId);
+    } catch (error) {
+        console.error('기사 연동 중복 확인 실패:', error);
+        showToastMessage('사장님 연결에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+        return null;
+    }
+    if (serverConflict) {
+        showToastMessage('같은 차량에 이미 겹치는 기간으로 연결되어 있거나 초대된 기록이 있습니다.');
+        return null;
+    }
+
+    let savedRow;
+    try {
+        savedRow = await upsertDriverLinkOnSupabase({
+            supabaseId: editing?.supabaseId || null,
+            vehicleId: car.supabaseId,
+            inviteCode,
+            assignmentStart,
+            assignmentEnd
+        });
+    } catch (error) {
+        console.error('기사 초대 저장 실패:', error);
+        showToastMessage(typeof getDriverLinkErrorMessage === 'function' ? getDriverLinkErrorMessage(error) : '초대 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+        return null;
+    }
+
+    const nextLink = {
+        ...(editing || {}),
+        id: editing?.id || generateLocalId('driver'),
+        supabaseId: savedRow.id,
+        driverName: name,
+        phone,
+        inviteCode: savedRow.invite_code,
+        vehicleId: savedRow.vehicle_id,
+        vehicleNumber,
+        assignmentStart: savedRow.assignment_start,
+        assignmentEnd: savedRow.assignment_end,
+        status: savedRow.status,
+        linkedAt: savedRow.linked_at,
+        updatedAt: savedRow.updated_at,
+        createdAt: editing?.createdAt || savedRow.created_at
+    };
+
+    const existingIndex = links.findIndex(link => link.id === nextLink.id);
+    const isNew = existingIndex < 0;
+    if (existingIndex >= 0) links[existingIndex] = nextLink;
+    else links.push(nextLink);
+    settings.driverLinks = links;
+    const assignedCar = (settings.cars || []).find(item => item.number === nextLink.vehicleNumber);
+    if (assignedCar) {
+        assignedCar.driverName = nextLink.driverName;
+        assignedCar.driverPhone = nextLink.phone;
+    }
+    setUserSettings(settings);
+    renderSubCarMenu();
+    updateAccountRoleUI();
+    showToastMessage(isNew ? '기사 초대를 저장했습니다.' : '기사 할당 정보를 수정했습니다.');
+    return nextLink;
+}
+
 async function saveLinkedDriverInvitation() {
     const name = document.getElementById('linkedDriverName')?.value.trim() || '';
     const phone = document.getElementById('linkedDriverPhone')?.value.trim() || '';
@@ -1289,70 +1530,11 @@ async function saveLinkedDriverInvitation() {
         return;
     }
 
-    const settings = getUserSettings();
-    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
-    const editing = editId ? links.find(link => link.id === editId) : null;
+    const link = await performSaveLinkedDriverInvitation({ name, phone, inviteCode, vehicleNumber, assignmentStart, assignmentEnd, editId });
+    if (!link) return; // 실패 이유는 이미 toast로 표시됨
 
-    const conflictingLink = findOverlappingDriverLink(links, vehicleNumber, assignmentStart, assignmentEnd, editId);
-    if (conflictingLink) {
-        showToastMessage(`같은 차량에 ${conflictingLink.driverName || '다른 기사'}의 할당 기간(${conflictingLink.assignmentStart}~${conflictingLink.assignmentEnd || '계속'})과 겹칩니다.`);
-        return;
-    }
-
-    const car = (settings.cars || []).find(item => item.number === vehicleNumber);
-    if (!car?.supabaseId) {
-        showToastMessage('선택한 차량이 아직 클라우드에 동기화되지 않았습니다. 잠시 후 다시 시도해 주세요.');
-        return;
-    }
-
-    // 로컬 캐시뿐 아니라 서버 기준으로도 한 번 더 겹치는 할당이 있는지 확인한다(다른 기기에서
-    // 만든 초대까지 포함해서).
-    const serverConflict = await findOverlappingDriverLinkOnSupabase(car.supabaseId, assignmentStart, assignmentEnd, editing?.supabaseId);
-    if (serverConflict) {
-        showToastMessage('같은 차량에 이미 겹치는 기간으로 연결되어 있거나 초대된 기록이 있습니다.');
-        return;
-    }
-
-    const savedRow = await upsertDriverLinkOnSupabase({
-        supabaseId: editing?.supabaseId || null,
-        vehicleId: car.supabaseId,
-        inviteCode,
-        assignmentStart,
-        assignmentEnd
-    });
-
-    const nextLink = {
-        ...(editing || {}),
-        id: editing?.id || generateLocalId('driver'),
-        supabaseId: savedRow.id,
-        driverName: name,
-        phone,
-        inviteCode: savedRow.invite_code,
-        vehicleId: savedRow.vehicle_id,
-        vehicleNumber,
-        assignmentStart: savedRow.assignment_start,
-        assignmentEnd: savedRow.assignment_end,
-        status: savedRow.status,
-        linkedAt: savedRow.linked_at,
-        updatedAt: savedRow.updated_at,
-        createdAt: editing?.createdAt || savedRow.created_at
-    };
-
-    const existingIndex = links.findIndex(link => link.id === nextLink.id);
-    if (existingIndex >= 0) links[existingIndex] = nextLink;
-    else links.push(nextLink);
-    settings.driverLinks = links;
-    const assignedCar = (settings.cars || []).find(item => item.number === nextLink.vehicleNumber);
-    if (assignedCar) {
-        assignedCar.driverName = nextLink.driverName;
-        assignedCar.driverPhone = nextLink.phone;
-    }
-    setUserSettings(settings);
     resetLinkedDriverForm();
     renderLinkedDriverList();
-    renderSubCarMenu();
-    updateAccountRoleUI();
-    showToastMessage(existingIndex >= 0 ? '기사 할당 정보를 수정했습니다.' : '기사 초대를 저장했습니다.');
 }
 
 function getLinkedDriverById(id) {
@@ -1482,6 +1664,94 @@ function getLinkedRecordSummary(record) {
     return { details, count, fare: detailFare + directFare };
 }
 
+// ---------- 기사 정산 상세 / 거래처별 세금계산서 (차주가 연동 기사 화면에서 보는 것) ----------
+// 핵심 원칙: "기사 정산"(차주가 기사에게 지급할 금액)과 "거래처별 세금계산서"(기사가 실제
+// 운송한 거래처 매출)는 서로 다른 업무이지만, 반드시 같은 원본 데이터(연동 기사의 실제
+// daily_logs/transport_details, fetchLinkedDriverRecordData가 이미 가져온 data)에서 파생돼야
+// 한다 — 그래야 "정산 상세 합계 = 총 운송료", "거래처별 합계 합 = 총 운송료(고정노선 제외)"가
+// 항상 성립한다. 두 함수 모두 같은 data를 입력받아 서로 다른 관점으로만 가공한다.
+
+// 연동 기사의 월간 운행 기록(data)을 건별로 펼친다. "콜상세"(callDetails)는 거래처/상차지/
+// 하차지가 있는 개별 운송 건이고, "고정노선"(fixedCount/fixedFare)은 그런 세부 항목이 없는
+// 월정액성 운행이라 거래처별로 쪼갤 수 없다 — 없는 정보를 임의로 만들지 않고 type:'fixed'로
+// 구분해서 그대로 보여준다(운송 상세내역 합계가 기사 정산 총액과 반드시 같아야 하므로 누락
+// 없이 전부 포함한다).
+function flattenLinkedDriverTrips(data, monthKey, link) {
+    const trips = [];
+    Object.entries(data || {}).forEach(([dateKey, record]) => {
+        if (!dateKey.startsWith(monthKey) || !record || typeof record !== 'object' || record.isOff) return;
+        if (!isDateWithinAssignment(dateKey, link?.assignmentStart, link?.assignmentEnd)) return;
+
+        (Array.isArray(record.callDetails) ? record.callDetails : []).forEach(detail => {
+            const workDate = detail.workDate || dateKey;
+            if (!workDate.startsWith(monthKey) || !isDateWithinAssignment(workDate, link?.assignmentStart, link?.assignmentEnd)) return;
+            trips.push({
+                type: 'call',
+                dateKey: workDate,
+                client: (detail.client || '').trim(),
+                loadLoc: detail.loadLoc || '',
+                unloadLoc: detail.unloadLoc || '',
+                fare: parseCurrencyValue(detail.fare),
+                vatExempt: !!detail.vatExempt,
+                platform: detail.platform || '',
+                distanceKm: detail.distanceKm || '',
+                cargoTonnage: detail.cargoTonnage || '',
+                paymentDueDate: detail.paymentDueDate || '',
+                remarks: detail.remarks || ''
+            });
+        });
+
+        const fixedCount = Number(record.fixedCount || record.count || 0);
+        const fixedFare = parseCurrencyValue(record.fare || record.fixedFare || record.totalFare);
+        if (fixedCount > 0 || fixedFare > 0) {
+            trips.push({ type: 'fixed', dateKey, client: '', loadLoc: '', unloadLoc: '', fare: fixedFare, vatExempt: false, fixedCount });
+        }
+    });
+    return trips.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+// 기사 정산(§A) 계산 — 기존 getMonthlyDriverTotals/calculateDriverVehicleCommission을 그대로
+// 재사용한다(새 계산식을 따로 만들지 않음). trips는 위 flattenLinkedDriverTrips의 결과를 그대로
+// 붙여서, "이 총액이 왜 이 금액인지" 검증할 수 있는 근거 목록으로 함께 반환한다.
+function getLinkedDriverSettlementDetail(data, monthKey, link, car) {
+    const totals = getMonthlyDriverTotals(data, monthKey, link);
+    const commissionAmount = calculateDriverVehicleCommission(car, totals.grossAmount, totals.count);
+    const insuranceAmount = car?.insuranceOn ? totals.insuranceAmount : 0;
+    const finalAmount = Math.max(0, totals.grossAmount - commissionAmount - insuranceAmount);
+    const trips = flattenLinkedDriverTrips(data, monthKey, link);
+    return {
+        totalFare: totals.grossAmount,
+        tripCount: totals.count,
+        commissionAmount,
+        insuranceAmount,
+        finalAmount,
+        trips,
+        tripsFareSum: trips.reduce((sum, t) => sum + t.fare, 0)
+    };
+}
+
+// 거래처별 세금계산서(§B) 집계 — "콜상세" 운송 건만 대상이다(거래처가 있어야 계산서를 만들
+// 수 있으므로). 거래처가 비어있는 건은 계산서 대상에 넣지 않고 별도로 카운트만 한다(§18 —
+// "미지정 거래처"를 임의로 계산서 대상으로 만들지 않음). 공급자는 이 차량의 사업자정보
+// (getCarBusinessInfo — "내 사업자와 동일"이면 차주 기본 사업자)를 그대로 재사용한다.
+function getLinkedDriverClientInvoiceGroups(trips, car, ownerSettings) {
+    const supplier = getVehicleSupplierIdentity(car, ownerSettings);
+    const grouped = {};
+    let unassignedCount = 0;
+    trips.filter(t => t.type === 'call').forEach(trip => {
+        if (!trip.client) { unassignedCount += 1; return; }
+        if (trip.fare <= 0) return;
+        const key = trip.client;
+        if (!grouped[key]) grouped[key] = { clientName: trip.client, count: 0, supplyAmount: 0, taxAmount: 0, trips: [] };
+        grouped[key].count += 1;
+        grouped[key].supplyAmount += trip.fare;
+        grouped[key].taxAmount += trip.vatExempt ? 0 : Math.round(trip.fare * .1);
+        grouped[key].trips.push(trip);
+    });
+    const groups = Object.values(grouped).map(g => ({ ...g, totalAmount: g.supplyAmount + g.taxAmount, supplierBiz: supplier.biz, vehicleLabel: supplier.carLabel }));
+    return { groups, unassignedCount };
+}
+
 function showLinkedDriverManagement(id, encoded = false) {
     const linkId = encoded ? decodeURIComponent(id) : id;
     const link = getLinkedDriverById(linkId);
@@ -1490,6 +1760,7 @@ function showLinkedDriverManagement(id, encoded = false) {
         return;
     }
     activeLinkedDriverId = link.id;
+    linkedDriverTripDetailOpen = false;
     hideAllPages();
     document.getElementById('linkedDriverManagementPage').classList.remove('hidden');
     document.getElementById('linkedDriverManagementTitle').textContent = `${getShortCarNum(link.vehicleNumber)} 관리`;
@@ -1502,6 +1773,35 @@ function showLinkedDriverManagement(id, encoded = false) {
     }
     renderLinkedDriverRecords();
     setActiveNav('main');
+
+    // 거래처 세금계산서 공유 권한은 기사가 언제든 켜고 끌 수 있으므로, 화면에 들어올 때마다
+    // 서버 기준으로 다시 확인한다(§21 — 다음 화면 진입/새로고침 시 즉시 반영).
+    if (typeof syncDriverLinksFromSupabase === 'function') {
+        syncDriverLinksFromSupabase().then(() => {
+            if (activeLinkedDriverId === link.id && !document.getElementById('linkedDriverManagementPage')?.classList.contains('hidden')) {
+                renderLinkedDriverRecords();
+            }
+        });
+    }
+}
+
+// "운송 상세내역 보기" 펼침 상태(§2) — 기사 정산 총액의 근거 목록을 기본은 접어 두고,
+// 필요할 때만 펼쳐서 본다.
+let linkedDriverTripDetailOpen = false;
+function toggleLinkedDriverTripDetail() {
+    linkedDriverTripDetailOpen = !linkedDriverTripDetailOpen;
+    document.getElementById('linkedDriverRecordList')?.classList.toggle('hidden', !linkedDriverTripDetailOpen);
+    const btn = document.getElementById('linkedDriverTripDetailToggleBtn');
+    if (btn) btn.textContent = linkedDriverTripDetailOpen ? '운송 상세내역 접기' : '운송 상세내역 보기';
+}
+
+// 거래처 카드 펼침/접힘(§16) — 카드마다 독립적으로 상세 운송 건을 열어볼 수 있다.
+let linkedDriverOpenClientKeys = new Set();
+function toggleLinkedDriverClientDetail(encodedKey) {
+    const key = decodeURIComponent(encodedKey);
+    if (linkedDriverOpenClientKeys.has(key)) linkedDriverOpenClientKeys.delete(key);
+    else linkedDriverOpenClientKeys.add(key);
+    document.getElementById(`linkedClientTrips_${encodedKey}`)?.classList.toggle('hidden', !linkedDriverOpenClientKeys.has(key));
 }
 
 // 연동된 기사가 실제로 작성한 운행 기록을 Supabase(daily_logs+transport_details)에서
@@ -1547,24 +1847,64 @@ async function renderLinkedDriverRecords() {
     const data = await fetchLinkedDriverRecordData(link);
     // 조회하는 동안 화면을 벗어났거나 다른 기사로 바뀌었으면 반영하지 않는다.
     if (getLinkedDriverById(activeLinkedDriverId)?.id !== link.id || document.getElementById('linkedDriverManagementPage')?.classList.contains('hidden')) return;
-    const records = Object.entries(data)
-        .filter(([dateKey]) => (!month || dateKey.startsWith(month)) && isDateWithinAssignment(dateKey, link.assignmentStart, link.assignmentEnd))
-        .sort(([a], [b]) => b.localeCompare(a))
-        .map(([dateKey, record]) => ({ dateKey, record, summary: getLinkedRecordSummary(record) }));
-    const totalCount = records.reduce((sum, item) => sum + item.summary.count, 0);
-    const totalFare = records.reduce((sum, item) => sum + item.summary.fare, 0);
-    document.getElementById('linkedDriverRecordCount').textContent = `${totalCount}건`;
-    document.getElementById('linkedDriverRecordFare').textContent = `${totalFare.toLocaleString()}원`;
 
-    if (!records.length) {
+    const ownerSettings = getUserSettings();
+    const car = (ownerSettings.cars || []).find(c => c.number === link.vehicleNumber) || null;
+
+    // ---------- 기사 정산 (항상 표시, §9/§13/§19) ----------
+    const detail = getLinkedDriverSettlementDetail(data, month, link, car);
+    document.getElementById('linkedDriverRecordCount').textContent = `${detail.tripCount}건`;
+    document.getElementById('linkedDriverRecordFare').textContent = `${detail.totalFare.toLocaleString()}원`;
+    document.getElementById('linkedDriverCommissionAmount').textContent = `-${detail.commissionAmount.toLocaleString()}원`;
+    document.getElementById('linkedDriverInsuranceAmount').textContent = `-${detail.insuranceAmount.toLocaleString()}원`;
+    document.getElementById('linkedDriverFinalAmount').textContent = `${detail.finalAmount.toLocaleString()}원`;
+
+    if (!detail.trips.length) {
         list.innerHTML = '<div class="linked-driver-empty">선택한 달에 작성된 운행 기록이 없습니다.</div>';
+    } else {
+        list.innerHTML = detail.trips.map(trip => {
+            const [, monthPart, dayPart] = trip.dateKey.split('-');
+            const dateLabel = `${parseInt(monthPart, 10)}월 ${parseInt(dayPart, 10)}일`;
+            if (trip.type === 'fixed') {
+                return `<article class="linked-driver-record-card"><div><strong>${dateLabel}</strong><span>고정노선 ${trip.fixedCount || ''}건</span></div><p>거래처/상하차지 구분 없는 고정노선 운행입니다.</p><b>${trip.fare.toLocaleString()}원</b></article>`;
+            }
+            const badges = [
+                trip.platform ? `플랫폼 ${trip.platform}` : '',
+                trip.distanceKm ? `${trip.distanceKm}km` : '',
+                trip.cargoTonnage ? `${trip.cargoTonnage}` : '',
+                trip.paymentDueDate ? `입금예정 ${trip.paymentDueDate}` : '',
+                trip.vatExempt ? '부가세 면세' : ''
+            ].filter(Boolean).join(' · ');
+            return `<article class="linked-driver-record-card"><div><strong>${dateLabel}</strong><span>${escapeDetailText(trip.client || '거래처 미지정')}</span></div><p>${escapeDetailText(trip.loadLoc || '상차지')} → ${escapeDetailText(trip.unloadLoc || '하차지')}${badges ? `<br><small>${escapeDetailText(badges)}</small>` : ''}${trip.remarks ? `<br><small>${escapeDetailText(trip.remarks)}</small>` : ''}</p><b>${trip.fare.toLocaleString()}원</b></article>`;
+        }).join('');
+    }
+
+    // ---------- 거래처별 세금계산서 (기사 공유 ON일 때만, §6~9/§21) ----------
+    const invoiceArea = document.getElementById('linkedDriverClientInvoiceArea');
+    if (!invoiceArea) return;
+    if (!isSharingClientTaxInvoicesWithOwner(link)) {
+        invoiceArea.innerHTML = '<div class="linked-driver-empty">기사의 거래처 세금계산서 공유가 설정되어 있지 않습니다.</div>';
         return;
     }
-    list.innerHTML = records.map(({ dateKey, summary }) => {
-        const [, monthPart, dayPart] = dateKey.split('-');
-        const routes = summary.details.slice(0, 2).map(item => `${item.loadLoc || '상차지'} → ${item.unloadLoc || '하차지'}`);
-        return `<article class="linked-driver-record-card"><div><strong>${parseInt(monthPart, 10)}월 ${parseInt(dayPart, 10)}일</strong><span>${summary.count}건 운행</span></div>${routes.length ? `<p>${routes.map(route => escapeDetailText(route)).join('<br>')}</p>` : '<p>운행 기록</p>'}<b>${summary.fare.toLocaleString()}원</b></article>`;
-    }).join('');
+    const { groups, unassignedCount } = getLinkedDriverClientInvoiceGroups(detail.trips, car, ownerSettings);
+    if (!groups.length) {
+        invoiceArea.innerHTML = `<div class="linked-driver-empty">선택한 달에 거래처가 연결된 운송 기록이 없습니다.${unassignedCount ? ` (거래처 미지정 운행 ${unassignedCount}건)` : ''}</div>`;
+        return;
+    }
+    invoiceArea.innerHTML = (unassignedCount ? `<p class="linked-driver-readonly-notice" style="margin-bottom:8px;"><span>거래처 미지정 운행 ${unassignedCount}건은 계산서 대상에서 제외됐습니다.</span></p>` : '')
+        + groups.map(g => {
+            const key = encodeURIComponent(g.clientName);
+            // vehicleLabel에 이미 "사업자명 · 차량번호"가 포함돼 있으므로(별도 사업자 차량의
+            // 경우) 이름을 또 붙이면 중복 표시된다 — vehicleLabel 하나만 쓴다.
+            const supplierLabel = g.vehicleLabel || g.supplierBiz?.name || '';
+            const tripRows = g.trips.map(t => `<div class="linked-driver-client-trip-row"><span>${escapeDetailText(t.dateKey.slice(5).replace('-', '/'))} ${escapeDetailText(t.loadLoc || '상차지')} → ${escapeDetailText(t.unloadLoc || '하차지')}</span><b>${t.fare.toLocaleString()}원</b></div>`).join('');
+            return `<article class="tax-invoice-card">
+                <div class="tax-invoice-card-head"><div><strong>${escapeDetailText(g.clientName)}</strong><span>${g.count}건${supplierLabel ? ` · ${escapeDetailText(supplierLabel)}` : ''}</span></div></div>
+                <div class="tax-invoice-card-money"><span>공급가액 <b>${g.supplyAmount.toLocaleString()}원</b></span><span>세액 <b>${g.taxAmount.toLocaleString()}원</b></span><strong><small>합계</small>${g.totalAmount.toLocaleString()}원</strong></div>
+                <div class="tax-invoice-card-actions single-action"><button type="button" onclick="toggleLinkedDriverClientDetail('${key}')">상세보기</button></div>
+                <div id="linkedClientTrips_${key}" class="linked-driver-client-trip-list hidden">${tripRows}</div>
+            </article>`;
+        }).join('');
 }
 
 function renderEmployedDriverLinkState() {
@@ -1575,6 +1915,27 @@ function renderEmployedDriverLinkState() {
     if (!linked) return;
     document.getElementById('employerLinkedName').textContent = settings.employerLink.ownerName || '연동된 운송사';
     document.getElementById('employerLinkedMeta').textContent = [settings.employerLink.ownerPhone, settings.employerLink.inviteCode ? `초대 코드 ${settings.employerLink.inviteCode}` : ''].filter(Boolean).join(' · ');
+    const shareToggle = document.getElementById('shareClientTaxInvoicesToggle');
+    if (shareToggle) shareToggle.checked = isSharingClientTaxInvoicesWithOwner(settings);
+}
+
+// 기사 → 차주 "거래처별 세금계산서 공유" 권한. 차주가 차량 설정에서 켜는 "기사 월매출 조회"
+// (shareRevenueWithOwner, 기본 ON)와는 완전히 다른 별개의 값이다 — 이건 기사 본인이 켜고 끄는
+// 권한이고, 기본값은 개인정보 보호 원칙상 OFF다(값이 아예 없는 기존 기사 계정도 OFF로 취급).
+function isSharingClientTaxInvoicesWithOwner(settingsOrLink) {
+    return settingsOrLink?.shareClientTaxInvoicesWithOwner === true;
+}
+
+// profiles.settings(jsonb)에 실려서 기존 동기화 경로(setUserSettings → scheduleSupabaseSettingsSync
+// → syncSettingsToSupabase → buildSettingsJsonbPayload)로 그대로 서버에 저장된다 — 이 값만을
+// 위한 새 컬럼이나 새 동기화 로직을 따로 만들지 않는다. 차주 쪽은 이 값을 로컬(다른 사람의
+// localStorage)이 아니라 서버(연동된 기사의 profiles.settings)에서 읽어 판단한다
+// (syncDriverLinksFromSupabase 참고).
+function toggleShareClientTaxInvoicesWithOwner(checked) {
+    const settings = getUserSettings();
+    settings.shareClientTaxInvoicesWithOwner = !!checked;
+    setUserSettings(settings);
+    showToastMessage(checked ? '거래처 세금계산서 공유를 켰습니다.' : '거래처 세금계산서 공유를 껐습니다.');
 }
 
 // 실제 연결은 서버(redeem_driver_invite_code RPC)에서만 일어난다 — 전화번호만으로는
@@ -1591,19 +1952,30 @@ async function connectEmployedDriver() {
         showToastMessage('사장님께 받은 6자리 초대 코드를 정확히 입력해 주세요.');
         return;
     }
-    if (typeof redeemDriverInviteCode !== 'function') {
-        showToastMessage('연결 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
-        return;
-    }
 
-    let linkedRow;
     try {
-        linkedRow = await redeemDriverInviteCode(inviteCode);
+        await performEmployedDriverConnect(inviteCode, ownerPhone);
     } catch (error) {
         console.error('기사 연동 실패:', error);
         showToastMessage(getDriverLinkErrorMessage(error));
         return;
     }
+
+    renderEmployedDriverLinkState();
+    showToastMessage('소속 사장님과 연결했습니다.');
+}
+
+// "기사 연결"의 실제 처리 로직만 담당한다(redeem → 차주 이름 조회 → employerLink 저장 →
+// 사업자/차량정보 자동반영 → 과거 기록 backfill). 인증(로그인/회원가입)과는 완전히 분리된
+// 별도 단계로, 마이페이지의 "소속 연결하기" 버튼(connectEmployedDriver)과 회원가입 직후
+// 자동 연결 시도(completeLocalLogin) 양쪽에서 이 함수 하나를 그대로 재사용한다.
+// 실패하면 예외를 던지기만 할 뿐 계정/로그인 상태에는 전혀 손대지 않는다 — 호출부가 각자
+// 상황에 맞는 안내만 보여주면 된다(연결 실패가 로그인/회원가입 성공을 무효화하지 않음).
+async function performEmployedDriverConnect(inviteCode, ownerPhone = '') {
+    if (typeof redeemDriverInviteCode !== 'function') {
+        throw new Error('연결 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+    }
+    const linkedRow = await redeemDriverInviteCode(inviteCode);
 
     // 연결 자체는 이미 완료됐으니, 상대방(차주) 이름 조회가 실패해도 연결 결과는 그대로 살린다.
     let ownerName = '연동된 운송사';
@@ -1632,8 +2004,6 @@ async function connectEmployedDriver() {
         linkedAt: linkedRow.linked_at || new Date().toISOString()
     };
     setUserSettings(settings);
-    renderEmployedDriverLinkState();
-    showToastMessage('소속 사장님과 연결했습니다.');
 
     // 차주가 이미 차량관리/사업자정보에 입력해둔 값을 기사 쪽에도 그대로 채워 넣어서
     // 같은 정보를 두 번 입력하지 않게 한다(기사 개인정보 — 이름/연락처/계좌 — 는 그대로 둠).
@@ -1650,6 +2020,8 @@ async function connectEmployedDriver() {
             console.error('과거 운행기록 반영 실패(연결 자체는 완료됨):', error);
         }
     }
+
+    return linkedRow;
 }
 
 // 이미 연동돼 있는 기사가 "과거 기록 다시 동기화"를 눌렀을 때 쓴다. 연동 시점에 자동으로
@@ -1680,33 +2052,38 @@ async function resyncEmployedDriverWorkData() {
 // 채운다. 기사 본인의 개인정보(이름/연락처/은행계좌)는 절대 건드리지 않는다 — 그건 말
 // 그대로 기사 개인의 정보이기 때문이다. 연동 직후 1회, 그리고 개인정보 화면을 열 때마다
 // (showPersonalInfo에서) 최신값으로 다시 채운다.
+// 기사 개인정보 화면에 자동으로 채워 넣는 "회사 사업자정보"의 원본은 차주의 대표 사업자가
+// 아니라 이 기사가 지금 연결돼 있는 차량의 사업자정보다(그 차량이 "내 사업자와 동일"이면
+// 결과적으로 차주 기본 사업자와 같아진다) — resolveVehicleBusinessInfoFromSupabase()가 그
+// 판단을 서버 기준으로 대신해 준다. 이전에는 여기서 무조건 ownerProfile.business_*만
+// 읽어서, 차량별로 다른 사업자를 설정해도 기사 쪽엔 항상 차주 기본 사업자만 반영되고,
+// 차량 사업자를 수정해도 반영되지 않는 문제가 있었다.
 async function applyEmployerAutoFilledInfo(ownerId, vehicleId) {
     if (!ownerId || typeof getSupabaseClient !== 'function') return;
     try {
         const client = await getSupabaseClient();
-        const [{ data: ownerProfile }, vehicleResult] = await Promise.all([
-            client.from('profiles').select('business_name, business_number, business_address, business_type, business_item, business_email').eq('id', ownerId).maybeSingle(),
-            vehicleId ? client.from('vehicles').select('number, tonnage').eq('id', vehicleId).maybeSingle() : Promise.resolve({ data: null })
-        ]);
+        const { biz, vehicleRow } = typeof resolveVehicleBusinessInfoFromSupabase === 'function'
+            ? await resolveVehicleBusinessInfoFromSupabase(client, vehicleId, ownerId)
+            : { biz: null, vehicleRow: null };
 
         const settings = getUserSettings();
         let changed = false;
 
-        if (ownerProfile) {
+        if (biz) {
             const bizFieldMap = {
-                bizName: ownerProfile.business_name,
-                bizNumber: ownerProfile.business_number,
-                bizAddress: ownerProfile.business_address,
-                bizType: ownerProfile.business_type,
-                bizItem: ownerProfile.business_item,
-                bizEmail: ownerProfile.business_email
+                bizName: biz.name,
+                bizNumber: biz.bizNumber,
+                bizAddress: biz.address,
+                bizType: biz.bizType,
+                bizItem: biz.bizItem,
+                bizEmail: biz.email
             };
             Object.entries(bizFieldMap).forEach(([key, value]) => {
                 if (value && settings[key] !== value) { settings[key] = value; changed = true; }
             });
         }
 
-        const vehicle = vehicleResult?.data;
+        const vehicle = vehicleRow;
         if (vehicle) {
             const cars = Array.isArray(settings.cars) ? settings.cars : [];
             let mainCar = cars.find(c => c.type === 'main');
@@ -2436,11 +2813,15 @@ function showMyPage(preserveReturnLog = false) {
     utilityReturnPage = 'main';
     const settings = getUserSettings();
     const profileSummary = document.getElementById('myPageProfileSummary');
-    const summaryParts = [settings.userName, settings.bizName].filter(Boolean);
+    const isEmployedDriver = settings.accountType === 'employed_driver';
+    // 소속기사는 회사 사업자정보를 직접 관리하지 않으므로, 요약 문구에 bizName(차주에게서
+    // 자동반영된 값)까지 끼워 넣지 않는다 — 본인 이름만 보여준다.
+    const summaryParts = isEmployedDriver ? [settings.userName].filter(Boolean) : [settings.userName, settings.bizName].filter(Boolean);
+    const fallbackSummary = isEmployedDriver ? '내 정보 및 정산 계좌 관리' : '대표자 및 사업자 정보 관리';
     if (profileSummary) {
         profileSummary.textContent = summaryParts.length
             ? summaryParts.join(' · ')
-            : '대표자 및 사업자 정보 관리';
+            : fallbackSummary;
     }
 
     renderBackupStatus();
@@ -2581,26 +2962,29 @@ function showPersonalInfo(fromPage) {
     document.getElementById('personalInfoPage').classList.remove('hidden');
     setActiveNav('personal');
 
-    // 소속 기사이고 이미 연동돼 있으면, 차주 쪽 사업자정보/차량정보가 그 사이 바뀌었을 수
-    // 있으니 화면을 열 때마다 최신값으로 다시 채운다(화면을 막지 않게 백그라운드로).
+    // 소속 기사이고 이미 연동돼 있으면, 연결된 차량의 사업자정보/차량정보가 그 사이 바뀌었을
+    // 수 있으니 화면을 열 때마다 최신값으로 다시 채운다(화면을 막지 않게 백그라운드로).
+    // 로컬 캐시(employerLink.vehicleId/ownerId)는 차주가 이 기사를 다른 차량으로 재할당했을
+    // 때 바로 갱신되지 않으므로, driver_links를 supabaseId 기준으로 서버에서 다시 읽어
+    // 지금 실제로 배정된 owner_id/vehicle_id를 확보한 뒤에만 자동반영을 실행한다(요구사항:
+    // 차량 재할당 시에도 항상 서버 기준 최신 차량의 사업자정보를 써야 함).
     const settings = getUserSettings();
     const link = settings.employerLink;
     if (link?.status === 'linked' && typeof applyEmployerAutoFilledInfo === 'function') {
-        const ownerId = link.ownerId || null;
-        if (ownerId) {
-            applyEmployerAutoFilledInfo(ownerId, link.vehicleId);
-        } else if (typeof getSupabaseClient === 'function' && link.supabaseId) {
-            // ownerId를 아직 로컬에 캐싱해두지 않은(예전에 연결된) 경우 driver_links에서 다시 읽어온다.
-            (async () => {
-                try {
+        (async () => {
+            try {
+                let ownerId = link.ownerId || null;
+                let vehicleId = link.vehicleId || null;
+                if (typeof getSupabaseClient === 'function' && link.supabaseId) {
                     const client = await getSupabaseClient();
                     const { data } = await client.from('driver_links').select('owner_id, vehicle_id').eq('id', link.supabaseId).maybeSingle();
-                    if (data?.owner_id) await applyEmployerAutoFilledInfo(data.owner_id, data.vehicle_id);
-                } catch (error) {
-                    console.error('연동된 차주 정보 재조회 실패:', error);
+                    if (data?.owner_id) { ownerId = data.owner_id; vehicleId = data.vehicle_id; }
                 }
-            })();
-        }
+                if (ownerId) await applyEmployerAutoFilledInfo(ownerId, vehicleId);
+            } catch (error) {
+                console.error('연동된 차주/차량 정보 재조회 실패(로컬 캐시로 계속 진행):', error);
+            }
+        })();
     }
 }
 
@@ -3796,6 +4180,7 @@ function openCarModal(mode = 'main') {
         }
         document.getElementById('carModalTitle').textContent = '차량 등록';
         document.getElementById('driverBasicInfoFields').style.display = 'none';
+        document.getElementById('carBusinessInfoFields').style.display = 'none';
         document.getElementById('logToggleContainer').style.display = 'none';
     } else {
         let subCount = cars.filter((c, idx) => idx !== editingCarIndex && c.type === 'sub').length;
@@ -3805,6 +4190,7 @@ function openCarModal(mode = 'main') {
         }
         document.getElementById('carModalTitle').textContent = '기사 등록';
         document.getElementById('driverBasicInfoFields').style.display = 'block';
+        document.getElementById('carBusinessInfoFields').style.display = 'block';
         document.getElementById('logToggleContainer').style.display = 'block';
     }
 
@@ -3871,15 +4257,80 @@ function toggleNewCarCommSettings() {
     setSettingsGroupExpanded(document.getElementById('newCarCommSettings'), isChecked);
 }
 
-function saveNewCar() {
+// 기사차량(sub car)의 차량 단위 사업자정보를 읽는다. "내 사업자 정보와 동일" ON이면 값을
+// 저장/스냅샷하지 않고, 조회 시점에 항상 차주의 최신 개인정보 사업자정보를 그대로 참조한다
+// (차주가 나중에 주소/이메일 등을 고쳐도 "동일" 차량들이 자동으로 최신값을 따라가야 하므로).
+// 메인 차량은 애초에 차주 본인 사업자를 쓰는 것이 기본이라 항상 차주 기본 사업자정보를 쓴다.
+function getCarBusinessInfo(car, settings = getUserSettings()) {
+    const ownerBiz = {
+        name: settings.bizName || '',
+        bizNumber: settings.bizNumber || '',
+        representative: settings.userName || '',
+        address: settings.bizAddress || '',
+        bizType: settings.bizType || '',
+        bizItem: settings.bizItem || '',
+        email: settings.bizEmail || ''
+    };
+    if (!car || car.type !== 'sub') return { sameAsOwner: true, ...ownerBiz };
+
+    const info = car.businessInfo;
+    // 기존 차량(이번 기능 이전에 등록됨)은 businessInfo가 아예 없다 — "사업자정보 미설정"이
+    // 아니라 안전하게 "차주와 동일"로 취급해서 이전과 동일하게 차주 기본 사업자를 쓴다(요구사항 11:
+    // 기존 차량은 오류 없이 정상 동작해야 한다).
+    if (!info || info.sameAsOwner) return { sameAsOwner: true, ...ownerBiz };
+
+    return {
+        sameAsOwner: false,
+        name: info.name || '',
+        bizNumber: info.bizNumber || '',
+        representative: info.representative || '',
+        address: info.address || '',
+        bizType: info.bizType || '',
+        bizItem: info.bizItem || '',
+        email: info.email || ''
+    };
+}
+
+// 이 차량의 운행 매출을 차주의 "월매출" 화면에서 볼 수 있는지 여부. 값이 아예 없으면(기존
+// 차량) 항상 true로 취급한다 — 이 기능 도입 전에는 전부 보였으므로 기존 동작을 그대로 유지.
+function isVehicleRevenueSharedWithOwner(car) {
+    return car?.shareRevenueWithOwner !== false;
+}
+
+// 세금계산서(매출 발행) 집계에서 "이 운행이 어느 사업자 명의로 나가야 하는지" 식별한다.
+// - 메인 차량, 또는 "내 사업자 정보와 동일" ON인 기사차량 → 차주 기본 사업자와 같은 키를
+//   부여해서, 서로 다른 차량이라도 실제로는 같은 사업자라면 하나의 계산서로 자연스럽게
+//   합산되게 한다(요구사항 18의 "차량이 달라도 동일 사업자면 합산 가능" 부분).
+// - 사업자정보를 따로 입력한 기사차량 → bizNumber(없으면 상호명) 기준의 고유 키를 부여해서
+//   다른 사업자와 절대 섞이지 않게 한다.
+// - 그마저도 없는(아직 사업자정보를 안 채운) 기사차량 → 차량번호 기준으로 키를 만들어, 서로
+//   다른 미입력 차량끼리도 섞이지 않게 한다(요구사항 18: "합치는 것보다 분리를 우선한다").
+function getVehicleSupplierIdentity(car, settings = getUserSettings()) {
+    const ownerBiz = { sameAsOwner: true, name: settings.bizName || '', bizNumber: settings.bizNumber || '', representative: settings.userName || '', address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || '' };
+    if (!car || car.type !== 'sub') {
+        return { key: `owner:${ownerBiz.bizNumber || ownerBiz.name || 'default'}`, biz: ownerBiz, carLabel: '메인 차량', carNumber: null };
+    }
+    const biz = getCarBusinessInfo(car, settings);
+    if (biz.sameAsOwner) {
+        return { key: `owner:${ownerBiz.bizNumber || ownerBiz.name || 'default'}`, biz: ownerBiz, carLabel: getShortCarNum(car.number), carNumber: car.number };
+    }
+    const key = `car:${car.number}:${biz.bizNumber || biz.name || 'noinfo'}`;
+    return { key, biz, carLabel: biz.name ? `${biz.name} · ${getShortCarNum(car.number)}` : getShortCarNum(car.number), carNumber: car.number };
+}
+
+// 차량 등록 모달의 입력값을 검증하고 settings.cars에 반영(추가/수정)까지 마친 뒤 저장된 차량과
+// 인덱스를 반환한다. 검증 실패 시 필드 에러 + 토스트만 띄우고 null을 반환한다. "저장" 버튼
+// (saveNewCar)과 "기사 연동하기" 버튼(openCarDriverInviteModal) 둘 다 이 함수를 공유한다 —
+// 기사연동하기도 결국 차량을 먼저 정상 저장해야 실제 vehicle_id를 만들 수 있기 때문이다.
+function saveCarFromModal() {
     const num = document.getElementById('newCarNumber').value.trim();
     const ton = document.getElementById('newCarTonnage').value.trim();
     const mode = document.getElementById('carModalMode').value;
-    
+
     if (!num) {
         markFieldError('newCarNumber');
         document.getElementById('newCarNumber').focus();
-        return;
+        return null;
     }
 
     const carType = mode === 'main' ? 'main' : 'sub';
@@ -3893,16 +4344,13 @@ function saveNewCar() {
         if (!driverName) markFieldError('newDriverName');
         if (driverPhone.replace(/\D/g, '').length < 10) markFieldError('newUserPhone');
         showToastMessage('기사명과 연락처를 확인해 주세요.');
-        return;
+        return null;
     }
 
     const previousCar = editingCarIndex > -1 ? settings.cars[editingCarIndex] : null;
-    // 기사 초대의 생성/수정/해제는 이제 "기사 연동 관리" 화면(Supabase와 실제로 연동됨)
-    // 한 곳에서만 한다. 예전엔 여기서도 로컬 전용으로 새 초대를 만들 수 있었는데, 그렇게
-    // 만든 코드는 실제로는 어디에도 저장되지 않아 기사가 연결할 수 없었다(가짜 초대) — 그래서
-    // 여기서는 기존에 이미 연결/초대된 상태가 있으면 그 상태만 읽어서 표시용으로만 쓰고,
-    // 새로 만들거나 바꾸지 않는다. driverLinkEnabled도 체크박스가 아니라 "실제로 연결/초대된
-    // 상태가 있는지"로 결정한다(체크박스는 이제 정보 패널을 펼치는 UI 토글일 뿐이다).
+    // 기사 초대의 생성/수정/해제는 "기사 연동 관리"(및 이 모달의 2차 기사연동 모달) 쪽 실제
+    // Supabase 연동 로직 한 곳에서만 한다. 여기서는 기존에 이미 연결/초대된 상태가 있으면 그
+    // 상태만 읽어서 표시용으로만 쓰고, 새로 만들거나 바꾸지 않는다.
     const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
     const existingLink = links.find(link =>
         (previousCar?.driverLinkId && link.id === previousCar.driverLinkId)
@@ -3917,6 +4365,29 @@ function saveNewCar() {
     const commType = document.getElementById('newCarCommType').value;
     const commission = commEnabled ? document.getElementById('newCarCommission').value.trim() : '';
 
+    // 차량 단위 사업자정보(기사 본인 개인정보 — 이름/연락처/은행/계좌 — 와는 완전히 다른
+    // 개념이다. car.personalInfo가 "기사 개인" 정보라면, car.businessInfo는 "이 차량이 속한
+    // 사업자"다). "내 사업자 정보와 동일" ON이면 값은 스냅샷하지 않고 플래그만 저장한다 —
+    // 조회 시점에 항상 차주의 최신 개인정보를 참조하게(getCarBusinessInfo) 하기 위함.
+    // personalInfo(아래)가 대표자명/사업자번호를 이 값에서 그대로 가져다 쓰므로, personalInfo
+    // 구성보다 먼저 계산해 둔다.
+    let businessInfo = previousCar?.businessInfo || null;
+    let shareRevenueWithOwner = previousCar?.shareRevenueWithOwner;
+    if (carType === 'sub') {
+        const sameAsOwner = document.getElementById('newCarBizSameAsOwner')?.checked ?? true;
+        businessInfo = {
+            sameAsOwner,
+            name: sameAsOwner ? '' : (document.getElementById('newCarBizName')?.value.trim() || ''),
+            bizNumber: sameAsOwner ? '' : (document.getElementById('newCarBizNumber')?.value.trim() || ''),
+            representative: sameAsOwner ? '' : (document.getElementById('newCarBizRepresentative')?.value.trim() || ''),
+            address: sameAsOwner ? '' : (document.getElementById('newCarBizAddress')?.value.trim() || ''),
+            bizType: sameAsOwner ? '' : (document.getElementById('newCarBizType')?.value.trim() || ''),
+            bizItem: sameAsOwner ? '' : (document.getElementById('newCarBizItem')?.value.trim() || ''),
+            email: sameAsOwner ? '' : (document.getElementById('newCarBizEmail')?.value.trim() || '')
+        };
+        shareRevenueWithOwner = document.getElementById('newCarShareRevenueToggle')?.checked ?? true;
+    }
+
     let infoType = 'existing';
     let personalInfo = null;
 
@@ -3924,10 +4395,16 @@ function saveNewCar() {
         const isNewInfo = document.getElementById('btnUseNewInfo').classList.contains('active-work');
         if (isNewInfo) {
             infoType = 'new';
+            // 대표자명/사업자번호는 더 이상 여기서 다시 입력받지 않는다(요구사항: 운행일지의
+            // 중복 정산정보 입력 제거) — 위에서 계산한 이 차량의 사업자정보(businessInfo,
+            // "내 사업자와 동일"이면 차주 기본 사업자)를 그대로 가져다 쓴다. 기존
+            // getTaxInvoicePartyInfo(기사 매입 계산서)가 car.personalInfo.name/bizNumber를
+            // 그대로 참조하므로, 여기서 값을 채워 둬야 기존 계산이 그대로 유지된다.
+            const resolvedBiz = getCarBusinessInfo({ businessInfo, type: 'sub' }, settings);
             personalInfo = {
                 driverName: driverName,
-                name: document.getElementById('newUserName').value.trim(),
-                bizNumber: document.getElementById('newBizNumber').value.trim(),
+                name: resolvedBiz.representative || '',
+                bizNumber: resolvedBiz.bizNumber || '',
                 phone: driverPhone,
                 bank: document.getElementById('newBankName').value.trim(),
                 account: document.getElementById('newAccountNumber').value.trim()
@@ -3956,25 +4433,184 @@ function saveNewCar() {
         commission: commission,
         commEnabled: commEnabled,
         infoType: infoType,
-        personalInfo: personalInfo
+        personalInfo: personalInfo,
+        businessInfo: businessInfo,
+        shareRevenueWithOwner: shareRevenueWithOwner
     };
 
-    if (editingCarIndex > -1) {
-        settings.cars[editingCarIndex] = carData; 
-        showToastMessage('수정되었습니다.');
+    const wasNew = editingCarIndex <= -1;
+    let index;
+    if (!wasNew) {
+        settings.cars[editingCarIndex] = carData;
+        index = editingCarIndex;
     } else {
-        settings.cars.push(carData); 
-        showToastMessage('등록되었습니다.');
+        settings.cars.push(carData);
+        index = settings.cars.length - 1;
     }
-    
+    // 새로 만든 차량이라도 이 시점부터는 "편집 중인 차량"으로 취급한다 — 이래야 "기사
+    // 연동하기"가 실패해서 모달이 다시 열려도 saveCarFromModal()을 재호출했을 때 같은
+    // 차량을 계속 수정하지, 매번 새 차량을 또 push해서 중복이 생기지 않는다.
+    editingCarIndex = index;
+
     setUserSettings(settings);
-    
-    closeCarModal(); 
+    return { car: settings.cars[index], index, wasNew };
+}
+
+function saveNewCar() {
+    const result = saveCarFromModal();
+    if (!result) return;
+    showToastMessage(result.wasNew ? '등록되었습니다.' : '수정되었습니다.');
+    closeCarModal();
     loadCarList();
     renderSubCarMenu();
     renderLinkedDriverList();
     updateAccountRoleUI();
-    updateTransportSettingsUI(); 
+    updateTransportSettingsUI();
+}
+
+// "기사 연동하기" 버튼 핸들러. 차량을 먼저 정상 저장한 뒤, 디바운스된 배경 동기화를 기다리지
+// 않고 이 차량 하나만 즉시 Supabase에 반영해 실제 vehicle_id를 확보하고, 2차 기사연동 모달을
+// 연다(요구사항: 저장→수정→기사연동을 사용자가 따로 할 필요 없이 한 흐름처럼 보이게).
+async function openCarDriverInviteModal() {
+    const result = saveCarFromModal();
+    if (!result) return; // 검증 실패 — 이미 에러가 표시됐고, 차량 모달은 그대로 유지된다.
+    const { car, index } = result;
+
+    if (typeof ensureVehicleSyncedToSupabase !== 'function' || typeof getSupabaseUser !== 'function') {
+        showToastMessage('클라우드 연결 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+    }
+    const user = await getSupabaseUser();
+    if (!user) {
+        showToastMessage('기사 연동은 로그인 후 이용할 수 있습니다.');
+        return;
+    }
+
+    const btn = document.getElementById('carModalDriverConnectBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '차량 저장 중...'; }
+    try {
+        await ensureVehicleSyncedToSupabase(car, index);
+        // ensureVehicleSyncedToSupabase가 car.supabaseId를 즉시 채워준다 — localStorage에도
+        // 반영해서 이후 로직(2차 모달의 upsertDriverLinkOnSupabase 등)이 바로 쓸 수 있게 한다.
+        const settings = getUserSettings();
+        if (settings.cars?.[index]) {
+            settings.cars[index] = car;
+            setUserSettings(settings);
+        }
+    } catch (error) {
+        console.error('차량 클라우드 동기화 실패(차량 정보 자체는 로컬에 저장됨):', error);
+        showToastMessage('차량 정보를 클라우드에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '기사 연동하기'; }
+    }
+
+    document.getElementById('carModal').classList.add('hidden');
+    showCarDriverInviteModal(car);
+}
+
+// 2차 기사연동 모달을 연다. 이미 이 차량에 pending/linked 초대가 있으면 그 상태를 그대로
+// 보여주고(요구사항 25 — 중복 초대 방지), 없으면 차량 모달에서 이미 입력한 기사명/연락처를
+// 그대로 전달해 새 초대를 준비한다(다시 입력하게 하지 않음).
+function showCarDriverInviteModal(car) {
+    const settings = getUserSettings();
+    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+    const existingLink = links.find(link =>
+        (car.driverLinkId && link.id === car.driverLinkId)
+        || (!car.driverLinkId && link.vehicleNumber === car.number && link.status !== 'disconnected')
+    ) || null;
+
+    document.getElementById('carInviteVehicleNumber').value = car.number;
+    const vehicleLabel = document.getElementById('carInviteVehicleLabel');
+    if (vehicleLabel) vehicleLabel.textContent = car.number;
+
+    const banner = document.getElementById('carInviteStatusBanner');
+    const saveBtn = document.getElementById('carInviteSaveBtn');
+    const fullMgmtLink = document.getElementById('carInviteFullManagementLink');
+
+    if (existingLink) {
+        document.getElementById('carInviteEditId').value = existingLink.id;
+        document.getElementById('carInviteDriverName').value = existingLink.driverName || '';
+        document.getElementById('carInvitePhone').value = existingLink.phone || '';
+        document.getElementById('carInviteCode').value = existingLink.inviteCode || '';
+        document.getElementById('carInviteAssignmentStart').value = existingLink.assignmentStart || '';
+        document.getElementById('carInviteAssignmentEnd').value = existingLink.assignmentEnd || '';
+        if (banner) {
+            banner.textContent = existingLink.status === 'linked'
+                ? `이미 ${existingLink.driverName || '기사'}님과 연동되어 있습니다. 필요하면 아래 정보를 수정해 주세요.`
+                : `${existingLink.driverName || '기사'}님에게 보낸 초대가 대기 중입니다(코드 ${existingLink.inviteCode || '-'}).`;
+            banner.classList.remove('hidden');
+        }
+        if (saveBtn) saveBtn.textContent = existingLink.status === 'linked' ? '할당 정보 저장' : '초대 수정';
+        fullMgmtLink?.classList.remove('hidden');
+    } else {
+        const info = getDriverInfoFromCar(car);
+        document.getElementById('carInviteEditId').value = '';
+        document.getElementById('carInviteDriverName').value = info.driverName;
+        document.getElementById('carInvitePhone').value = info.driverPhone;
+        document.getElementById('carInviteAssignmentStart').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('carInviteAssignmentEnd').value = '';
+        if (banner) banner.classList.add('hidden');
+        if (saveBtn) saveBtn.textContent = '초대 저장';
+        fullMgmtLink?.classList.add('hidden');
+        generateDriverInviteCode('carInviteCode');
+    }
+
+    document.getElementById('carDriverInviteModal').classList.remove('hidden');
+}
+
+// 2차 모달을 닫는다. reopenCarModal이 true면(취소/닫기) 1차 차량 등록 모달로 돌아간다 — 이미
+// 저장된 차량정보/기사정보/사업자정보/정산옵션이 사라지지 않게(요구사항 24).
+function closeCarDriverInviteModal(reopenCarModal = true) {
+    document.getElementById('carDriverInviteModal').classList.add('hidden');
+    if (reopenCarModal) document.getElementById('carModal').classList.remove('hidden');
+}
+
+// "전체 기사연동 관리에서 보기" — 연동 해제 등 이 2차 모달에 없는 고급 기능이 필요할 때만
+// 쓰는 탈출구다. 기존 "기사 연동 관리" 전체 화면(디스커넥트/재발급 등 기존 기능 그대로)으로
+// 이동한다.
+function goToFullDriverConnectionManagementFromCarInviteModal() {
+    const vehicleNumber = document.getElementById('carInviteVehicleNumber')?.value || '';
+    document.getElementById('carDriverInviteModal').classList.add('hidden');
+    closeCarModal();
+    showDriverConnectionManagement('car');
+    const vehicleInput = document.getElementById('linkedDriverVehicle');
+    if (vehicleInput && vehicleNumber) vehicleInput.value = vehicleNumber;
+}
+
+async function saveCarDriverInvitation() {
+    const name = document.getElementById('carInviteDriverName')?.value.trim() || '';
+    const phone = document.getElementById('carInvitePhone')?.value.trim() || '';
+    const inviteCode = document.getElementById('carInviteCode')?.value.trim() || '';
+    const vehicleNumber = document.getElementById('carInviteVehicleNumber')?.value.trim() || '';
+    const assignmentStart = document.getElementById('carInviteAssignmentStart')?.value || '';
+    const assignmentEnd = document.getElementById('carInviteAssignmentEnd')?.value || '';
+    const editId = document.getElementById('carInviteEditId')?.value || '';
+
+    if (!name || !assignmentStart) {
+        if (!name) markFieldError('carInviteDriverName');
+        if (!assignmentStart) markFieldError('carInviteAssignmentStart');
+        showToastMessage('기사 이름과 할당 시작일을 입력해 주세요.');
+        return;
+    }
+    if (!/^\d{6}$/.test(inviteCode)) {
+        markFieldError('carInviteCode');
+        showToastMessage('"코드 생성" 버튼으로 6자리 초대 코드를 만들어 주세요.');
+        return;
+    }
+    if (assignmentEnd && assignmentEnd < assignmentStart) {
+        showToastMessage('할당 종료일은 시작일 이후로 선택해 주세요.');
+        return;
+    }
+
+    const link = await performSaveLinkedDriverInvitation({ name, phone, inviteCode, vehicleNumber, assignmentStart, assignmentEnd, editId });
+    if (!link) return; // 실패 이유는 이미 toast로 표시됨 — 차량/기사/사업자 정보는 그대로 유지된다.
+
+    document.getElementById('carDriverInviteModal').classList.add('hidden');
+    closeCarModal(); // 차량 등록 + 기사연동까지 전체 흐름 완료 — 목록으로 복귀
+    loadCarList();
+    renderLinkedDriverList();
+    showToastMessage('차량 등록과 기사 연동을 모두 완료했습니다.');
 }
 
 function deleteCar(idx) {
@@ -6833,7 +7469,12 @@ function closeModal() {
         }
     });
     document.getElementById('workModal').classList.add('hidden');
-    showMain();
+    // showMain()을 인자 없이 호출하면 skipRedirect 기본값(false) 때문에 activeLogId가 'main'이
+    // 아닐 때(기사차량 운행일지를 보던 중) switchCarLog('main')으로 강제 전환해 버린다 — 일일운행
+    // 상세를 열었던 차량 컨텍스트(activeLogId)와 무관하게 항상 메인차량으로 튕기는 버그였다.
+    // 이 모달은 "지금 activeLogId인 차량"의 달력에서 열렸으므로, 닫을 때도 그 차량으로 그대로
+    // 돌아가야 한다 — activeLogId를 바꾸지 않고 그냥 메인 페이지(현재 로그의 달력)만 다시 보여준다.
+    showMain(true);
 }
 
 let autoSaveStatusHideTimer = null;
@@ -7481,33 +8122,7 @@ let editingCarIndex = -1;
 function toggleNewLogSettings() {
     const logToggle = document.getElementById('newLogToggle');
     const isChecked = logToggle.checked;
-    if (isChecked) {
-        const driverLinkToggle = document.getElementById('newDriverLinkToggle');
-        if (driverLinkToggle) driverLinkToggle.checked = false;
-        setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), false);
-    }
     setSettingsGroupExpanded(document.getElementById('newLogSettings'), isChecked);
-}
-
-// 이 체크박스는 이제 데이터를 바꾸지 않는다(실제 초대는 "기사 연동 관리" 화면에서만
-// 만들어진다) — 안내 패널을 펼치고 접는 UI 토글일 뿐이다. saveNewCar()는 이 체크 여부와
-// 무관하게 실제로 연결/초대된 상태가 있는지만 보고 driverLinkEnabled를 결정한다.
-function toggleNewDriverLinkSettings() {
-    const driverLinkToggle = document.getElementById('newDriverLinkToggle');
-    const isChecked = driverLinkToggle.checked;
-    if (isChecked) {
-        const settings = getUserSettings();
-        if (!isOwnerAccountType(settings.accountType)) {
-            driverLinkToggle.checked = false;
-            showConfirmModal('차주 유형에서 사용할 수 있습니다.', null);
-            setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), false);
-            return;
-        }
-        const logToggle = document.getElementById('newLogToggle');
-        if (logToggle) logToggle.checked = false;
-        setSettingsGroupExpanded(document.getElementById('newLogSettings'), false);
-    }
-    setSettingsGroupExpanded(document.getElementById('newDriverLinkSettings'), isChecked);
 }
 
 // 차량 모달의 "기사연동" 상태 문구를 실제 연동 데이터 기준으로 갱신한다.
@@ -7523,15 +8138,16 @@ function updateCarDriverLinkStatusText(existingLink) {
     }
 }
 
-// 차량 모달을 닫고 "기사 연동 관리" 화면으로 이동한다. 지금 편집 중인 차량이 이미 저장된
-// 차량(번호가 있음)이면 그 번호를 미리 채워서 바로 초대를 이어갈 수 있게 한다.
-function goToDriverConnectionManagementFromCarModal() {
-    const vehicleNumber = document.getElementById('newCarNumber')?.value.trim() || '';
-    closeCarModal();
-    showDriverConnectionManagement('car');
-    if (vehicleNumber) {
-        const vehicleInput = document.getElementById('linkedDriverVehicle');
-        if (vehicleInput) vehicleInput.value = vehicleNumber;
+// "내 사업자 정보와 동일" 스위치에 따라 차량 사업자정보 입력 필드 묶음을 접고 편다.
+function toggleCarBusinessSameAsOwner() {
+    const sameAsOwner = document.getElementById('newCarBizSameAsOwner')?.checked ?? true;
+    const group = document.getElementById('newCarBizFieldsGroup');
+    if (group) group.style.display = sameAsOwner ? 'none' : 'block';
+    const preview = document.getElementById('newCarBizSamePreview');
+    if (preview && sameAsOwner) {
+        const settings = getUserSettings();
+        const parts = [settings.bizName, settings.bizNumber].filter(Boolean);
+        preview.textContent = parts.length ? parts.join(' · ') : '마이페이지 개인정보에 사업자정보를 먼저 입력해 주세요.';
     }
 }
 
@@ -7556,31 +8172,38 @@ function resetCarForm() {
     document.getElementById('newCarTonnage').value = '';
     document.getElementById('carModalMode').value = 'main';
     document.getElementById('driverBasicInfoFields').style.display = 'none';
+    document.getElementById('carBusinessInfoFields').style.display = 'none';
     document.getElementById('logToggleContainer').style.display = 'none';
-    document.getElementById('newDriverLinkToggle').checked = false;
-    toggleNewDriverLinkSettings();
     updateCarDriverLinkStatusText(null);
     document.getElementById('newLogToggle').checked = false;
     toggleNewLogSettings();
     document.getElementById('newCarInsuranceToggle').checked = false;
-    
+
     if (document.getElementById('newCarCommToggle')) {
         document.getElementById('newCarCommToggle').checked = false;
         toggleNewCarCommSettings();
     }
     setCarCommType('percent');
-    document.getElementById('newCarCommission').value = ''; 
-    
+    document.getElementById('newCarCommission').value = '';
+
     selectInfoType('existing');
     document.getElementById('newDriverName').value = '';
-    document.getElementById('newUserName').value = '';
-    document.getElementById('newBizNumber').value = '';
     document.getElementById('newUserPhone').value = '';
     document.getElementById('newCarSettlementMode').value = 'default';
     document.getElementById('newCarSettlementMode').parentElement?._dropdownSync?.();
     updateDriverSettlementModeGuide();
     document.getElementById('newBankName').value = '';
     document.getElementById('newAccountNumber').value = '';
+
+    // 차량 단위 사업자정보 — 기본값은 "내 사업자 정보와 동일" ON(요구사항 대부분의 기사차량이
+    // 차주 사업자 하나로 운영될 것이므로, 매번 새 사업자를 입력해야 하는 부담을 줄인다).
+    if (document.getElementById('newCarBizSameAsOwner')) document.getElementById('newCarBizSameAsOwner').checked = true;
+    toggleCarBusinessSameAsOwner();
+    ['newCarBizName', 'newCarBizNumber', 'newCarBizRepresentative', 'newCarBizAddress', 'newCarBizType', 'newCarBizItem', 'newCarBizEmail']
+        .forEach(id => { const input = document.getElementById(id); if (input) input.value = ''; });
+    // 기사 월매출 조회는 기본 ON(기존 차량들이 전부 보이던 것과 동일한 기본 동작 유지).
+    if (document.getElementById('newCarShareRevenueToggle')) document.getElementById('newCarShareRevenueToggle').checked = true;
+
     editingCarIndex = -1;
 }
 
@@ -7598,10 +8221,12 @@ function editCar(idx) {
     if (car.type === 'main') {
         document.getElementById('carModalTitle').textContent = '차량 정보 수정';
         document.getElementById('driverBasicInfoFields').style.display = 'none';
+        document.getElementById('carBusinessInfoFields').style.display = 'none';
         document.getElementById('logToggleContainer').style.display = 'none';
     } else {
         document.getElementById('carModalTitle').textContent = '기사 정보 수정';
         document.getElementById('driverBasicInfoFields').style.display = 'block';
+        document.getElementById('carBusinessInfoFields').style.display = 'block';
         document.getElementById('logToggleContainer').style.display = 'block';
     }
     
@@ -7616,9 +8241,26 @@ function editCar(idx) {
         document.getElementById('newCarSettlementMode').value = car.settlementMode || 'default';
         document.getElementById('newCarSettlementMode').parentElement?._dropdownSync?.();
         updateDriverSettlementModeGuide();
-        document.getElementById('newDriverLinkToggle').checked = driverLinkEnabled;
-        toggleNewDriverLinkSettings();
         updateCarDriverLinkStatusText(linkedDriver || null);
+
+        // 차량 단위 사업자정보 — 기존 차량(businessInfo 없음)은 "동일" ON으로 표시한다
+        // (getCarBusinessInfo와 동일한 기본값 규칙: 없으면 차주와 동일하게 취급).
+        const businessInfo = car.businessInfo;
+        const sameAsOwner = !businessInfo || businessInfo.sameAsOwner !== false;
+        if (document.getElementById('newCarBizSameAsOwner')) document.getElementById('newCarBizSameAsOwner').checked = sameAsOwner;
+        toggleCarBusinessSameAsOwner();
+        document.getElementById('newCarBizName').value = !sameAsOwner ? (businessInfo?.name || '') : '';
+        document.getElementById('newCarBizNumber').value = !sameAsOwner ? (businessInfo?.bizNumber || '') : '';
+        document.getElementById('newCarBizRepresentative').value = !sameAsOwner ? (businessInfo?.representative || '') : '';
+        document.getElementById('newCarBizAddress').value = !sameAsOwner ? (businessInfo?.address || '') : '';
+        document.getElementById('newCarBizType').value = !sameAsOwner ? (businessInfo?.bizType || '') : '';
+        document.getElementById('newCarBizItem').value = !sameAsOwner ? (businessInfo?.bizItem || '') : '';
+        document.getElementById('newCarBizEmail').value = !sameAsOwner ? (businessInfo?.email || '') : '';
+
+        // 기사 월매출 조회 — 값이 아예 없는 기존 차량은 기본 ON(이전까지 항상 보이던 것과 동일).
+        if (document.getElementById('newCarShareRevenueToggle')) {
+            document.getElementById('newCarShareRevenueToggle').checked = isVehicleRevenueSharedWithOwner(car);
+        }
 
         document.getElementById('newCarInsuranceToggle').checked = !!car.insuranceOn;
         
@@ -7635,8 +8277,6 @@ function editCar(idx) {
             if (car.infoType === 'new') {
                 selectInfoType('new');
                 if (car.personalInfo) {
-                    document.getElementById('newUserName').value = car.personalInfo.name || '';
-                    document.getElementById('newBizNumber').value = car.personalInfo.bizNumber || '';
                     document.getElementById('newBankName').value = car.personalInfo.bank || '';
                     document.getElementById('newAccountNumber').value = car.personalInfo.account || '';
                 }
@@ -7693,13 +8333,22 @@ window.addEventListener('load', () => {
         }
 
         let settings = getUserSettings();
+        // 주의: 여기서는 반드시 setUserSettings()가 아니라 localStorage에 직접 써야 한다.
+        // setUserSettings()는 호출될 때마다 600ms 뒤 "지금 로컬 settings 전체"를 그대로
+        // Supabase profiles에 업로드(동기화)한다. 이 시점은 바로 아래 hydrateFromSupabaseAndMigrate()가
+        // 서버 데이터를 아직 불러오기도 전이라, 새 기기/브라우저처럼 로컬 userSettings가 비어있는
+        // 상태일 수 있다 — 그 "빈 상태"로 배경 동기화가 hydrate보다 먼저 끝나버리면(네트워크 상황에
+        // 따라 실제로 이렇게 됨) 서버에 이미 저장돼 있던 accountType/사업자정보/계좌정보 등이
+        // 통째로 null로 덮어써지는 심각한 데이터 유실 버그가 있었다(실제 계정에서 재현 확인됨).
+        // isLoggedIn 플래그는 로컬에만 즉시 반영하고, 서버 동기화는 트리거하지 않는다 — 실제
+        // 서버 동기화는 hydrate가 끝난 뒤 사용자가 무언가 저장할 때 정상적인 최신 데이터로 일어난다.
         if (hasSupabaseSession && !settings.isLoggedIn) {
             settings.isLoggedIn = true;
             settings.onboardingCompleted = true;
-            setUserSettings(settings);
+            localStorage.setItem('userSettings', JSON.stringify(settings));
         } else if (!hasSupabaseSession && settings.isLoggedIn) {
             settings.isLoggedIn = false;
-            setUserSettings(settings);
+            localStorage.setItem('userSettings', JSON.stringify(settings));
         }
         settings = getUserSettings();
 
@@ -8875,12 +9524,15 @@ function calculateDriverVehicleCommission(car, grossAmount, count) {
 // 세금계산서 집계(getTaxInvoiceSourceGroups)와 동일한 기준으로 메인 차량 + "회사 정산"/
 // "고용 정산" 모드인 서브 차량만 합산한다(기사 직접 정산 차량은 그 매출이 회사 몫이
 // 아니므로 제외).
+// 차량의 "기사 월매출 조회" 스위치(shareRevenueWithOwner)가 꺼져 있으면 이 화면(월매출
+// 집계)에서만 제외한다 — 실제 운행기록/서버 데이터는 전혀 건드리지 않고, 다른 화면(미수금,
+// 세금계산서 등)에도 영향을 주지 않는 "이 화면 한정" 조회 권한이다.
 function getMonthlyFareRevenue(monthKey) {
     const settings = getUserSettings();
     const cars = Array.isArray(settings.cars) ? settings.cars : [];
 
     const sources = [{ logId: 'main', label: '메인 차량', data: readWorkDataStorage('workData') }];
-    cars.filter(car => car.type === 'sub').forEach(car => {
+    cars.filter(car => car.type === 'sub' && isVehicleRevenueSharedWithOwner(car)).forEach(car => {
         const mode = getEffectiveDriverSettlementMode(car, settings);
         if (mode === 'company' || mode === 'employee') {
             sources.push({ logId: car.number, label: getShortCarNum(car.number), data: getDriverCarWorkData(car, settings) });
@@ -8950,26 +9602,53 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
     const settings = getUserSettings();
     const cars = settings.cars || [];
     if (flow === 'sales') {
+        // 그룹 키는 "월 + 공급사업자 + 거래처" 기준이다(요구사항 18) — 같은 거래처라도
+        // 실제로 다른 사업자(차량)가 운송했다면 절대 하나로 합치지 않는다. 반대로 서로 다른
+        // 차량이라도 "내 사업자와 동일"이거나 같은 bizNumber면 자연스럽게 같은 그룹으로
+        // 합산된다(getVehicleSupplierIdentity의 key 규칙).
         const grouped = {};
-        const taxClients = new Set((settings.clients || []).filter(client => client.taxInvoiceEnabled).map(client => client.companyName));
-        const sources = [{ logId: 'main', data: readWorkDataStorage('workData') }];
+        // 소속기사(employed_driver) 본인 화면에는 "차주가 세금계산서 대상으로 지정한 거래처만"
+        // 걸러내는 taxInvoiceEnabled 기준을 적용하지 않는다 — 그건 차주의 거래처 관리 데이터라
+        // 기사 계정에는 애초에 없다(§17/§20: 기사 본인은 실제로 운송한 거래처를 항상 볼 수
+        // 있어야 함). 차주 본인 화면(owner_driver)에서는 기존 동작 그대로 유지한다.
+        const isEmployedDriverView = settings.accountType === 'employed_driver';
+        const taxClients = isEmployedDriverView
+            ? null
+            : new Set((settings.clients || []).filter(client => client.taxInvoiceEnabled).map(client => client.companyName));
+        const sources = [{ logId: 'main', car: null, data: readWorkDataStorage('workData') }];
         cars.filter(car => car.type === 'sub').forEach(car => {
             const mode = getEffectiveDriverSettlementMode(car, settings);
-            if (mode === 'company' || mode === 'employee') sources.push({ logId: car.number, data: getDriverCarWorkData(car, settings) });
+            if (mode === 'company' || mode === 'employee') sources.push({ logId: car.number, car, data: getDriverCarWorkData(car, settings) });
         });
-        sources.forEach(source => Object.entries(source.data || {}).forEach(([dateKey, record]) => {
-            (record?.callDetails || []).forEach(detail => {
-                const workDate = detail.workDate || dateKey;
-                const clientName = (detail.client || '').trim();
-                const supplyAmount = parseCurrencyValue(detail.fare);
-                if (!workDate.startsWith(monthKey) || !taxClients.has(clientName) || supplyAmount <= 0) return;
-                if (!grouped[clientName]) grouped[clientName] = { partyKey: clientName, clientName, partyType: 'client', count: 0, supplyAmount: 0, taxAmount: 0 };
-                grouped[clientName].count += 1;
-                grouped[clientName].supplyAmount += supplyAmount;
-                grouped[clientName].taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
+        sources.forEach(source => {
+            const supplier = getVehicleSupplierIdentity(source.car, settings);
+            Object.entries(source.data || {}).forEach(([dateKey, record]) => {
+                (record?.callDetails || []).forEach(detail => {
+                    const workDate = detail.workDate || dateKey;
+                    const clientName = (detail.client || '').trim();
+                    const supplyAmount = parseCurrencyValue(detail.fare);
+                    if (!workDate.startsWith(monthKey) || !clientName || (taxClients && !taxClients.has(clientName)) || supplyAmount <= 0) return;
+                    const groupKey = `${clientName}__${supplier.key}`;
+                    if (!grouped[groupKey]) {
+                        grouped[groupKey] = {
+                            partyKey: groupKey, clientName, partyType: 'client',
+                            count: 0, supplyAmount: 0, taxAmount: 0,
+                            supplierKey: supplier.key, supplierBiz: supplier.biz, vehicleLabel: supplier.carLabel,
+                            vehicleNumbers: new Set()
+                        };
+                    }
+                    grouped[groupKey].count += 1;
+                    grouped[groupKey].supplyAmount += supplyAmount;
+                    grouped[groupKey].taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
+                    if (supplier.carNumber) grouped[groupKey].vehicleNumbers.add(supplier.carNumber);
+                });
             });
+        });
+        return Object.values(grouped).map(group => ({
+            ...group,
+            vehicleNumbers: Array.from(group.vehicleNumbers),
+            totalAmount: group.supplyAmount + group.taxAmount
         }));
-        return Object.values(grouped).map(group => ({ ...group, totalAmount: group.supplyAmount + group.taxAmount }));
     }
 
     return cars.filter(car => car.type === 'sub').flatMap(car => {
@@ -9131,10 +9810,17 @@ function renderTaxInvoices() {
         const driverBreakdown = item.partyType === 'driver'
             ? `<small class="tax-invoice-driver-breakdown">${escapeDetailText(item.carNumber || '')} · 운송료 ${Number(item.grossAmount || 0).toLocaleString()}원${item.commissionAmount ? ` · 수수료 ${Number(item.commissionAmount).toLocaleString()}원` : ''}${item.insuranceAmount ? ` · 산재보험 ${Number(item.insuranceAmount).toLocaleString()}원` : ''}</small>`
             : '';
+        // 매출 발행(sales)은 이제 차량마다 공급 사업자가 다를 수 있어서, 카드에 "어느 차량/
+        // 사업자의 매출인지"를 함께 보여준다(요구사항 19) — 같은 거래처라도 카드가 여러 장
+        // 나뉘어 있으면 이 라벨로 구분한다. vehicleLabel에 이미 "사업자명 · 차량번호"가 포함돼
+        // 있으므로(별도 사업자 차량의 경우) 이름을 또 붙이면 중복 표시된다.
+        const supplierBreakdown = (item.partyType === 'client' && item.vehicleLabel)
+            ? `<small class="tax-invoice-driver-breakdown">${escapeDetailText(item.vehicleLabel)}</small>`
+            : '';
         const draftActionLabel = currentTaxInvoiceFlow === 'purchase' ? '내용 입력' : '작성하기';
         const cancelLabel = currentTaxInvoiceFlow === 'purchase' ? '수취 취소' : '발급 취소';
         return `<article class="tax-invoice-card">
-            <div class="tax-invoice-card-head"><div><strong>${escapeDetailText(item.clientName)}</strong><span>${item.count || 0}건 · ${missingInfo ? '사업자번호 미입력' : escapeDetailText(item.clientBizNumber)}</span>${driverBreakdown}</div><em class="${item.status}">${item.status === 'issued' ? flowMeta.completeLabel : (currentTaxInvoiceFlow === 'purchase' ? '수취 전' : '작성 전')}</em></div>
+            <div class="tax-invoice-card-head"><div><strong>${escapeDetailText(item.clientName)}</strong><span>${item.count || 0}건 · ${missingInfo ? '사업자번호 미입력' : escapeDetailText(item.clientBizNumber)}</span>${driverBreakdown}${supplierBreakdown}</div><em class="${item.status}">${item.status === 'issued' ? flowMeta.completeLabel : (currentTaxInvoiceFlow === 'purchase' ? '수취 전' : '작성 전')}</em></div>
             <div class="tax-invoice-card-money"><span>공급가액 <b>${Number(item.supplyAmount).toLocaleString()}원</b></span><span>세액 <b>${Number(item.taxAmount).toLocaleString()}원</b></span><strong><small>합계</small>${Number(item.totalAmount).toLocaleString()}원</strong></div>
             <div class="tax-invoice-card-actions">
                 <button type="button" onclick="openTaxInvoiceDraft('${partyKey}')">${item.status === 'issued' ? '내용 보기' : draftActionLabel}</button>
@@ -9263,14 +9949,30 @@ function saveTaxInvoiceDraft() {
     showToastMessage('세금계산서 작성 내용을 저장했습니다.');
 }
 
+// 계산서의 실제 "공급자"(발행 주체) 정보를 돌려준다. 매출 발행(sales)은 §16~21에 따라
+// 운행 차량마다 공급 사업자가 다를 수 있으므로 getTaxInvoiceSourceGroups()가 그룹에 미리
+// 붙여둔 supplierBiz를 우선 쓴다(메인차량/‘동일’ 기사차량이면 자동으로 차주 기본 사업자와
+// 같음). 기사 매입/수수료 발행(purchase/commission)은 기존 그대로 차주 기본 사업자 하나만
+// 쓴다 — 이번 작업은 기사 정산 계산서와 섞지 않는다(요구사항 21).
+function getTaxInvoiceSupplierBiz(item, settings = getUserSettings()) {
+    if (item?.flow === 'sales' && item.supplierBiz) return item.supplierBiz;
+    return { name: settings.bizName || '', bizNumber: settings.bizNumber || '', representative: settings.userName || '', address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || '' };
+}
+
 function changeTaxInvoiceStatus(encodedPartyKey, status) {
     const partyKey = decodeURIComponent(encodedPartyKey);
     const item = findCurrentTaxInvoice(partyKey);
     if (!item) return;
     if (status === 'issued') {
         const settings = getUserSettings();
-        if (!settings.bizName || !settings.bizNumber || !settings.userName) {
-            showConfirmModal('먼저 개인정보에서 공급자 사업자 정보를 입력해 주세요.', null);
+        const supplierBiz = getTaxInvoiceSupplierBiz(item, settings);
+        if (!supplierBiz.name || !supplierBiz.bizNumber || !supplierBiz.representative) {
+            showConfirmModal(
+                item.flow === 'sales' && item.supplierBiz && !item.supplierBiz.sameAsOwner
+                    ? '먼저 차량 관리에서 이 차량의 사업자 정보를 입력해 주세요.'
+                    : '먼저 개인정보에서 공급자 사업자 정보를 입력해 주세요.',
+                null
+            );
             return;
         }
         if (!item.clientBizNumber) {
@@ -9308,13 +10010,16 @@ async function exportTaxInvoiceCsv(encodedPartyKey) {
     const partyKey = decodeURIComponent(encodedPartyKey);
     const item = findCurrentTaxInvoice(partyKey);
     const settings = getUserSettings();
-    if (!item || !settings.bizNumber || !item.clientBizNumber) {
+    // 매출 발행은 차량별 공급 사업자(§16~21)를 쓴다 — 항상 차주 기본 사업자만 확인하면
+    // 다른 사업자로 설정된 기사차량의 계산서를 엉뚱하게 막게 된다.
+    const resolvedSupplierBiz = item ? getTaxInvoiceSupplierBiz(item, settings) : null;
+    if (!item || !resolvedSupplierBiz?.bizNumber || !item.clientBizNumber) {
         showConfirmModal('공급자와 공급받는 자의 사업자등록번호를 먼저 입력해 주세요.', null);
         return;
     }
     const companyParty = {
-        bizNumber: settings.bizNumber || '', name: settings.bizName || '', representative: settings.userName || '',
-        address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || ''
+        bizNumber: resolvedSupplierBiz.bizNumber || '', name: resolvedSupplierBiz.name || '', representative: resolvedSupplierBiz.representative || '',
+        address: resolvedSupplierBiz.address || '', bizType: resolvedSupplierBiz.bizType || '', bizItem: resolvedSupplierBiz.bizItem || '', email: resolvedSupplierBiz.email || ''
     };
     const otherParty = {
         bizNumber: item.clientBizNumber || '', name: item.clientName || '', representative: item.clientRepresentative || '',

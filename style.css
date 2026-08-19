@@ -2273,6 +2273,10 @@ body.account-flow-active #sideMenuOverlay {
 .linked-driver-record-card span,.linked-driver-record-card p { color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.45; }
 .linked-driver-record-card p { grid-column:1/-1; margin:0; }
 .linked-driver-record-card > b { color:var(--primary-color); font-size:var(--fs-2); }
+.linked-driver-client-trip-list { display:grid; gap:5px; margin-top:11px; padding-top:11px; border-top:1px dashed var(--border-color); }
+.linked-driver-client-trip-row { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--sub-text-color); font-size:var(--fs-floor); }
+.linked-driver-client-trip-row b { color:var(--text-color); flex:none; }
+.tax-invoice-card-actions.single-action { grid-template-columns:1fr; }
 .personal-intro {
     position: relative;
     overflow: hidden;

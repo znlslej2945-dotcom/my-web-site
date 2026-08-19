@@ -233,7 +233,7 @@
                         <input type="password" id="loginPasswordConfirm" class="input-box" placeholder="비밀번호를 한 번 더 입력해 주세요" autocomplete="new-password" oninput="updateLoginContinueState()">
                     </div>
                     <div id="loginInviteField" class="login-invite-field hidden">
-                        <span><strong>초대코드</strong><small>사장님에게 받은 6자리 코드를 입력해 주세요.</small></span>
+                        <span><strong>기사 초대코드 (선택)</strong><small>사장님에게 받은 6자리 코드가 있으면 입력해 주세요. 나중에 마이페이지에서도 연결할 수 있습니다.</small></span>
                         <input type="text" id="loginInviteCode" class="input-box" inputmode="numeric" maxlength="6" aria-label="초대코드" placeholder="000000" oninput="this.value=this.value.replace(/\D/g, '').slice(0, 6); updateLoginContinueState()">
                     </div>
                 </div>
@@ -637,7 +637,7 @@
             </div>
 
             <div class="personal-card-grid">
-                <section class="setting-section personal-card">
+                <section id="bizInfoCard" class="setting-section personal-card">
                     <div class="personal-card-heading">
                         <span class="personal-card-icon" aria-hidden="true">01</span>
                         <div><h3>사업자 정보</h3><p>내역서에 표시되는 업체 정보</p></div>
@@ -666,11 +666,11 @@
 
                 <section class="setting-section personal-card">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">02</span>
-                        <div><h3>대표자 · 연락처</h3><p>대표자 기본 정보</p></div>
+                        <span id="contactCardIcon" class="personal-card-icon" aria-hidden="true">02</span>
+                        <div><h3 id="contactCardTitle">대표자 · 연락처</h3><p id="contactCardDesc">대표자 기본 정보</p></div>
                     </div>
                     <div class="form-group">
-                        <label for="userName">성명 (대표자)</label>
+                        <label for="userName" id="userNameLabel">성명 (대표자)</label>
                         <input type="text" id="userName" class="input-box" placeholder="성명을 입력하세요" oninput="savePersonalInfo()">
                     </div>
                     <div class="form-group">
@@ -681,7 +681,7 @@
 
                 <section class="setting-section personal-card">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">03</span>
+                        <span id="settlementCardIcon" class="personal-card-icon" aria-hidden="true">03</span>
                         <div><h3>정산 계좌</h3><p>운송료를 입금받을 계좌</p></div>
                     </div>
                     <div class="form-group">
@@ -696,7 +696,7 @@
 
                 <section id="employedDriverLinkCard" class="setting-section personal-card hidden">
                     <div class="personal-card-heading">
-                        <span class="personal-card-icon" aria-hidden="true">04</span>
+                        <span class="personal-card-icon" aria-hidden="true">03</span>
                         <div><h3>소속 연결</h3><p>초대 코드 또는 사장님 전화번호로 연결</p></div>
                     </div>
                     <div id="employedDriverDisconnectedPanel" class="employer-link-form">
@@ -709,6 +709,22 @@
                         <div class="employer-linked-badge">연동 중</div>
                         <strong id="employerLinkedName">연동된 운송사</strong>
                         <span id="employerLinkedMeta"></span>
+
+                        <!-- 기사 정산(총 운송료/수수료/보험/상세내역)과는 완전히 별개의 권한이다.
+                             이건 "거래처별 세금계산서 내역"만 사장님께 공유할지 기사 본인이 정하는
+                             스위치다. 기존 "기사 월매출 조회"(차주가 차량 설정에서 켜는 것)와 절대
+                             혼동하면 안 된다 — 이건 기사가 직접 켜고 끄는 별개 설정이다. -->
+                        <div class="setting-item" style="margin-top: 8px;">
+                            <div style="text-align: left;">
+                                <label for="shareClientTaxInvoicesToggle">거래처 세금계산서 공유</label>
+                                <p style="font-size: 0.75rem; color: var(--sub-text-color); margin-top: 4px;">내가 운송한 거래처별 세금계산서 내역을 연결된 사장님이 확인할 수 있도록 허용합니다.</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="shareClientTaxInvoicesToggle" onchange="toggleShareClientTaxInvoicesWithOwner(this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
                         <button type="button" class="personal-role-change-btn" onclick="runSaveAction(this, 'resync-driver-workdata', resyncEmployedDriverWorkData)">과거 기록 다시 동기화</button>
                         <button type="button" class="personal-role-change-btn danger" onclick="disconnectEmployedDriver()">연동 해제</button>
                     </div>
@@ -771,7 +787,7 @@
                     <div class="form-group"><label for="linkedDriverName">기사 이름</label><input type="text" id="linkedDriverName" class="input-box" placeholder="기사 이름" oninput="clearFieldError(this)"></div>
                     <div class="form-group"><label for="linkedDriverPhone">기사 전화번호</label><input type="tel" id="linkedDriverPhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this)"></div>
                     <div class="form-group driver-form-wide"><label for="linkedDriverInviteCode">초대 코드</label><div class="driver-code-input"><input type="text" id="linkedDriverInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateDriverInviteCode()">코드 생성</button></div></div>
-                    <div class="form-group driver-form-wide"><label for="linkedDriverVehicle">할당 차량</label><input type="text" id="linkedDriverVehicle" class="input-box" list="linkedDriverVehicleOptions" placeholder="차량번호 입력" oninput="clearFieldError(this)"><datalist id="linkedDriverVehicleOptions"></datalist></div>
+                    <div class="form-group driver-form-wide"><label for="linkedDriverVehicle">할당 차량</label><input type="text" id="linkedDriverVehicle" class="input-box" list="linkedDriverVehicleOptions" placeholder="차량번호 입력" oninput="handleLinkedDriverVehicleInput(this)"><datalist id="linkedDriverVehicleOptions"></datalist></div>
                     <div class="form-group"><label for="linkedDriverAssignmentStart">할당 시작일</label><input type="date" id="linkedDriverAssignmentStart" class="input-box" oninput="clearFieldError(this)"></div>
                     <div class="form-group"><label for="linkedDriverAssignmentEnd">할당 종료일</label><input type="date" id="linkedDriverAssignmentEnd" class="input-box"><small>종료일이 없으면 계속 할당됩니다.</small></div>
                 </div>
@@ -794,8 +810,25 @@
             <section id="linkedDriverProfileCard" class="linked-driver-profile-card"></section>
             <div class="linked-driver-readonly-notice"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span>기사님이 작성한 기록은 조회만 가능하며 수정·삭제할 수 없습니다.</span></div>
             <div class="linked-driver-month-row"><label for="linkedDriverRecordMonth">조회 월</label><input type="month" id="linkedDriverRecordMonth" class="input-box" onchange="renderLinkedDriverRecords()"></div>
-            <section class="linked-driver-record-summary"><span><small>운행 기록</small><strong id="linkedDriverRecordCount">0건</strong></span><span><small>운송료 합계</small><strong id="linkedDriverRecordFare">0원</strong></span></section>
-            <div id="linkedDriverRecordList" class="linked-driver-record-list"></div>
+
+            <!-- 기사 정산: 차주가 기사에게 지급할 금액 근거. 거래처 계산서 공유 권한과 무관하게
+                 항상 표시된다(§9, §13, §19) — 절대 이 영역을 공유 스위치로 가리면 안 된다. -->
+            <section class="tax-invoice-summary" id="linkedDriverSettlementSummary">
+                <div class="summary-title"><span>기사 정산</span><span id="linkedDriverRecordCount">0건</span></div>
+                <div class="summary-row"><span>총 운송료</span><span class="summary-value" id="linkedDriverRecordFare">0원</span></div>
+                <div class="summary-row"><span>수수료</span><span class="summary-value" id="linkedDriverCommissionAmount">-0원</span></div>
+                <div class="summary-row"><span>산재보험</span><span class="summary-value" id="linkedDriverInsuranceAmount">-0원</span></div>
+                <div class="summary-row total"><span>최종 정산액</span><span class="summary-value" id="linkedDriverFinalAmount">0원</span></div>
+            </section>
+            <button type="button" class="driver-invite-reset" id="linkedDriverTripDetailToggleBtn" style="margin: 8px 0;" onclick="toggleLinkedDriverTripDetail()">운송 상세내역 보기</button>
+            <div id="linkedDriverRecordList" class="linked-driver-record-list hidden"></div>
+
+            <!-- 거래처별 세금계산서: 기사 본인이 "거래처 세금계산서 공유"를 켠 경우에만 표시된다
+                 (§6~9, §21) — 기사 정산과는 완전히 별개 영역이다. -->
+            <section class="driver-list-section" style="margin-top: 18px;">
+                <div class="driver-section-heading"><div><h3>거래처 세금계산서</h3><p>이 기사가 실제로 운송한 거래처별 매출입니다.</p></div></div>
+                <div id="linkedDriverClientInvoiceArea"></div>
+            </section>
         </div>
 
         <!-- [거래처 관리 페이지] -->
@@ -1676,28 +1709,53 @@
                 </div>
             </div>
 
-            <div id="logToggleContainer" style="display: none;">
+            <!-- 차량 단위 사업자정보 — 차주 본인의 개인정보 사업자정보와는 별개로, 이 기사차량이
+                 실제로 거래처에 발행할 때 쓰는 공급자 정보다(car.personalInfo=기사 개인정보와는
+                 완전히 다른 개념). "내 사업자 정보와 동일" ON이면 값을 따로 저장하지 않고, 항상
+                 차주의 최신 개인정보 사업자정보를 그대로 참조한다. -->
+            <div id="carBusinessInfoFields" style="display: none;">
                 <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
-
                 <div class="setting-item">
                     <div style="text-align: left;">
-                        <label for="newDriverLinkToggle">기사연동</label>
-                        <p id="carDriverLinkStatusText" style="font-size: 0.75rem; color: var(--sub-text-color); margin-top: 4px;">기사를 초대하고 이 차량에 할당합니다.</p>
+                        <label for="newCarBizSameAsOwner">내 사업자 정보와 동일</label>
+                        <p style="font-size: 0.75rem; color: var(--sub-text-color); margin-top: 4px;">끄면 이 기사차량만의 별도 사업자 정보를 입력할 수 있어요.</p>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="newDriverLinkToggle" onchange="toggleNewDriverLinkSettings()">
+                        <input type="checkbox" id="newCarBizSameAsOwner" checked onchange="toggleCarBusinessSameAsOwner()">
                         <span class="slider"></span>
                     </label>
                 </div>
+                <p id="newCarBizSamePreview" style="font-size: 0.8rem; color: var(--sub-text-color); margin: 6px 0 0;"></p>
 
-                <!-- 실제 초대 생성/관리는 "기사 연동 관리" 화면(Supabase 연동, 다른 계정과 진짜로
-                     연결됨) 한 곳에서만 한다. 여기서 코드를 직접 만들면 실제로는 어디에도 저장되지
-                     않아 기사가 그 코드로 연결할 수 없는 문제가 있었다 — 그래서 화면 이동으로 바꿨다. -->
-                <div id="newDriverLinkSettings" class="sub-setting-group car-driver-link-settings" style="display: none;">
-                    <p style="font-size: 0.8rem; color: var(--sub-text-color); margin: 0 0 10px;">기사 초대·할당은 "기사 연동 관리" 화면에서 진행해 주세요. 차량을 먼저 저장한 뒤 이동하면 목록에서 바로 선택할 수 있습니다.</p>
-                    <button type="button" class="driver-form-save" onclick="goToDriverConnectionManagementFromCarModal()">기사 연동 관리로 이동</button>
+                <div id="newCarBizFieldsGroup" class="sub-setting-group" style="display: none;">
+                    <div class="form-group">
+                        <label for="newCarBizName">상호</label>
+                        <input type="text" id="newCarBizName" class="input-box" placeholder="사업자명을 입력하세요">
+                    </div>
+                    <div class="form-group">
+                        <label for="newCarBizNumber">사업자등록번호</label>
+                        <input type="text" id="newCarBizNumber" class="input-box" placeholder="사업자 번호를 입력하세요">
+                    </div>
+                    <div class="form-group">
+                        <label for="newCarBizRepresentative">대표자명</label>
+                        <input type="text" id="newCarBizRepresentative" class="input-box" placeholder="대표자명을 입력하세요">
+                    </div>
+                    <div class="form-group">
+                        <label for="newCarBizAddress">사업장 주소</label>
+                        <input type="text" id="newCarBizAddress" class="input-box" placeholder="사업장 주소를 입력하세요">
+                    </div>
+                    <div class="personal-inline-fields">
+                        <div class="form-group"><label for="newCarBizType">업태</label><input type="text" id="newCarBizType" class="input-box" placeholder="예: 운수업"></div>
+                        <div class="form-group"><label for="newCarBizItem">종목</label><input type="text" id="newCarBizItem" class="input-box" placeholder="예: 화물운송"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="newCarBizEmail">세금계산서 이메일</label>
+                        <input type="email" id="newCarBizEmail" class="input-box" placeholder="이메일을 입력하세요">
+                    </div>
                 </div>
+            </div>
 
+            <div id="logToggleContainer" style="display: none;">
                 <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
 
                 <div class="setting-item">
@@ -1718,15 +1776,10 @@
                         <button type="button" id="btnUseNewInfo" class="toggle-btn" onclick="selectInfoType('new')">새 정보 입력</button>
                     </div>
 
+                    <!-- 성명(대표자)/사업자번호는 위쪽 "사업자 정보" 섹션(내 사업자와 동일 여부 포함)이
+                         이제 단일 기준이라 여기서 다시 입력받지 않는다(중복 입력 UX 제거). 여기는
+                         계좌 정보처럼 다른 곳에서 관리하지 않는 값만 남긴다. -->
                     <div id="newPersonalInfoForm" style="display: none; margin-top: 10px;">
-                        <div class="form-group">
-                            <label for="newUserName">성명 (대표자)</label>
-                            <input type="text" id="newUserName" class="input-box" placeholder="성명을 입력하세요">
-                        </div>
-                        <div class="form-group">
-                            <label for="newBizNumber">사업자번호</label>
-                            <input type="text" id="newBizNumber" class="input-box" placeholder="사업자번호 입력">
-                        </div>
                         <div class="form-group">
                             <label for="newBankName">입금 은행</label>
                             <input type="text" id="newBankName" class="input-box" placeholder="예: OO은행">
@@ -1781,12 +1834,78 @@
                         </label>
                     </div>
                     <input type="hidden" id="newCarCommType" value="percent">
+
+                    <div class="setting-item">
+                        <div class="car-option-copy">
+                            <label for="newCarShareRevenueToggle">기사 월매출 조회</label>
+                            <p>이 차량의 기사 운행 매출을 월별 집계에서 확인합니다.</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="newCarShareRevenueToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <hr class="car-modal-option-divider">
+
+                <!-- 기사연동: 이제 별도 화면으로 이동하지 않고, 이 자리에서 바로 2차 모달을 띄운다
+                     (기존 "기사 연동 관리" 화면의 실제 저장 로직을 그대로 재사용한다 — carDriverInviteModal 참고). -->
+                <div class="setting-item">
+                    <div style="text-align: left;">
+                        <label>기사연동</label>
+                        <p id="carDriverLinkStatusText" style="font-size: 0.75rem; color: var(--sub-text-color); margin-top: 4px;">기사를 초대하고 이 차량에 할당합니다.</p>
+                    </div>
+                    <button type="button" id="carModalDriverConnectBtn" class="personal-role-change-btn primary" style="white-space:nowrap;" onclick="openCarDriverInviteModal()">기사 연동하기</button>
                 </div>
             </div>
 
             <div class="modal-btns">
                 <button class="modal-btn cancel" onclick="closeCarModal()">취소</button>
                 <button class="modal-btn confirm" onclick="runSaveAction(this, 'vehicle', saveNewCar)">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기사차량 등록/수정 모달에서 이어지는 2차 기사연동 모달. 기존 "기사 연동 관리" 화면의
+         초대 저장 로직(performSaveLinkedDriverInvitation)을 그대로 재사용한다 — 새로운 기사연동
+         시스템이 아니다. 차량 모달에서 이미 입력한 기사명/연락처가 자동으로 전달된다. -->
+    <div id="carDriverInviteModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-title">기사 연동하기</div>
+            <p style="font-size: 0.85rem; color: var(--sub-text-color); margin: -8px 0 4px;">할당 차량: <strong id="carInviteVehicleLabel">-</strong></p>
+            <div id="carInviteStatusBanner" class="tax-invoice-guide hidden" style="margin-bottom: 10px;"></div>
+
+            <input type="hidden" id="carInviteEditId">
+            <input type="hidden" id="carInviteVehicleNumber">
+
+            <div class="form-group">
+                <label for="carInviteDriverName">기사 이름</label>
+                <input type="text" id="carInviteDriverName" class="input-box" placeholder="기사 이름" oninput="clearFieldError(this)">
+            </div>
+            <div class="form-group">
+                <label for="carInvitePhone">기사 전화번호</label>
+                <input type="tel" id="carInvitePhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this)">
+            </div>
+            <div class="form-group driver-form-wide">
+                <label for="carInviteCode">초대 코드</label>
+                <div class="driver-code-input"><input type="text" id="carInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateDriverInviteCode('carInviteCode')">코드 생성</button></div>
+            </div>
+            <div class="form-group">
+                <label for="carInviteAssignmentStart">할당 시작일</label>
+                <input type="date" id="carInviteAssignmentStart" class="input-box" oninput="clearFieldError(this)">
+            </div>
+            <div class="form-group">
+                <label for="carInviteAssignmentEnd">할당 종료일</label>
+                <input type="date" id="carInviteAssignmentEnd" class="input-box">
+                <small>종료일이 없으면 계속 할당됩니다.</small>
+            </div>
+
+            <button type="button" id="carInviteFullManagementLink" class="driver-invite-reset hidden" style="margin-bottom: 8px;" onclick="goToFullDriverConnectionManagementFromCarInviteModal()">전체 기사연동 관리에서 보기 (연동 해제 등)</button>
+
+            <div class="modal-btns">
+                <button class="modal-btn cancel" onclick="closeCarDriverInviteModal(true)">취소</button>
+                <button id="carInviteSaveBtn" class="modal-btn confirm" onclick="runSaveAction(this, 'car-driver-invitation', saveCarDriverInvitation)">초대 저장</button>
             </div>
         </div>
     </div>

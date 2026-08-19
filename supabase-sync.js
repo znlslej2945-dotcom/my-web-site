@@ -222,9 +222,8 @@ async function syncSettingsToSupabase(settings) {
     if (!user) return; // 로그인 전이면 동기화하지 않는다.
 
     try {
-        await (await getSupabaseClient()).from('profiles').upsert({
+        const profilePayload = {
             id: user.id,
-            account_type: settings.accountType || null,
             name: settings.userName || null,
             phone: settings.userPhone || null,
             business_name: settings.bizName || null,
@@ -237,7 +236,15 @@ async function syncSettingsToSupabase(settings) {
             account_number: settings.accountNumber || null,
             settings: buildSettingsJsonbPayload(settings),
             updated_at: new Date().toISOString()
-        });
+        };
+        // account_type은 회원가입 시 한 번 정해지는 계정 정체성 값이라(개인정보 화면에 직접
+        // 지우는 UI가 없음), 로컬 settings.accountType이 일시적으로 비어 있는 상태(하이드레이션
+        // 완료 전 등)에서 이 함수가 실행되더라도 서버 값을 null로 덮어쓰지 않는다. 값이 있을
+        // 때만 payload에 넣어서, upsert가 이 컬럼은 아예 건드리지 않게 한다 — 한 번 null로
+        // 덮이면 다음 로그인부터 계속 빈 값을 읽어와 다시 null로 저장하는 자기강화형 버그였다.
+        if (settings.accountType) profilePayload.account_type = settings.accountType;
+
+        await (await getSupabaseClient()).from('profiles').upsert(profilePayload);
     } catch (error) {
         console.error('profiles 동기화 실패(settings jsonb 컬럼이 아직 없을 수 있음):', error);
     }
@@ -282,6 +289,69 @@ async function syncSettingsToSupabase(settings) {
     }
 
     patchSupabaseIdsIntoLocalSettings(cars, clients);
+}
+
+// 특정 차량의 "실제 사용해야 할" 사업자정보를 서버 기준으로 판단한다. 차주의 개인정보
+// 기본 사업자(profiles.business_*)와 차량별 사업자(vehicles.raw.businessInfo)는 서로 다른
+// 개념이다 — 차량이 sameAsOwner면 차주 기본 사업자를, 아니면 그 차량 고유의 사업자정보를
+// 반환한다(getCarBusinessInfo()의 서버 조회 버전). 기사 개인정보 자동반영(applyEmployerAutoFilledInfo)이
+// 이 함수 하나로 통일해서 쓴다 — 여러 화면에서 사업자정보 판단 로직이 제각각 흩어지지
+// 않게 하기 위함.
+async function resolveVehicleBusinessInfoFromSupabase(client, vehicleId, ownerId) {
+    const [{ data: ownerProfile }, vehicleResult] = await Promise.all([
+        client.from('profiles').select('name, business_name, business_number, business_address, business_type, business_item, business_email').eq('id', ownerId).maybeSingle(),
+        vehicleId ? client.from('vehicles').select('id, number, tonnage, raw').eq('id', vehicleId).maybeSingle() : Promise.resolve({ data: null })
+    ]);
+
+    const ownerBiz = {
+        name: ownerProfile?.business_name || '',
+        bizNumber: ownerProfile?.business_number || '',
+        representative: ownerProfile?.name || '',
+        address: ownerProfile?.business_address || '',
+        bizType: ownerProfile?.business_type || '',
+        bizItem: ownerProfile?.business_item || '',
+        email: ownerProfile?.business_email || ''
+    };
+
+    const vehicleRow = vehicleResult?.data || null;
+    // vehicles.raw는 차량 관리 모달이 저장한 car 객체 원본이다(§10에서 확인한 실제 저장
+    // 위치) — 별도 business_info 컬럼은 없고, 이 raw.businessInfo가 유일한 저장소다.
+    const vehicleBusinessInfo = vehicleRow?.raw?.businessInfo || null;
+    const sameAsOwner = !vehicleBusinessInfo || vehicleBusinessInfo.sameAsOwner !== false;
+    const biz = sameAsOwner ? ownerBiz : {
+        name: vehicleBusinessInfo.name || '',
+        bizNumber: vehicleBusinessInfo.bizNumber || '',
+        representative: vehicleBusinessInfo.representative || '',
+        address: vehicleBusinessInfo.address || '',
+        bizType: vehicleBusinessInfo.bizType || '',
+        bizItem: vehicleBusinessInfo.bizItem || '',
+        email: vehicleBusinessInfo.email || ''
+    };
+
+    return { biz, sameAsOwner, vehicleRow };
+}
+
+// 차량 관리 모달의 "기사 연동하기" 버튼 전용. queueBackgroundSave의 600ms 디바운스를 기다리지
+// 않고 이 차량 "하나만" 즉시 Supabase에 반영해서 실제 vehicle_id를 확보한다 — 기사 초대
+// (driver_links)는 실제 vehicle_id가 있어야만 만들 수 있는데, 디바운스를 기다리면 그 사이
+// "차량이 아직 클라우드에 동기화되지 않았다"는 오류로 이어지거나, 사용자가 몇 초씩 기다리는
+// 어색한 흐름이 된다. car 객체를 직접 변형해서(car.supabaseId = ...) 호출부가 즉시 쓸 수
+// 있게 하고, 성공한 id를 반환한다. 실패하면 예외를 던진다(호출부가 안내).
+async function ensureVehicleSyncedToSupabase(car, index) {
+    const user = await getSupabaseUser();
+    if (!user) throw new Error('로그인이 필요합니다.');
+    const client = await getSupabaseClient();
+    const logId = car.type === 'sub' ? (car.number || `sub_${index}`) : 'main';
+    const row = buildVehicleRow(user.id, logId, car, index);
+    if (car.supabaseId) {
+        const { error } = await client.from('vehicles').update(row).eq('id', car.supabaseId);
+        if (error) throw error;
+        return car.supabaseId;
+    }
+    const { data, error } = await client.from('vehicles').insert(row).select('id').single();
+    if (error) throw error;
+    car.supabaseId = data.id;
+    return data.id;
 }
 
 // Supabase(profiles+vehicles+clients)에서 읽어와 기존 getUserSettings()가 반환하던 것과
@@ -334,7 +404,11 @@ async function initSettingsFromSupabase(userId) {
 
     const assembled = {
         ...jsonbSettings,
-        accountType: profile?.account_type || jsonbSettings.accountType || '',
+        // 서버 profile.account_type이 비어 있는(레이스 등으로 순간적으로 null인) 경우에도,
+        // 이 기기에 이미 캐싱돼 있던 이전 로컬 accountType이 있으면 그걸 마지막 보루로 쓴다 —
+        // 그래야 진짜 신규 유저(둘 다 없음)만 ''가 되고, 기존 유저는 accountType이 실수로
+        // 지워지지 않는다.
+        accountType: profile?.account_type || jsonbSettings.accountType || previousSettings.accountType || '',
         userName: profile?.name || '',
         userPhone: profile?.phone || '',
         bizName: profile?.business_name || '',
@@ -565,16 +639,23 @@ async function syncWorkDataToSupabase(logId, data) {
 async function initWorkDataFromSupabase(cars) {
     const client = await getSupabaseClient();
     for (const car of (cars || [])) {
-        if (!car.supabaseId) continue;
         const logId = car.type === 'sub' ? car.number : 'main';
+        // car.supabaseId를 그대로 쓰면 안 된다 — 연동된 소속기사의 'main' 로그는 본인 소유의
+        // (별도) vehicles 행이 아니라 차주가 소유한 vehicle_id에 실제 기록이 저장된다
+        // (resolveVehicleIdForLogId, 저장 경로에서 이미 쓰고 있는 것과 동일한 규칙). 이 함수가
+        // 여기서 car.supabaseId만 보고 있으면, 연동된 기사가 새 기기/재로그인할 때마다 본인의
+        // (기록이 없는) 별도 차량 행을 조회해서 로컬 workData를 빈 값으로 덮어써 버리는 문제가
+        // 있었다 — 실제로 재현해서 확인하고 고쳤다.
+        const vehicleId = typeof resolveVehicleIdForLogId === 'function' ? resolveVehicleIdForLogId(logId) : car.supabaseId;
+        if (!vehicleId) continue;
         const key = logId === 'main' ? 'workData' : 'workData_' + logId;
         try {
             const [dailyRes, transportRes, maintRes, fuelRes, miscRes] = await Promise.all([
-                client.from('daily_logs').select('*').eq('vehicle_id', car.supabaseId),
-                client.from('transport_details').select('*').eq('vehicle_id', car.supabaseId).order('sequence', { ascending: true }),
-                client.from('maintenance_records').select('*').eq('vehicle_id', car.supabaseId).order('sequence', { ascending: true }),
-                client.from('fuel_records').select('*').eq('vehicle_id', car.supabaseId).order('sequence', { ascending: true }),
-                client.from('misc_expense_records').select('*').eq('vehicle_id', car.supabaseId).order('sequence', { ascending: true })
+                client.from('daily_logs').select('*').eq('vehicle_id', vehicleId),
+                client.from('transport_details').select('*').eq('vehicle_id', vehicleId).order('sequence', { ascending: true }),
+                client.from('maintenance_records').select('*').eq('vehicle_id', vehicleId).order('sequence', { ascending: true }),
+                client.from('fuel_records').select('*').eq('vehicle_id', vehicleId).order('sequence', { ascending: true }),
+                client.from('misc_expense_records').select('*').eq('vehicle_id', vehicleId).order('sequence', { ascending: true })
             ]);
 
             const byDate = {};
@@ -789,6 +870,25 @@ async function hydrateFromSupabaseAndMigrate() {
         } catch (error) {
             console.error('[Supabase] 로그인 시 기사 연동 목록 갱신 실패(기존 캐시로 계속 진행):', error);
         }
+    } else if (settings.accountType === 'employed_driver' && typeof syncEmployerLinkFromSupabase === 'function') {
+        // 소속 기사는 로그인/새 기기 진입 시마다 서버의 실제 연결 상태(driver_links)로
+        // employerLink를 복원한다. 로컬에 없다고 새로 만들지 않고, 서버에 없으면 비운다 —
+        // "기존 연결이 있으면 초대코드 없이 그대로 복원되고, 연결이 없으면 로그인은 성공하되
+        // 미연결 상태로 진입한다"는 요구사항의 핵심 지점.
+        try {
+            await syncEmployerLinkFromSupabase();
+            // 로그인/새로고침 시점에도 연결된 차량의 최신 사업자정보를 함께 반영한다. 이걸
+            // 개인정보 화면 진입 시에만 하면, 로그인 직후 메인 화면 등 다른 곳에 머무는 동안은
+            // 여전히 예전 사업자정보가 남아있게 된다(요구사항: 로그인/새로고침/개인정보 진입
+            // 세 시점 모두 최신값이어야 함).
+            const refreshedSettings = getUserSettings();
+            const link = refreshedSettings.employerLink;
+            if (link?.status === 'linked' && link.ownerId && typeof applyEmployerAutoFilledInfo === 'function') {
+                await applyEmployerAutoFilledInfo(link.ownerId, link.vehicleId);
+            }
+        } catch (error) {
+            console.error('[Supabase] 로그인 시 기사 연동 상태/사업자정보 갱신 실패(기존 캐시로 계속 진행):', error);
+        }
     }
 
     // 지금 화면에 보이는 로그(activeLogId)를 새로 불러온 데이터로 갱신
@@ -925,6 +1025,65 @@ async function deleteDriverLinkOnSupabase(supabaseId) {
 // 차주 화면(기사 연동 관리)을 열 때 서버 기준으로 로컬 driverLinks 캐시를 새로 맞춘다.
 // 특히 "기사가 코드를 입력해서 연결했는지"는 오직 서버에서만 알 수 있으므로, 이 동기화가
 // 곧 "연결 완료 여부 확인" 역할을 한다.
+// syncDriverLinksFromSupabase()의 "기사(driver)" 쪽 대응 함수. 소속 기사 계정이 로그인/
+// 하이드레이션될 때 서버의 실제 driver_links를 조회해서 employerLink 캐시를 복원한다.
+// 이게 없으면 (a) 새 기기/새 브라우저에서 로그인했을 때 로컬에 employerLink가 없다는
+// 이유만으로 "연결 안 됨"으로 잘못 표시되거나, (b) 반대로 로그인 처리 코드가 화면의
+// 초대코드 입력값만 보고 임의로 status:'linked'를 만들어 넣어(과거 버그) 실제로는 연결된
+// 적 없는데도 연결된 것처럼 보이는 문제가 생긴다. 반드시 서버 데이터를 기준으로 판단한다.
+async function syncEmployerLinkFromSupabase() {
+    const user = await getSupabaseUser();
+    if (!user) return;
+    try {
+        const client = await getSupabaseClient();
+        const { data, error } = await client
+            .from('driver_links')
+            .select('*')
+            .eq('driver_id', user.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        const settings = getUserSettings();
+        const latest = (data || [])[0] || null;
+
+        if (!latest || latest.status !== 'linked') {
+            // 서버에 유효한(linked) 연결이 없다 — 로컬에도 가짜 연결 상태를 남겨두지 않는다.
+            // "연결 안 됨"과 "로그인 안 됨"은 별개이므로, 여기서는 employerLink만 비우고
+            // 로그인 자체(isLoggedIn 등)에는 손대지 않는다.
+            settings.employerLink = null;
+            localStorage.setItem('userSettings', JSON.stringify(settings));
+            return;
+        }
+
+        let ownerName = settings.employerLink?.ownerName || '연동된 운송사';
+        let ownerPhone = settings.employerLink?.ownerPhone || '';
+        try {
+            const { data: ownerProfile } = await client.from('profiles').select('name, phone, business_name').eq('id', latest.owner_id).maybeSingle();
+            if (ownerProfile) {
+                ownerName = ownerProfile.business_name || ownerProfile.name || ownerName;
+                ownerPhone = ownerProfile.phone || ownerPhone;
+            }
+        } catch (profileError) {
+            console.error('연동된 차주 프로필 조회 실패(연결 상태 자체는 복원됨):', profileError);
+        }
+
+        settings.employerLink = {
+            id: settings.employerLink?.id || latest.id,
+            supabaseId: latest.id,
+            status: 'linked',
+            ownerId: latest.owner_id,
+            ownerName,
+            ownerPhone,
+            inviteCode: latest.invite_code,
+            vehicleId: latest.vehicle_id,
+            linkedAt: latest.linked_at || latest.created_at
+        };
+        localStorage.setItem('userSettings', JSON.stringify(settings));
+    } catch (error) {
+        console.error('기사 연동 상태 동기화 실패(로컬 캐시로 계속 진행):', error);
+    }
+}
+
 async function syncDriverLinksFromSupabase() {
     const user = await getSupabaseUser();
     if (!user) return;
@@ -947,7 +1106,11 @@ async function syncDriverLinksFromSupabase() {
         const linkedDriverIds = [...new Set((data || []).filter(row => row.driver_id).map(row => row.driver_id))];
         let driverProfiles = new Map();
         if (linkedDriverIds.length) {
-            const { data: profileRows } = await client.from('profiles').select('id, name, phone').in('id', linkedDriverIds);
+            // settings(jsonb)도 함께 읽는다 — 기사 본인이 켜고 끄는 "거래처 세금계산서 공유"
+            // 권한(shareClientTaxInvoicesWithOwner)이 여기(기사의 profiles.settings)에 저장돼
+            // 있다. "차주는 연동된 기사의 프로필을 조회 가능" 정책이 profiles 행 전체에 대한
+            // 조회를 허용하므로 settings 컬럼도 이미 읽을 수 있다 — 별도 RLS 변경 불필요.
+            const { data: profileRows } = await client.from('profiles').select('id, name, phone, settings').in('id', linkedDriverIds);
             driverProfiles = new Map((profileRows || []).map(p => [p.id, p]));
         }
 
@@ -969,7 +1132,11 @@ async function syncDriverLinksFromSupabase() {
                 status: row.status,
                 linkedAt: row.linked_at,
                 updatedAt: row.updated_at,
-                createdAt: row.created_at
+                createdAt: row.created_at,
+                // 로컬 캐시(existing)를 신뢰하지 않고 매번 서버 값(driverProfile.settings)을
+                // 기준으로 덮어쓴다 — 차주 화면은 "기사가 서버에 저장해 둔 최신 권한"만 믿어야
+                // 한다(§13). row.driver_id가 없는(아직 미연결) 초대는 항상 false로 취급.
+                shareClientTaxInvoicesWithOwner: driverProfile?.settings?.shareClientTaxInvoicesWithOwner === true
             };
         });
 
