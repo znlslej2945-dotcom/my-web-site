@@ -214,20 +214,30 @@
                 <div class="account-flow-heading">
                     <span>WELCOME</span>
                     <h1>기본 정보를<br>입력해 주세요.</h1>
-                    <p>운행 기록은 이 기기의 브라우저에만 저장됩니다. 브라우저 데이터를 삭제하거나 기기를 바꾸면 기록이 사라질 수 있으니, 설정 메뉴의 백업 기능을 꼭 이용해 주세요.</p>
+                    <p>운행 기록은 클라우드(Supabase)에 안전하게 백업되어 다른 기기에서 로그인해도 그대로 이어집니다. 그래도 만약을 대비해 설정 메뉴의 로컬 백업 기능도 함께 이용해 주세요.</p>
                 </div>
                 <div id="loginSelectedAccountType" class="login-selected-account-type"></div>
+                <div class="auth-mode-toggle" role="tablist" aria-label="로그인/회원가입 선택">
+                    <button type="button" class="auth-mode-btn" data-auth-mode="signup" role="tab" onclick="setLoginAuthMode('signup')">처음이에요 (회원가입)</button>
+                    <button type="button" class="auth-mode-btn" data-auth-mode="login" role="tab" onclick="setLoginAuthMode('login')">이미 계정이 있어요 (로그인)</button>
+                </div>
                 <div class="login-local-form">
                     <label for="loginUserName">이름</label>
                     <input type="text" id="loginUserName" class="input-box" placeholder="이름을 입력하세요" autocomplete="name" oninput="updateLoginContinueState()">
                     <label for="loginUserPhone">휴대전화 번호</label>
                     <input type="tel" id="loginUserPhone" class="input-box" placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhoneNumber(this); updateLoginContinueState()">
+                    <label for="loginPassword">비밀번호</label>
+                    <input type="password" id="loginPassword" class="input-box" placeholder="6자 이상 입력해 주세요" autocomplete="new-password" oninput="updateLoginContinueState()">
+                    <div id="loginPasswordConfirmField" class="login-password-confirm-field">
+                        <label for="loginPasswordConfirm">비밀번호 확인</label>
+                        <input type="password" id="loginPasswordConfirm" class="input-box" placeholder="비밀번호를 한 번 더 입력해 주세요" autocomplete="new-password" oninput="updateLoginContinueState()">
+                    </div>
                     <div id="loginInviteField" class="login-invite-field hidden">
                         <span><strong>초대코드</strong><small>사장님에게 받은 6자리 코드를 입력해 주세요.</small></span>
                         <input type="text" id="loginInviteCode" class="input-box" inputmode="numeric" maxlength="6" aria-label="초대코드" placeholder="000000" oninput="this.value=this.value.replace(/\D/g, '').slice(0, 6); updateLoginContinueState()">
                     </div>
                 </div>
-                <button id="loginContinueBtn" type="button" class="account-flow-primary" onclick="runSaveAction(this, 'local-login', completeLocalLogin)" disabled>시작하기</button>
+                <button id="loginContinueBtn" type="button" class="account-flow-primary" onclick="runSaveAction(this, 'local-login', completeLocalLogin)" disabled>가입하고 시작하기</button>
             </div>
         </div>
 
@@ -712,7 +722,7 @@
                         <button id="personalLoginBtn" class="save-btn" onclick="handleLogin()">로그인</button>
                         <button id="personalLogoutBtn" class="text-btn personal-logout-btn" onclick="handleLogout()">로그아웃</button>
                     </div>
-                    <button class="withdraw-link personal-withdraw-link" type="button" onclick="requestWithdrawal()">회원탈퇴 안내</button>
+                    <button class="withdraw-link personal-withdraw-link" type="button" onclick="requestWithdrawal()">회원 탈퇴</button>
                 </section>
             </div>
         </div>
@@ -849,6 +859,39 @@
             <div class="receivable-detail-footer">
                 <button type="button" class="receivable-detail-all-paid" id="receivableDetailAllPaidBtn" onclick="markCurrentReceivableGroupPaid()">전체 입금 완료 처리</button>
             </div>
+        </div>
+
+        <!-- [월매출 페이지] -->
+        <div id="revenuePage" class="page hidden">
+            <div class="settings-header">
+                <button class="icon-btn" onclick="goBackFromUtilityPage()" title="뒤로가기">
+                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <div class="settings-title">월매출</div>
+                <div style="width: 40px;"></div>
+            </div>
+
+            <div class="revenue-tabs">
+                <button type="button" class="revenue-tab" id="revenueYearlyTab" onclick="selectRevenueTab('yearly')">년매출</button>
+                <button type="button" class="revenue-tab active" id="revenueMonthlyTab" onclick="selectRevenueTab('monthly')">월매출</button>
+            </div>
+
+            <div class="date-navigator" style="margin-bottom:20px;">
+                <button class="arrow-btn" id="revenuePrevBtn" onclick="changeRevenueDate(-1)" title="이전 달">
+                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+
+                <div class="date-select-group">
+                    <select id="revenueYearSelect" class="date-select" data-app-dropdown onchange="changeRevenueYearMonth()" title="년도 선택"></select>
+                    <select id="revenueMonthSelect" class="date-select" data-app-dropdown onchange="changeRevenueYearMonth()" title="월 선택"></select>
+                </div>
+
+                <button class="arrow-btn" id="revenueNextBtn" onclick="changeRevenueDate(1)" title="다음 달">
+                    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+            </div>
+
+            <div id="revenueResultContainer"></div>
         </div>
 
         <!-- [정비/주유/기타 관리 페이지] -->
@@ -2076,7 +2119,6 @@
     <!-- 토스트 알림 메시지 -->
     <div id="toastMessage" class="toast-message" role="status" aria-live="polite">
         <span id="toastMessageText">저장되었습니다.</span>
-        <button id="toastActionBtn" type="button" class="toast-action-btn hidden" onclick="executeToastAction()">다시 시도</button>
     </div>
 
     <!-- 하단 네비게이션 바 -->
@@ -2089,9 +2131,9 @@
             <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path><path d="M16 18h.01"></path></svg>
             <span>일일운행</span>
         </button>
-        <button class="nav-item" onclick="showSettings('main')">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            <span>설정</span>
+        <button class="nav-item" onclick="showRevenuePage('main')">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+            <span>월매출</span>
         </button>
         <button class="nav-item" onclick="showMyPage()">
             <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -2100,6 +2142,15 @@
     </div>
 
     <!-- 외부 JS 연결 -->
-    <script src="script.js?v=20260816-normalized-schema-retry"></script>
+    <script src="supabase-config.js"></script>
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+        window.supabaseClient = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'runlog-supabase-auth' }
+        });
+        window.dispatchEvent(new Event('supabase-ready'));
+    </script>
+    <script src="supabase-sync.js?v=20260819-supabase-sync"></script>
+    <script src="script.js?v=20260819-supabase-sync"></script>
 </body>
 </html>

@@ -1958,6 +1958,38 @@ body.account-flow-active #sideMenuOverlay {
 .login-invite-field strong { color: var(--text-color); font-size: var(--fs-2); font-weight: 850; }
 .login-invite-field small { color: var(--sub-text-color); font-size: var(--fs-floor); line-height: 1.45; }
 .login-invite-field .input-box { min-width: 0; text-align: center; letter-spacing: .16em; }
+
+.auth-mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--input-bg);
+}
+
+.auth-mode-btn {
+    min-height: 46px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--sub-text-color);
+    font: inherit;
+    font-size: var(--fs-2);
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.auth-mode-btn.active {
+    background: var(--card-bg);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm, 0 1px 4px rgba(0, 0, 0, .08));
+}
+
+.login-password-confirm-field { display: contents; }
+.login-password-confirm-field.hidden { display: none; }
 .personal-role-change-btn {
     width: 100%;
     min-height: 44px;
@@ -2639,6 +2671,21 @@ textarea::placeholder {
 
 .backup-reminder-banner.hidden {
     display: none;
+}
+
+/* Supabase 로그인 상태(클라우드에 이미 자동 백업 중)일 때 쓰는 차분한 톤 — 위급함을
+   나타내는 --sunday-color 대신 카드 기본색/--primary-color를 쓴다. */
+.backup-reminder-banner.calm {
+    border-color: var(--border-color);
+    background: var(--card-bg);
+}
+
+.backup-reminder-banner.calm .backup-reminder-copy strong {
+    color: var(--primary-color);
+}
+
+.backup-reminder-banner.calm .backup-reminder-btn {
+    background: var(--primary-color);
 }
 
 .backup-reminder-copy {
@@ -4337,27 +4384,6 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     opacity: 1;
 }
 
-.toast-message.retryable {
-    pointer-events:auto;
-    white-space:normal;
-}
-
-.toast-action-btn {
-    flex:none;
-    min-height:34px;
-    padding:6px 12px;
-    border:1px solid rgba(255,255,255,.45);
-    border-radius:999px;
-    background:rgba(255,255,255,.14);
-    color:#fff;
-    font:inherit;
-    font-size:var(--fs-2);
-    font-weight:850;
-    cursor:pointer;
-}
-
-.toast-action-btn:active { transform:scale(.97); }
-
 /* 모달 내부 서머리 카드 개선 */
 .maint-summary-card {
     background-color: var(--hover-bg);
@@ -4819,6 +4845,116 @@ body.pdf-export-mode .summary-row.total {
     padding: 16px;
     margin-bottom: 12px;
     box-shadow: var(--shadow-sm);
+}
+
+/* 월매출 화면 — 탭/요약 카드/목록은 미수금 관리 화면(.receivable-*)과 같은 톤으로 맞춘다. */
+.revenue-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.revenue-tab {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--sub-text-color);
+    border-radius: 10px;
+    padding: 11px 8px;
+    font-size: var(--fs-3);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.revenue-tab.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #ffffff;
+}
+
+.revenue-summary-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.revenue-summary-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.revenue-summary-total span {
+    color: var(--sub-text-color);
+    font-size: var(--fs-3);
+    font-weight: 700;
+}
+
+.revenue-summary-total strong {
+    color: var(--primary-color);
+    font-size: var(--fs-6);
+    font-weight: 850;
+}
+
+.revenue-summary-count {
+    margin-top: 8px;
+    color: var(--sub-text-color);
+    font-size: var(--fs-2);
+}
+
+.revenue-vehicle-list,
+.revenue-year-list {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 4px 16px;
+    box-shadow: var(--shadow-sm);
+}
+
+.revenue-vehicle-row,
+.revenue-year-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: var(--fs-3);
+    font-weight: 700;
+}
+
+.revenue-vehicle-row:last-child,
+.revenue-year-row:last-child {
+    border-bottom: none;
+}
+
+.revenue-year-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 16px 20px;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
+}
+
+.revenue-year-total span {
+    color: var(--sub-text-color);
+    font-size: var(--fs-3);
+    font-weight: 700;
+}
+
+.revenue-year-total strong {
+    color: var(--primary-color);
+    font-size: var(--fs-5);
+    font-weight: 850;
 }
 
 .receivable-group-title {

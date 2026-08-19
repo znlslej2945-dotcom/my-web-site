@@ -41,7 +41,6 @@ let accountTypeReturnPage = 'login';
 let driverConnectionReturnPage = 'main';
 let activeLinkedDriverId = '';
 let toastHideTimer = null;
-let toastActionCallback = null;
 const activeSaveActions = new Set();
 const backgroundSaveStates = new Map();
 
@@ -113,11 +112,7 @@ async function flushBackgroundSave(actionKey) {
         await state.runningPromise;
     } catch (error) {
         console.error(`${actionKey} 자동 저장 실패:`, error);
-        showToastMessage(getSaveErrorMessage(error, true), {
-            duration: 7000,
-            actionLabel: '다시 시도',
-            action: () => queueBackgroundSave(actionKey, action, 0)
-        });
+        showToastMessage(getSaveErrorMessage(error, true), { duration: 7000 });
     } finally {
         state.running = false;
         state.runningPromise = null;
@@ -218,6 +213,7 @@ function getActiveLogSettings() {
 function setUserSettings(settings) {
     localStorage.setItem('userSettings', JSON.stringify(settings));
     scheduleNormalizedEntitySync();
+    if (typeof scheduleSupabaseSettingsSync === 'function') scheduleSupabaseSettingsSync();
 }
 
 const NORMALIZED_SCHEMA_VERSION = 1;
@@ -645,6 +641,23 @@ function cancelAccountTypeSelection() {
     }
 }
 
+// 로그인 화면의 로그인/회원가입 탭 상태. Supabase Auth는 이메일/비밀번호 방식이라
+// 신규 가입과 재로그인을 명시적으로 구분해야 하므로 탭으로 분리한다.
+let loginAuthMode = 'signup';
+
+function setLoginAuthMode(mode) {
+    loginAuthMode = mode === 'login' ? 'login' : 'signup';
+    document.querySelectorAll('.auth-mode-btn').forEach(btn => {
+        const selected = btn.dataset.authMode === loginAuthMode;
+        btn.classList.toggle('active', selected);
+        btn.setAttribute('aria-selected', String(selected));
+    });
+    document.getElementById('loginPasswordConfirmField')?.classList.toggle('hidden', loginAuthMode !== 'signup');
+    const continueButton = document.getElementById('loginContinueBtn');
+    if (continueButton) continueButton.textContent = loginAuthMode === 'signup' ? '가입하고 시작하기' : '로그인';
+    updateLoginContinueState();
+}
+
 function showLocalLoginPage() {
     const settings = getUserSettings();
     if (!settings.accountType) {
@@ -659,11 +672,15 @@ function showLocalLoginPage() {
     if (selectedType) selectedType.innerHTML = `<span>${meta.icon}</span><span><strong>${meta.label}</strong><small>${meta.description}</small></span>`;
     document.getElementById('loginUserName').value = settings.userName || '';
     document.getElementById('loginUserPhone').value = settings.userPhone || '';
+    const passwordInput = document.getElementById('loginPassword');
+    const passwordConfirmInput = document.getElementById('loginPasswordConfirm');
+    if (passwordInput) passwordInput.value = '';
+    if (passwordConfirmInput) passwordConfirmInput.value = '';
     const employedDriver = settings.accountType === 'employed_driver';
     document.getElementById('loginInviteField')?.classList.toggle('hidden', !employedDriver);
     const inviteInput = document.getElementById('loginInviteCode');
     if (inviteInput) inviteInput.value = employedDriver ? (settings.employerLink?.inviteCode || '') : '';
-    updateLoginContinueState();
+    setLoginAuthMode(typeof getDefaultAuthMode === 'function' ? getDefaultAuthMode(settings) : 'signup');
 }
 
 function updateLoginContinueState() {
@@ -671,16 +688,29 @@ function updateLoginContinueState() {
     const name = document.getElementById('loginUserName')?.value.trim() || '';
     const phoneDigits = document.getElementById('loginUserPhone')?.value.replace(/\D/g, '') || '';
     const inviteDigits = document.getElementById('loginInviteCode')?.value.replace(/\D/g, '') || '';
+    const password = document.getElementById('loginPassword')?.value || '';
+    const passwordConfirm = document.getElementById('loginPasswordConfirm')?.value || '';
     const needsInvite = settings.accountType === 'employed_driver';
+    const passwordOk = password.length >= 6 && (loginAuthMode !== 'signup' || password === passwordConfirm);
     const button = document.getElementById('loginContinueBtn');
-    if (button) button.disabled = !name || phoneDigits.length < 10 || (needsInvite && inviteDigits.length !== 6);
+    if (button) button.disabled = !name || phoneDigits.length < 10 || !passwordOk || (needsInvite && inviteDigits.length !== 6);
 }
 
-function completeLocalLogin() {
+async function completeLocalLogin() {
     const name = document.getElementById('loginUserName')?.value.trim() || '';
     const phone = document.getElementById('loginUserPhone')?.value.trim() || '';
+    const password = document.getElementById('loginPassword')?.value || '';
+    const passwordConfirm = document.getElementById('loginPasswordConfirm')?.value || '';
     if (!name || phone.replace(/\D/g, '').length < 10) {
         showToastMessage('이름과 휴대전화 번호를 확인해 주세요.');
+        return;
+    }
+    if (password.length < 6) {
+        showToastMessage('비밀번호는 6자 이상 입력해 주세요.');
+        return;
+    }
+    if (loginAuthMode === 'signup' && password !== passwordConfirm) {
+        showToastMessage('비밀번호 확인이 일치하지 않습니다.');
         return;
     }
     const settings = getUserSettings();
@@ -689,11 +719,42 @@ function completeLocalLogin() {
         showToastMessage('사장님에게 받은 6자리 초대코드를 입력해 주세요.');
         return;
     }
-    settings.userName = name;
-    settings.userPhone = phone;
-    if (settings.accountType === 'employed_driver') {
-        const existingLink = settings.employerLink || {};
-        settings.employerLink = {
+
+    // Supabase Auth 로그인/회원가입 (휴대전화번호는 내부적으로 가짜 이메일로 변환해서 사용)
+    let authUser = null;
+    if (typeof getSupabaseClient === 'function') {
+        const email = phoneToFakeEmail(phone);
+        if (loginAuthMode === 'signup') {
+            const { data, error } = await supabaseSignUp(email, password);
+            if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
+            authUser = data?.user || null;
+            if (authUser) await ensureProfileRow(authUser.id, settings.accountType, name, phone);
+        } else {
+            const { data, error } = await supabaseSignIn(email, password);
+            if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
+            authUser = data?.user || null;
+        }
+        if (authUser && typeof markSupabaseAccountEverCreated === 'function') markSupabaseAccountEverCreated();
+    }
+
+    // Supabase 데이터 로드 + (기존 로컬 데이터가 있다면) 1회 마이그레이션.
+    // 반드시 "신규 유저 여부" 판별보다 먼저 실행해야 한다 — 그래야 새 기기에서 재로그인하는
+    // 기존 유저(이 기기엔 로컬 기록이 없음)를 신규 유저로 오인해서 온보딩 마법사를 다시
+    // 띄우는 일이 없다.
+    if (authUser && typeof hydrateFromSupabaseAndMigrate === 'function') {
+        try {
+            await hydrateFromSupabaseAndMigrate();
+        } catch (error) {
+            console.error('Supabase 데이터 동기화 실패(로컬 데이터로 계속 진행합니다):', error);
+        }
+    }
+
+    const settingsAfterHydration = getUserSettings();
+    settingsAfterHydration.userName = name;
+    settingsAfterHydration.userPhone = phone;
+    if (settingsAfterHydration.accountType === 'employed_driver') {
+        const existingLink = settingsAfterHydration.employerLink || {};
+        settingsAfterHydration.employerLink = {
             ...existingLink,
             id: existingLink.id || generateLocalId('employer'),
             status: 'linked',
@@ -703,12 +764,13 @@ function completeLocalLogin() {
             linkedAt: existingLink.linkedAt || new Date().toISOString()
         };
     }
-    // 완전 신규 유저(온보딩 이력 없음) 여부를 값 변경 전에 판별해 온보딩 마법사 노출 여부를 결정
-    const isNewUser = !settings.hasOwnProperty('onboardingCompleted');
+    // 완전 신규 유저(하이드레이션 후에도 온보딩 이력이 없는 경우) 여부를 값 변경 전에 판별
+    const isNewUser = !settingsAfterHydration.hasOwnProperty('onboardingCompleted');
 
-    settings.isLoggedIn = true;
-    settings.onboardingCompleted = true;
-    setUserSettings(settings);
+    settingsAfterHydration.isLoggedIn = true;
+    settingsAfterHydration.onboardingCompleted = true;
+    setUserSettings(settingsAfterHydration);
+
     loadSettings();
     updateAccountRoleUI();
     renderSubCarMenu();
@@ -1511,6 +1573,7 @@ function loadWorkDataForLog(logId) {
 function saveWorkDataForLog(logId, data) {
     const key = logId === 'main' ? 'workData' : 'workData_' + logId;
     localStorage.setItem(key, JSON.stringify(data));
+    if (typeof scheduleSupabaseWorkDataSync === 'function') scheduleSupabaseWorkDataSync(logId);
 }
 
 function saveDataToStorage() {
@@ -2052,7 +2115,7 @@ function setActiveNav(pageId) {
             navItems[0].classList.add('active');
         } else if (pageId === 'workModal') {
             navItems[1].classList.add('active');
-        } else if (pageId === 'settings') {
+        } else if (pageId === 'revenue') {
             navItems[2].classList.add('active');
         } else if (pageId === 'personal' && navItems[3]) {
             navItems[3].classList.add('active');
@@ -2338,14 +2401,57 @@ function submitSupportInquiry(event) {
     showToastMessage('문의가 접수되었습니다.');
 }
 
+// 회원탈퇴 — 실제로 Supabase 계정과 그 계정에 연결된 모든 데이터(vehicles/clients/
+// daily_logs/... 전부, DB의 cascade 설정으로 자동 삭제)를 지우는 되돌릴 수 없는 작업이다.
+// 그래서 확인을 두 단계로 나눈다: 1단계 경고 → 2단계 최종 확인 → 그 다음에야 실제 삭제.
+// showConfirmModal()의 executeConfirm()은 콜백 실행 직후 곧바로 closeConfirmModal()을
+// 호출하므로, 콜백 안에서 바로 showConfirmModal()을 또 열면 그 트레일링 close가 방금 연
+// 두 번째 모달까지 닫아버린다. 그래서 두 번째 모달은 setTimeout으로 다음 태스크로 미뤄서 연다.
 function requestWithdrawal() {
-    if (confirm('회원탈퇴는 모든 데이터에 영향을 줄 수 있습니다. 탈퇴 안내를 확인하시겠습니까?')) {
-        showToastMessage('회원탈퇴 문의는 1:1 문의를 이용해 주세요.');
-        const tab = document.querySelectorAll('.support-tab')[1];
-        openSupportTab('inquiry', tab);
-        document.getElementById('inquiryType').value = '문의';
-        document.getElementById('inquiryTitle').value = '회원탈퇴 요청';
+    showConfirmModal(
+        '정말 탈퇴하시겠습니까?\n모든 운행 기록, 거래처, 정산 데이터가 영구적으로 삭제되며 복구할 수 없습니다.',
+        () => {
+            setTimeout(() => {
+                showConfirmModal(
+                    '이 작업은 취소할 수 없습니다.\n한 번 더 확인해 주세요 — 정말로 계정과 모든 데이터를 영구 삭제할까요?',
+                    executeAccountWithdrawal,
+                    { title: '마지막 확인', confirmLabel: '영구 삭제', cancelLabel: '취소', tone: 'danger' }
+                );
+            }, 0);
+        },
+        { title: '회원 탈퇴', confirmLabel: '탈퇴하기', cancelLabel: '취소', tone: 'danger' }
+    );
+}
+
+async function executeAccountWithdrawal() {
+    if (typeof getSupabaseClient !== 'function') {
+        showToastMessage('탈퇴 처리에 필요한 기능을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.', { duration: 5000 });
+        return;
     }
+
+    try {
+        const client = await getSupabaseClient();
+        const { error } = await client.rpc('delete_own_account');
+        if (error) throw error;
+    } catch (error) {
+        // 서버 삭제가 실패했다면 로컬 데이터는 절대 건드리지 않는다 — 서버는 안 지워졌는데
+        // 로컬만 지우면 사용자가 자기 데이터를 그냥 잃어버리는 최악의 상황이 된다.
+        console.error('회원 탈퇴 실패:', error);
+        showToastMessage(getSaveErrorMessage(error) || '탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', { duration: 5000 });
+        return;
+    }
+
+    // 서버 삭제 성공을 확인한 뒤에만 로컬을 정리한다.
+    try {
+        if (typeof supabaseSignOutSafely === 'function') await supabaseSignOutSafely();
+    } catch (error) {
+        console.error('탈퇴 후 로그아웃 처리 실패(로컬 정리는 계속 진행):', error);
+    }
+    localStorage.clear();
+    showToastMessage('탈퇴가 완료되었습니다.', { duration: 1500 });
+    // 메모리에 남아있는 이전 계정의 상태(workData 등)까지 완전히 비우고 첫 화면(계정 유형
+    // 선택)부터 다시 시작하도록, 토스트를 보여줄 시간만 두고 전체 새로고침한다.
+    setTimeout(() => location.reload(), 1200);
 }
 
 function showCarManagement(returnPage = 'main') {
@@ -4475,7 +4581,9 @@ function showSettings(fromPage) {
     loadSettings();
     hideAllPages();
     document.getElementById('settingsPage').classList.remove('hidden');
-    setActiveNav('settings');
+    // 설정은 더 이상 하단 네비게이션 항목이 아니라 사이드 메뉴로만 들어오므로, 하단 탭
+    // 강조를 전부 지운다(해당 자리는 이제 "월매출" 탭이 차지하고 있어 잘못 강조되면 안 됨).
+    setActiveNav('none');
 }
 
 function goBackFromSettings() {
@@ -4513,7 +4621,9 @@ function executeShowReport(carNum) {
     
     const savedSettings = getUserSettings();
     const isMain = activeLogId === 'main';
-    const callDetailOn = isMain ? savedSettings.callDetailOn : savedSettings.subCallDetailOn;
+    const callDetailOn = isMain
+        ? (savedSettings.hasOwnProperty('callDetailOn') ? !!savedSettings.callDetailOn : true)
+        : (savedSettings.hasOwnProperty('subCallDetailOn') ? !!savedSettings.subCallDetailOn : true);
 
     if (callDetailOn) {
         document.getElementById('pdfDropdownGroup').style.display = 'block';
@@ -4692,8 +4802,7 @@ function toggleSubRunCountPresetSettings() {
 
 function hideToastMessage() {
     const toast = document.getElementById('toastMessage');
-    toast?.classList.remove('show', 'retryable');
-    toastActionCallback = null;
+    toast?.classList.remove('show');
     if (toastHideTimer) clearTimeout(toastHideTimer);
     toastHideTimer = null;
 }
@@ -4702,27 +4811,12 @@ function showToastMessage(msg = "저장되었습니다.", options = {}) {
     const toast = document.getElementById('toastMessage');
     if (!toast) return;
     const text = document.getElementById('toastMessageText');
-    const actionButton = document.getElementById('toastActionBtn');
     if (text) text.textContent = msg;
     else toast.textContent = msg;
 
-    const hasAction = typeof options.action === 'function' && actionButton;
-    toastActionCallback = hasAction ? options.action : null;
-    toast.classList.toggle('retryable', !!hasAction);
-    if (actionButton) {
-        actionButton.textContent = options.actionLabel || '다시 시도';
-        actionButton.classList.toggle('hidden', !hasAction);
-    }
     toast.classList.add('show');
     if (toastHideTimer) clearTimeout(toastHideTimer);
     toastHideTimer = setTimeout(hideToastMessage, options.duration || 2000);
-}
-
-function executeToastAction() {
-    const action = toastActionCallback;
-    hideToastMessage();
-    if (!action) return;
-    Promise.resolve().then(action).catch(error => showRetryableSaveError(error, action));
 }
 
 function saveSettingsSmoothly() {
@@ -4996,6 +5090,10 @@ function readBackupJsonStorage(key, fallback) {
 }
 
 const BACKUP_REMINDER_DAYS = 14;
+// Supabase 로그인 상태(=클라우드에 이미 실시간으로 백업되고 있는 상태)에서는 로컬 백업을
+// 훨씬 덜 급하게 재촉해도 된다. 배너 자체가 뜨는 기준일 뿐, 로그인 상태에서는 "overdue"
+// 빨간 강조는 아예 쓰지 않는다(아래 renderBackupStatus/checkBackupReminder 참고).
+const BACKUP_REMINDER_DAYS_CLOUD_SYNCED = 30;
 
 function getLastBackupDate() {
     const iso = localStorage.getItem('lastBackupAt');
@@ -5020,27 +5118,49 @@ function getTodayDateKey() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+// 지금 이 브라우저에서 Supabase에 로그인된 세션이 있는지(=클라우드에 이미 실시간으로
+// 백업되고 있는지) 확인한다. supabase-sync.js가 아직 로드되지 않았거나 요청이 실패해도
+// 배너/상태 표시 로직 자체가 멈추지 않도록 항상 안전하게 false를 반환한다.
+async function isCloudBackupActive() {
+    try {
+        return typeof getSupabaseUser === 'function' ? !!(await getSupabaseUser()) : false;
+    } catch (error) {
+        console.error('클라우드 백업 상태 확인 실패:', error);
+        return false;
+    }
+}
+
 // 마이페이지 백업 카드의 "마지막 백업: ..." 상태 텍스트를 갱신한다.
-// 14일 넘게 지났으면(또는 아예 없으면) --sunday-color로 강조한다.
-function renderBackupStatus() {
+// - Supabase 로그인 상태면 클라우드 자동 백업 중이라는 보조 문구를 덧붙이고, 로컬 백업이
+//   좀 늦었다고 해서 위급하게(--sunday-color) 강조하지 않는다.
+// - 비로그인 상태면 기존과 동일하게 14일 기준으로 강조한다.
+async function renderBackupStatus() {
     const el = document.getElementById('lastBackupStatus');
     if (!el) return;
+    const cloudSynced = await isCloudBackupActive();
     const lastBackup = getLastBackupDate();
     const days = getDaysSinceLastBackup();
-    el.textContent = lastBackup ? `마지막 백업: ${formatBackupDateText(lastBackup)}` : '아직 백업한 적 없음';
-    el.classList.toggle('overdue', !lastBackup || days >= BACKUP_REMINDER_DAYS);
+    const baseText = lastBackup ? `마지막 백업: ${formatBackupDateText(lastBackup)}` : '아직 백업한 적 없음';
+    el.textContent = cloudSynced ? `${baseText} · 클라우드 자동 백업 중` : baseText;
+    el.classList.toggle('overdue', !cloudSynced && (!lastBackup || days >= BACKUP_REMINDER_DAYS));
 }
 
 // 메인 화면 상단의 백업 유도 배너를 조건에 따라 보이거나 숨긴다.
-// - 백업한 적이 없거나 마지막 백업으로부터 BACKUP_REMINDER_DAYS일이 넘게 지났으면 노출.
-// - 단, 오늘 이미 닫기(dismissBackupReminder)를 눌렀다면 당일 안에는 다시 띄우지 않는다.
-function checkBackupReminder() {
+// - 비로그인 상태: 기존과 동일하게 백업한 적이 없거나 BACKUP_REMINDER_DAYS일이 넘게
+//   지났으면 경고 톤(빨간 계열)으로 노출한다.
+// - Supabase 로그인 상태(클라우드에 이미 자동 백업 중): 훨씬 느슨한 기준(BACKUP_REMINDER_
+//   DAYS_CLOUD_SYNCED)으로만 노출하고, 문구도 "사라질 수 있다"는 위협적 표현 없이 안심시키는
+//   톤으로 바꾸며, 배너 자체도 .calm 클래스로 차분한 색상을 쓴다.
+// - 오늘 이미 닫기(dismissBackupReminder)를 눌렀다면 당일 안에는 다시 띄우지 않는다.
+async function checkBackupReminder() {
     const banner = document.getElementById('backupReminderBanner');
     if (!banner) return;
 
+    const cloudSynced = await isCloudBackupActive();
+    const reminderDays = cloudSynced ? BACKUP_REMINDER_DAYS_CLOUD_SYNCED : BACKUP_REMINDER_DAYS;
     const lastBackup = getLastBackupDate();
     const days = getDaysSinceLastBackup();
-    const needsBackup = !lastBackup || days >= BACKUP_REMINDER_DAYS;
+    const needsBackup = !lastBackup || days >= reminderDays;
 
     if (!needsBackup || localStorage.getItem('backupReminderDismissedDate') === getTodayDateKey()) {
         banner.classList.add('hidden');
@@ -5049,13 +5169,22 @@ function checkBackupReminder() {
 
     const titleEl = document.getElementById('backupReminderTitle');
     const textEl = document.getElementById('backupReminderText');
-    if (!lastBackup) {
+    if (cloudSynced) {
+        if (!lastBackup) {
+            titleEl.textContent = '클라우드에 자동으로 백업되고 있어요.';
+            textEl.textContent = '그래도 만약을 위해 가끔 로컬 백업도 함께 받아두시는 걸 추천드려요.';
+        } else {
+            titleEl.textContent = `로컬 백업으로부터 ${days}일이 지났어요.`;
+            textEl.textContent = '클라우드에는 계속 자동으로 저장되고 있어요. 여유 있을 때 로컬 백업도 한 번 받아두시면 더 안심돼요.';
+        }
+    } else if (!lastBackup) {
         titleEl.textContent = '아직 백업한 적이 없어요.';
         textEl.textContent = '지금 이 브라우저에만 데이터가 저장되어 있습니다. 기기를 바꾸거나 브라우저 데이터가 지워지면 기록이 사라질 수 있어요.';
     } else {
         titleEl.textContent = `마지막 백업으로부터 ${days}일이 지났어요.`;
         textEl.textContent = '최신 데이터로 다시 백업해 주세요.';
     }
+    banner.classList.toggle('calm', cloudSynced);
     banner.classList.remove('hidden');
 }
 
@@ -5729,8 +5858,10 @@ function openModal(dateKey, month, day) {
     const isMain = activeLogId === 'main';
     const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
     const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
-    const callDetailOn = isMain ? savedSettings.callDetailOn : savedSettings.subCallDetailOn;
-    
+    const callDetailOn = isMain
+        ? (savedSettings.hasOwnProperty('callDetailOn') ? !!savedSettings.callDetailOn : true)
+        : (savedSettings.hasOwnProperty('subCallDetailOn') ? !!savedSettings.subCallDetailOn : true);
+
     document.getElementById('modalFixedSection').style.display = fixedOn ? 'block' : 'none';
     document.getElementById('modalPalletSection').style.display = (fixedOn && palletOn) ? 'block' : 'none';
     document.getElementById('modalCallDetailSection').style.display = callDetailOn ? 'block' : 'none';
@@ -7241,6 +7372,7 @@ initDateSelects();
 initMaintDateSelects();
 initFuelDateSelects();
 initMiscDateSelects();
+initRevenueDateSelects();
 initCalendarDOM();
 buildCalendar();
 renderSubCarMenu();
@@ -7252,9 +7384,40 @@ checkBackupReminder();
 // 최초 진입(계정 유형 미선택/로그인 전) 유저에게만 기존 브랜딩 노출 시간을 유지한다.
 window.addEventListener('load', () => {
     const splashScreen = document.getElementById('splashScreen');
+    if (!splashScreen) return;
 
-    if (splashScreen) {
-        const settings = getUserSettings();
+    (async () => {
+        // Supabase 세션이 실제로 남아있는지 먼저 확인하고, 로컬의 isLoggedIn 플래그를
+        // 그 결과에 맞게 보정한다(다른 기기에서 로그아웃했거나 세션이 만료된 경우 등 대비).
+        let hasSupabaseSession = false;
+        if (typeof getSupabaseUser === 'function') {
+            try {
+                hasSupabaseSession = !!(await getSupabaseUser());
+            } catch (error) {
+                console.error('Supabase 세션 확인 실패(로컬 상태로 계속 진행):', error);
+            }
+        }
+
+        let settings = getUserSettings();
+        if (hasSupabaseSession && !settings.isLoggedIn) {
+            settings.isLoggedIn = true;
+            settings.onboardingCompleted = true;
+            setUserSettings(settings);
+        } else if (!hasSupabaseSession && settings.isLoggedIn) {
+            settings.isLoggedIn = false;
+            setUserSettings(settings);
+        }
+        settings = getUserSettings();
+
+        if (hasSupabaseSession && typeof hydrateFromSupabaseAndMigrate === 'function') {
+            try {
+                await hydrateFromSupabaseAndMigrate();
+                settings = getUserSettings();
+            } catch (error) {
+                console.error('Supabase 초기 동기화 실패(로컬 데이터로 계속 진행):', error);
+            }
+        }
+
         const isReturningUser = !!settings.isLoggedIn;
         const holdMs = isReturningUser ? 0 : 1500;
         const fadeMs = isReturningUser ? 200 : 500;
@@ -7272,7 +7435,7 @@ window.addEventListener('load', () => {
                 else if (!settings.isLoggedIn) showLocalLoginPage();
             }, fadeMs);
         }, holdMs);
-    }
+    })();
 });
 
 function handleLogin() {
@@ -7288,6 +7451,7 @@ function handleLogout() {
         setUserSettings(settings);
         updateAccountRoleUI();
         showLocalLoginPage();
+        if (typeof supabaseSignOutSafely === 'function') supabaseSignOutSafely();
     });
 }
 
@@ -7466,6 +7630,137 @@ function selectReceivableTab(tab) {
 
 let currentReceivableTab = 'monthly';
 let currentReceivableDetail = null;
+
+// ========== 월매출 화면 ==========
+let currentRevenueTab = 'monthly'; // 'monthly' | 'yearly'
+let revenueViewYear = new Date().getFullYear();
+let revenueViewMonth = new Date().getMonth(); // 0-11, yearSelect/monthSelect 관례와 동일
+
+function initRevenueDateSelects() {
+    populateYearMonthSelects('revenueYearSelect', 'revenueMonthSelect');
+}
+
+function showRevenuePage(returnPage = 'main') {
+    setUtilityReturnPage(returnPage);
+    hideAllPages();
+    document.getElementById('revenuePage').classList.remove('hidden');
+    selectRevenueTab('monthly');
+    setActiveNav('revenue');
+}
+
+function selectRevenueTab(tab) {
+    currentRevenueTab = tab === 'yearly' ? 'yearly' : 'monthly';
+    document.getElementById('revenueYearlyTab')?.classList.toggle('active', currentRevenueTab === 'yearly');
+    document.getElementById('revenueMonthlyTab')?.classList.toggle('active', currentRevenueTab === 'monthly');
+    syncRevenueDateSelects();
+    renderRevenuePage();
+}
+
+// 화살표 버튼: 월매출 탭에서는 한 달씩, 년매출 탭에서는 한 해씩 이동한다.
+function changeRevenueDate(delta) {
+    if (currentRevenueTab === 'yearly') {
+        revenueViewYear += delta;
+    } else {
+        revenueViewMonth += delta;
+        if (revenueViewMonth < 0) { revenueViewMonth = 11; revenueViewYear -= 1; }
+        else if (revenueViewMonth > 11) { revenueViewMonth = 0; revenueViewYear += 1; }
+    }
+    syncRevenueDateSelects();
+    renderRevenuePage();
+}
+
+function changeRevenueYearMonth() {
+    const yearSelect = document.getElementById('revenueYearSelect');
+    const monthSelect = document.getElementById('revenueMonthSelect');
+    if (yearSelect) revenueViewYear = parseInt(yearSelect.value, 10);
+    if (currentRevenueTab === 'monthly' && monthSelect) revenueViewMonth = parseInt(monthSelect.value, 10);
+    renderRevenuePage();
+}
+
+// 선택값/화살표 타이틀/월 선택 노출 여부를 현재 탭·연·월 상태에 맞춰 동기화한다.
+function syncRevenueDateSelects() {
+    const yearSelect = document.getElementById('revenueYearSelect');
+    const monthSelect = document.getElementById('revenueMonthSelect');
+    if (!yearSelect || !monthSelect) return;
+
+    yearSelect.value = revenueViewYear;
+    monthSelect.value = revenueViewMonth;
+    yearSelect.parentElement?._dropdownSync?.();
+    monthSelect.parentElement?._dropdownSync?.();
+
+    // 년매출 탭에서는 월 선택이 의미가 없으므로 숨긴다.
+    if (monthSelect.parentElement) monthSelect.parentElement.style.display = currentRevenueTab === 'yearly' ? 'none' : '';
+
+    const prevBtn = document.getElementById('revenuePrevBtn');
+    const nextBtn = document.getElementById('revenueNextBtn');
+    const label = currentRevenueTab === 'yearly' ? '해' : '달';
+    if (prevBtn) prevBtn.title = `이전 ${label}`;
+    if (nextBtn) nextBtn.title = `다음 ${label}`;
+}
+
+function renderRevenuePage() {
+    if (currentRevenueTab === 'yearly') renderRevenueYearly();
+    else renderRevenueMonthly();
+}
+
+function renderRevenueMonthly() {
+    const container = document.getElementById('revenueResultContainer');
+    if (!container) return;
+
+    const monthKey = `${revenueViewYear}-${String(revenueViewMonth + 1).padStart(2, '0')}`;
+    const result = getMonthlyFareRevenue(monthKey);
+
+    const vehicleRowsHtml = result.byVehicle.length > 1 ? `
+        <div class="revenue-vehicle-list">
+            ${result.byVehicle.map(vehicle => `
+                <div class="revenue-vehicle-row">
+                    <span>${escapeDetailText(vehicle.label)}</span>
+                    <span>${vehicle.fare.toLocaleString()}원</span>
+                </div>
+            `).join('')}
+        </div>
+    ` : '';
+
+    container.innerHTML = `
+        <div class="revenue-summary-card">
+            <div class="revenue-summary-total">
+                <span>${revenueViewYear}년 ${revenueViewMonth + 1}월 총 운송료</span>
+                <strong>${result.totalFare.toLocaleString()}원</strong>
+            </div>
+            <div class="revenue-summary-count">총 ${result.tripCount}회 운행</div>
+        </div>
+        ${vehicleRowsHtml}
+    `;
+}
+
+function renderRevenueYearly() {
+    const container = document.getElementById('revenueResultContainer');
+    if (!container) return;
+
+    let yearTotal = 0;
+    const rows = [];
+    for (let month = 0; month < 12; month++) {
+        const monthKey = `${revenueViewYear}-${String(month + 1).padStart(2, '0')}`;
+        const result = getMonthlyFareRevenue(monthKey);
+        yearTotal += result.totalFare;
+        rows.push({ month: month + 1, fare: result.totalFare });
+    }
+
+    container.innerHTML = `
+        <div class="revenue-year-list">
+            ${rows.map(row => `
+                <div class="revenue-year-row">
+                    <span>${row.month}월</span>
+                    <span>${row.fare.toLocaleString()}원</span>
+                </div>
+            `).join('')}
+        </div>
+        <div class="revenue-year-total">
+            <span>${revenueViewYear}년 합계</span>
+            <strong>${yearTotal.toLocaleString()}원</strong>
+        </div>
+    `;
+}
 
 // 결제 상태 계산: detail.payments 배열(부분입금 이력)을 기준으로 입금액/잔액/상태를 도출한다.
 // payments 배열이 없는 예전 기록은 detail.paymentStatus만으로 하위호환 변환한다.
@@ -8274,6 +8569,83 @@ function calculateDriverVehicleCommission(car, grossAmount, count) {
     if (!car?.commEnabled || !car.commission) return 0;
     if (car.commType === 'direct') return parseCurrencyValue(car.commission) * Math.max(1, count || 0);
     return Math.floor(grossAmount * (parseFloat(car.commission) || 0) / 100);
+}
+
+// 월매출("월매출" 화면) 전용 순수 계산 함수. buildCalendar()의 고정노선/파렛트/콜상세
+// 운송료 공식을 그대로 따르되, 여기서는 화면(DOM)을 전혀 건드리지 않고 값만 계산해서
+// 반환한다 — buildCalendar() 자체는 그대로 두고 별도로 새로 만든 함수다.
+// 세금계산서 집계(getTaxInvoiceSourceGroups)와 동일한 기준으로 메인 차량 + "회사 정산"/
+// "고용 정산" 모드인 서브 차량만 합산한다(기사 직접 정산 차량은 그 매출이 회사 몫이
+// 아니므로 제외).
+function getMonthlyFareRevenue(monthKey) {
+    const settings = getUserSettings();
+    const cars = Array.isArray(settings.cars) ? settings.cars : [];
+
+    const sources = [{ logId: 'main', label: '메인 차량', data: readWorkDataStorage('workData') }];
+    cars.filter(car => car.type === 'sub').forEach(car => {
+        const mode = getEffectiveDriverSettlementMode(car, settings);
+        if (mode === 'company' || mode === 'employee') {
+            sources.push({ logId: car.number, label: getShortCarNum(car.number), data: getDriverCarWorkData(car, settings) });
+        }
+    });
+
+    let totalFare = 0;
+    let tripCount = 0;
+    const byVehicle = [];
+
+    sources.forEach(source => {
+        const isMain = source.logId === 'main';
+        const activeFixedOn = isMain ? settings.fixedOn : settings.subFixedOn;
+        const activePalletOn = isMain ? settings.palletOn : settings.subPalletOn;
+        const fixedUnitPrice = parseCurrencyValue(isMain ? settings.unitPrice : settings.subUnitPrice);
+        const palletUnitPrice = parseCurrencyValue(isMain ? settings.palletPrice : settings.subPalletPrice);
+
+        let vehicleFare = 0;
+        let vehicleCount = 0;
+        const monthFareByClient = {};
+
+        Object.entries(source.data || {}).forEach(([dateKey, record]) => {
+            if (!dateKey.startsWith(monthKey) || !record || typeof record !== 'object' || record.isOff) return;
+
+            if (record.fixedCount > 0) {
+                vehicleCount += parseInt(record.fixedCount, 10) || 0;
+                vehicleFare += (Number(record.fixedCount) || 0) * fixedUnitPrice;
+            }
+            if (record.palletCount > 0 && activeFixedOn && activePalletOn) {
+                vehicleFare += (Number(record.palletCount) || 0) * palletUnitPrice;
+            }
+
+            (Array.isArray(record.callDetails) ? record.callDetails : []).forEach(detail => {
+                // 운행 건수 집계 규칙은 buildCalendar()와 동일하게 맞춘다(공차는 제외, 혼짐은
+                // 대표 건만 카운트).
+                const type = detail?.distanceType || '';
+                if (type === '공차') {
+                    // 0회 처리
+                } else if (type === '혼짐') {
+                    if (detail.linkedLoadIndex === 'pending' || detail.linkedLoadIndex === '-1' || detail.linkedLoadIndex === undefined) {
+                        vehicleCount += 1;
+                    }
+                } else {
+                    vehicleCount += 1;
+                }
+
+                const gross = parseCurrencyValue(detail?.fare);
+                vehicleFare += gross;
+                const clientName = detail?.client ? String(detail.client).trim() : '';
+                if (clientName) monthFareByClient[clientName] = (monthFareByClient[clientName] || 0) + gross;
+            });
+        });
+
+        // 거래처 월정액 계약이 있으면 buildCalendar()와 동일하게 건별 합산분을 정액으로 대체한다.
+        const { fareAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, {}, {}, settings);
+        vehicleFare += fareAdjustment;
+
+        totalFare += vehicleFare;
+        tripCount += vehicleCount;
+        byVehicle.push({ logId: source.logId, label: source.label, fare: vehicleFare, tripCount: vehicleCount });
+    });
+
+    return { totalFare, tripCount, byVehicle };
 }
 
 function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
