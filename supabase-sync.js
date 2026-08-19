@@ -322,6 +322,16 @@ async function initSettingsFromSupabase(userId) {
     const unsyncedLocalCars = (Array.isArray(previousSettings.cars) ? previousSettings.cars : []).filter(c => c && !c.supabaseId);
     const unsyncedLocalClients = (Array.isArray(previousSettings.clients) ? previousSettings.clients : []).filter(c => c && !c.supabaseId);
 
+    // 위에서 살려둔 "아직 안 올라간" 항목이 사실은 서버에 이미 올라간 것과 같은 차량/거래처일
+    // 수 있다(예: 방금 동기화가 끝났는데 로컬 supabaseId 반영이 이 하이드레이션보다 아주
+    // 살짝 늦게 붙는 경우). 그대로 합치면 화면에 같은 차량이 두 번 보이는 문제로 이어지므로,
+    // 합친 뒤 반드시 한 번 더 정리한다(메인 차량은 최대 1대, 기사차량은 번호 기준 — 실제로
+    // 이 경합으로 중복이 생기는 걸 재현해서 이 정리 로직을 추가했다).
+    const mergedCars = [...cars, ...unsyncedLocalCars];
+    const mergedClients = [...clientsList, ...unsyncedLocalClients];
+    const dedupedCars = typeof dedupeCars === 'function' ? dedupeCars(mergedCars).cars : mergedCars;
+    const dedupedClients = typeof dedupeClients === 'function' ? dedupeClients(mergedClients).clients : mergedClients;
+
     const assembled = {
         ...jsonbSettings,
         accountType: profile?.account_type || jsonbSettings.accountType || '',
@@ -335,8 +345,8 @@ async function initSettingsFromSupabase(userId) {
         bizEmail: profile?.business_email || '',
         bankName: profile?.bank_name || '',
         accountNumber: profile?.account_number || '',
-        cars: [...cars, ...unsyncedLocalCars],
-        clients: [...clientsList, ...unsyncedLocalClients],
+        cars: dedupedCars,
+        clients: dedupedClients,
         isLoggedIn: true
     };
 
@@ -719,6 +729,30 @@ async function hydrateFromSupabaseAndMigrate() {
     if (typeof buildCalendar === 'function') buildCalendar();
     if (typeof renderSubCarMenu === 'function') renderSubCarMenu();
     if (typeof updateAccountRoleUI === 'function') updateAccountRoleUI();
+}
+
+// script.js의 importData()가 백업 파일을 복원한 직후 호출한다. restoreBackupStorage()는
+// localStorage에 직접 쓰기 때문에 평소의 setUserSettings()/saveWorkDataForLog() 경로를
+// 거치지 않아 Supabase에는 전혀 반영되지 않는다 — 그 상태로 두면:
+//   1) 다음 로그인/새로고침 때 하이드레이션이 서버의 예전 데이터로 방금 불러온 백업을
+//      덮어써서 조용히 사라지고,
+//   2) 그 전에 설정을 하나라도 바꾸면 supabaseId 없는 차량/거래처가 전부 "새 항목"으로
+//      insert되어 중복이 생긴다(차량 관리 모달에서 실제로 재현됐던 것과 같은 종류의 버그).
+// 그래서 백업을 불러온 뒤에는 반드시 이 함수로 서버에도 실제로 반영해야 한다.
+async function syncImportedBackupToSupabase() {
+    const user = await getSupabaseUser();
+    if (!user) return; // 로그인 상태가 아니면 로컬 백업만으로 충분(기존 동작과 동일)
+
+    // 백업 파일 속 supabaseId는 이 계정·이 시점과 무관할 수 있다(다른 기기/다른 시점에
+    // 만든 백업일 수 있음) — 그대로 재사용하면 이미 사라졌거나 다른 데이터를 가리키는
+    // uuid를 참조하게 될 위험이 있어, 전부 지우고 깨끗하게 새로 동기화되게 한다.
+    const settings = getUserSettings();
+    (settings.cars || []).forEach(c => { if (c) delete c.supabaseId; });
+    (settings.clients || []).forEach(c => { if (c) delete c.supabaseId; });
+    localStorage.setItem('userSettings', JSON.stringify(settings));
+    localStorage.removeItem('supabaseMigrationDone');
+
+    await hydrateFromSupabaseAndMigrate();
 }
 
 // ============================================================================

@@ -3649,9 +3649,41 @@ function togglePinnedLocation(type, location) {
     renderLocationShortcutGroup(type);
 }
 
+// 같은 차량이 배열에 중복으로 들어있는 걸 정리한다. 메인 차량은 항상 최대 1대만 있어야
+// 하고, 기사차량은 차량번호가 같으면 같은 차량으로 본다. 중복이 있으면 supabaseId가
+// 있는(=서버에 실제로 존재가 확인된) 쪽을 우선 남긴다. cars/clients 둘 다에 재사용한다.
+function dedupeEntityList(list, keyOf) {
+    if (!Array.isArray(list)) return { list: [], removed: 0 };
+    const chosen = new Map();
+    const order = [];
+    list.forEach(item => {
+        if (!item) return;
+        const key = keyOf(item);
+        if (!chosen.has(key)) {
+            chosen.set(key, item);
+            order.push(key);
+            return;
+        }
+        const existing = chosen.get(key);
+        if (!existing.supabaseId && item.supabaseId) chosen.set(key, item);
+    });
+    const deduped = order.map(key => chosen.get(key));
+    return { list: deduped, removed: list.length - deduped.length };
+}
+
+function dedupeCars(cars) {
+    const { list, removed } = dedupeEntityList(cars, car => car.type === 'sub' ? `sub:${car.number || ''}` : 'main');
+    return { cars: list, removed };
+}
+
+function dedupeClients(clients) {
+    const { list, removed } = dedupeEntityList(clients, client => client.companyName || client.id || '');
+    return { clients: list, removed };
+}
+
 function loadCarList() {
     const settings = getUserSettings();
-    
+
     if (!settings.cars) {
         settings.cars = [];
         if (settings.carNumber) {
@@ -3660,6 +3692,16 @@ function loadCarList() {
             delete settings.carTonnage;
             setUserSettings(settings);
         }
+    }
+
+    // 중복된 차량 항목(같은 메인 차량 여러 개, 또는 번호가 같은 기사차량 여러 개)이 있으면
+    // 정리한다 — supabaseId가 저장 때마다 사라지던 예전 버그 등으로 실제 중복이 쌓이는
+    // 문제가 있었다. 화면에는 항상 차량마다 한 줄만 보이도록 열 때마다 다시 정리한다.
+    const { cars: dedupedCars, removed } = dedupeCars(settings.cars);
+    if (removed > 0) {
+        settings.cars = dedupedCars;
+        setUserSettings(settings);
+        showToastMessage(`중복된 차량 항목 ${removed}건을 정리했습니다.`);
     }
 
     const container = document.getElementById('carListContainer');
@@ -5532,6 +5574,25 @@ function importData(event) {
             renderSubCarMenu();
             renderLinkedDriverList();
             showToastMessage('백업 데이터를 복원했습니다.');
+
+            // restoreBackupStorage()는 localStorage에 직접 쓰기 때문에 이 시점까지는
+            // Supabase에 전혀 반영되지 않은 상태다. 로그인 상태라면 지금 반영해두지 않으면
+            // 다음 새로고침/재로그인 때 서버의 예전 데이터가 방금 불러온 백업을 덮어써서
+            // 조용히 사라진다 — 그래서 반드시 이어서 클라우드에도 실제로 반영한다.
+            if (typeof syncImportedBackupToSupabase === 'function') {
+                (async () => {
+                    try {
+                        const user = typeof getSupabaseUser === 'function' ? await getSupabaseUser() : null;
+                        if (!user) return;
+                        await syncImportedBackupToSupabase();
+                        renderLinkedDriverList();
+                        showToastMessage('클라우드에도 백업 데이터를 반영했습니다.');
+                    } catch (error) {
+                        console.error('백업 데이터 클라우드 반영 실패(로컬에는 정상 복원됨):', error);
+                        showToastMessage('클라우드 반영 중 오류가 발생했습니다. 로컬에는 정상 복원되어 있습니다.', { duration: 5000 });
+                    }
+                })();
+            }
         } catch (error) {
             console.error('백업 불러오기 실패:', error);
             const message = error instanceof SyntaxError
