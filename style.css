@@ -313,6 +313,25 @@ body {
 .notification-panel-item-meta b { color:var(--primary-color); font-size:var(--fs-2); }
 .notification-panel-empty { padding:42px 12px; color:var(--sub-text-color); font-size:var(--fs-2); text-align:center; line-height:1.6; }
 
+/* 알림 패널 안의 백업 알림 카드(달력 상단 배너 대체) */
+.backup-notification-item {
+    border-color: color-mix(in srgb, var(--primary-color) 35%, var(--border-color));
+    background: color-mix(in srgb, var(--primary-color) 4%, var(--card-bg));
+    cursor: default;
+}
+
+.backup-quick-btn {
+    min-height: 28px;
+    padding: 2px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--primary-color);
+    color: #ffffff;
+    font-size: var(--fs-floor);
+    font-weight: 800;
+    cursor: pointer;
+}
+
 .notification-swipe-shell.swiping .notification-panel-item {
     transition:none;
 }
@@ -2057,8 +2076,18 @@ body.account-flow-active #sideMenuOverlay {
 .driver-form-grid .input-box { width:100%; min-height:40px; margin:0; padding:8px 9px; box-sizing:border-box; font-size:var(--fs-floor); }
 .driver-form-grid small { display:block; margin-top:4px; color:var(--sub-text-color); font-size:var(--fs-floor); line-height:1.35; }
 .driver-form-wide { grid-column:1/-1; }
-.driver-code-input { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
+.driver-code-input { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:6px; }
 .driver-code-input button { min-width:74px; border:1px solid var(--primary-color); border-radius:10px; background:transparent; color:var(--primary-color); font-size:var(--fs-floor); font-weight:850; }
+.driver-sms-btn {
+    min-width: 74px;
+    border: 1px solid var(--primary-color) !important;
+    border-radius: 10px !important;
+    background: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg)) !important;
+    color: var(--primary-color) !important;
+    font-size: var(--fs-floor);
+    font-weight: 850;
+    cursor: pointer;
+}
 .driver-form-save { width:100%; min-height:42px; margin-top:11px; border:1px solid var(--primary-color); border-radius:12px; background:var(--primary-color); color:#fff; font-size:var(--fs-floor); font-weight:850; }
 
 .car-driver-link-settings {
@@ -2656,84 +2685,6 @@ textarea::placeholder {
 .last-backup-status.overdue {
     color: var(--sunday-color);
     font-weight: 700;
-}
-
-/* 메인 화면 상단의 백업 유도 배너. 경고 톤은 --sunday-color를 은은하게 섞어(color-mix)
-   기존 카드 스타일(둥근 모서리, 여백)과 자연스럽게 어울리도록 한다. */
-.backup-reminder-banner {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 14px;
-    padding: 14px 16px;
-    border: 1px solid color-mix(in srgb, var(--sunday-color) 30%, var(--border-color));
-    border-radius: 18px;
-    background: color-mix(in srgb, var(--sunday-color) 6%, var(--card-bg));
-    box-shadow: var(--shadow-sm);
-}
-
-.backup-reminder-banner.hidden {
-    display: none;
-}
-
-/* Supabase 로그인 상태(클라우드에 이미 자동 백업 중)일 때 쓰는 차분한 톤 — 위급함을
-   나타내는 --sunday-color 대신 카드 기본색/--primary-color를 쓴다. */
-.backup-reminder-banner.calm {
-    border-color: var(--border-color);
-    background: var(--card-bg);
-}
-
-.backup-reminder-banner.calm .backup-reminder-copy strong {
-    color: var(--primary-color);
-}
-
-.backup-reminder-banner.calm .backup-reminder-btn {
-    background: var(--primary-color);
-}
-
-.backup-reminder-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.backup-reminder-copy strong {
-    color: var(--sunday-color);
-    font-size: var(--fs-3);
-    font-weight: 800;
-}
-
-.backup-reminder-copy span {
-    color: var(--sub-text-color);
-    font-size: var(--fs-floor);
-    line-height: 1.5;
-}
-
-.backup-reminder-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-    flex: none;
-}
-
-.backup-reminder-btn {
-    min-height: 36px;
-    padding: 0 14px;
-    border: 0;
-    border-radius: 12px;
-    background: var(--sunday-color);
-    color: #fff;
-    font-size: var(--fs-2);
-    font-weight: 800;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-.backup-reminder-close {
-    color: var(--sub-text-color);
 }
 
 /* 내역서 스타일 */

@@ -1262,6 +1262,41 @@ function generateDriverInviteCode(targetInputId = 'linkedDriverInviteCode') {
     if (input) input.value = code;
 }
 
+// 기사 연동 초대코드를 기사 연락처로 문자 발송한다("기사 연동 관리" 화면과 차량등록의 2차
+// 기사연동 모달 양쪽에서 재사용). 실제 발송은 서버 SMS API가 아니라 기기의 문자 앱을
+// sms: 스킴으로 열어주는 방식이라 별도 발송 인프라/RLS가 필요 없다.
+function sendDriverInviteSms(source = 'management') {
+    const isManagement = source === 'management';
+    const name = isManagement
+        ? document.getElementById('linkedDriverName')?.value.trim()
+        : document.getElementById('carInviteDriverName')?.value.trim();
+    const phone = isManagement
+        ? document.getElementById('linkedDriverPhone')?.value.trim()
+        : document.getElementById('carInvitePhone')?.value.trim();
+    const code = isManagement
+        ? document.getElementById('linkedDriverInviteCode')?.value.trim()
+        : document.getElementById('carInviteCode')?.value.trim();
+    const vehicle = isManagement
+        ? document.getElementById('linkedDriverVehicle')?.value.trim()
+        : document.getElementById('carInviteVehicleNumber')?.value.trim();
+
+    if (!phone || phone.replace(/\D/g, '').length < 10) {
+        showToastMessage('기사 전화번호를 먼저 올바르게 입력해 주세요.');
+        return;
+    }
+    if (!code || !/^\d{6}$/.test(code)) {
+        showToastMessage('6자리 초대 코드를 먼저 생성해 주세요.');
+        return;
+    }
+
+    const settings = getUserSettings();
+    const ownerDisplayName = settings.bizName || settings.userName || '운송사';
+    const message = `[운행일지] 안녕하세요, ${ownerDisplayName}입니다.${name ? ` ${name}기사님,` : ''}\n${vehicle ? `[${vehicle}] 차량 ` : ''}소속 기사 연동 초대 코드입니다.\n\n▶ 초대 코드: ${code}\n\n운행일지 앱 실행 후 [마이페이지 > 소속 연결]에서 위 코드를 입력해 주세요.`;
+
+    const separator = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? '&' : '?';
+    window.location.href = `sms:${phone}${separator}body=${encodeURIComponent(message)}`;
+}
+
 function populateLinkedDriverVehicleOptions() {
     const datalist = document.getElementById('linkedDriverVehicleOptions');
     if (!datalist) return;
@@ -3002,6 +3037,10 @@ function showCustomerCenter(returnPage = 'main') {
     setUtilityReturnPage(returnPage);
     hideAllPages();
     document.getElementById('customerCenterPage').classList.remove('hidden');
+    // 이전 방문에서 "1:1 문의" 탭을 보고 있었더라도, 고객센터에 다시 들어올 때는 항상
+    // 첫 번째 탭(FAQ)이 기본으로 보이게 초기화한다.
+    const faqTabBtn = document.querySelector('.support-tab:first-child');
+    if (faqTabBtn) openSupportTab('faq', faqTabBtn);
 }
 
 function openSupportTab(tabName, button) {
@@ -3280,9 +3319,6 @@ function renderClientList() {
             const badgeText = client.commType === 'direct' ? `${client.commValue}원` : `${client.commValue}%`;
             badges += `<span class="management-badge commission">수수료 ${escapeDetailText(badgeText)}</span>`;
         }
-        if (client.fixedMonthlyOn) {
-            badges += `<span class="management-badge commission">월정액 ${parseCurrencyValue(client.fixedMonthlyAmount).toLocaleString()}원</span>`;
-        }
         if (client.taxInvoiceEnabled) {
             badges += '<span class="management-badge tax-invoice">계산서</span>';
         }
@@ -3334,11 +3370,6 @@ function toggleClientTaxInvoice() {
 function toggleClientComm() {
     const isChecked = document.getElementById('clientCommToggle').checked;
     setSettingsGroupExpanded(document.getElementById('clientCommSection'), isChecked);
-}
-
-function toggleClientFixedMonthly() {
-    const isChecked = document.getElementById('clientFixedMonthlyToggle').checked;
-    setSettingsGroupExpanded(document.getElementById('clientFixedMonthlySection'), isChecked);
 }
 
 function formatCommValue(input) {
@@ -3929,7 +3960,8 @@ function deleteClient(idx) {
             setUserSettings(settings);
             showToastMessage('삭제되었습니다.');
             renderClientList();
-            buildCalendar(); 
+            populateFixedClientSelects();
+            buildCalendar();
         }
     });
 }
@@ -3946,6 +3978,29 @@ function populateClientDataList() {
             dataList.appendChild(option);
         });
     }
+}
+
+// "고정 노선" 설정의 "고정 거래처 연동" 드롭다운(메인/기사차량 공용)을 등록된 거래처 목록으로
+// 채운다. 거래처를 추가/삭제/이름변경할 때마다(saveClient), 그리고 설정 화면을 열 때마다
+// (loadSettings) 다시 호출해서 최신 목록을 유지한다.
+function populateFixedClientSelects() {
+    const settings = getUserSettings();
+    const clients = settings.clients || [];
+    ['fixedClientSelect', 'subFixedClientSelect'].forEach(selectId => {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">미지정</option>';
+        clients.forEach(c => {
+            if (!c.companyName) return;
+            const opt = document.createElement('option');
+            opt.value = c.companyName;
+            opt.textContent = c.companyName;
+            select.appendChild(opt);
+        });
+        select.value = currentVal || '';
+        select.parentElement?._dropdownSync?.();
+    });
 }
 
 function populateLocationDataLists() {
@@ -4265,7 +4320,7 @@ function getCarBusinessInfo(car, settings = getUserSettings()) {
     const ownerBiz = {
         name: settings.bizName || '',
         bizNumber: settings.bizNumber || '',
-        representative: settings.userName || '',
+        representative: settings.bizRepresentative || settings.userName || '',
         address: settings.bizAddress || '',
         bizType: settings.bizType || '',
         bizItem: settings.bizItem || '',
@@ -4306,7 +4361,7 @@ function isVehicleRevenueSharedWithOwner(car) {
 // - 그마저도 없는(아직 사업자정보를 안 채운) 기사차량 → 차량번호 기준으로 키를 만들어, 서로
 //   다른 미입력 차량끼리도 섞이지 않게 한다(요구사항 18: "합치는 것보다 분리를 우선한다").
 function getVehicleSupplierIdentity(car, settings = getUserSettings()) {
-    const ownerBiz = { sameAsOwner: true, name: settings.bizName || '', bizNumber: settings.bizNumber || '', representative: settings.userName || '', address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || '' };
+    const ownerBiz = { sameAsOwner: true, name: settings.bizName || '', bizNumber: settings.bizNumber || '', representative: settings.bizRepresentative || settings.userName || '', address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || '' };
     if (!car || car.type !== 'sub') {
         return { key: `owner:${ownerBiz.bizNumber || ownerBiz.name || 'default'}`, biz: ownerBiz, carLabel: '메인 차량', carNumber: null };
     }
@@ -4407,7 +4462,8 @@ function saveCarFromModal() {
                 bizNumber: resolvedBiz.bizNumber || '',
                 phone: driverPhone,
                 bank: document.getElementById('newBankName').value.trim(),
-                account: document.getElementById('newAccountNumber').value.trim()
+                account: document.getElementById('newAccountNumber').value.trim(),
+                accountHolder: document.getElementById('newAccountHolder')?.value.trim() || ''
             };
         }
     }
@@ -5726,6 +5782,7 @@ function commitSettings() {
     
     settings.fixedOn = document.getElementById('fixedToggle').checked;
     settings.unitPrice = document.getElementById('unitPrice').value;
+    settings.fixedClient = document.getElementById('fixedClientSelect') ? document.getElementById('fixedClientSelect').value : '';
     settings.palletOn = document.getElementById('palletToggle').checked;
     settings.palletPrice = document.getElementById('palletPrice').value;
     settings.runCountToggle = document.getElementById('runCountToggle') ? document.getElementById('runCountToggle').checked : false;
@@ -5747,6 +5804,7 @@ function commitSettings() {
 
         settings.subFixedOn = document.getElementById('subFixedToggle').checked;
         settings.subUnitPrice = document.getElementById('subUnitPrice').value;
+        settings.subFixedClient = document.getElementById('subFixedClientSelect') ? document.getElementById('subFixedClientSelect').value : '';
         settings.subPalletOn = document.getElementById('subPalletToggle').checked;
         settings.subPalletPrice = document.getElementById('subPalletPrice').value;
         
@@ -5772,6 +5830,7 @@ function savePersonalInfo() {
 function commitPersonalInfo() {
     const settings = getUserSettings();
     settings.bizName = document.getElementById('bizName').value;
+    settings.bizRepresentative = document.getElementById('bizRepresentative')?.value || '';
     settings.bizNumber = document.getElementById('bizNumber').value;
     settings.bizAddress = document.getElementById('bizAddress')?.value || '';
     settings.bizType = document.getElementById('bizType')?.value || '';
@@ -5781,6 +5840,7 @@ function commitPersonalInfo() {
     settings.userPhone = document.getElementById('userPhone').value;
     settings.bankName = document.getElementById('bankName').value;
     settings.accountNumber = document.getElementById('accountNumber').value;
+    settings.accountHolder = document.getElementById('accountHolder')?.value || '';
     setUserSettings(settings);
 }
 
@@ -5800,6 +5860,11 @@ function loadSettings() {
         
         document.getElementById('fixedToggle').checked = !!savedSettings.fixedOn;
         document.getElementById('unitPrice').value = savedSettings.unitPrice || '';
+        populateFixedClientSelects();
+        if (document.getElementById('fixedClientSelect')) {
+            document.getElementById('fixedClientSelect').value = savedSettings.fixedClient || '';
+            document.getElementById('fixedClientSelect').parentElement?._dropdownSync?.();
+        }
         document.getElementById('palletToggle').checked = !!savedSettings.palletOn;
         document.getElementById('palletPrice').value = savedSettings.palletPrice || '';
         if (document.getElementById('runCountToggle')) document.getElementById('runCountToggle').checked = !!savedSettings.runCountToggle;
@@ -5824,6 +5889,10 @@ function loadSettings() {
             
             document.getElementById('subFixedToggle').checked = !!savedSettings.subFixedOn;
             document.getElementById('subUnitPrice').value = savedSettings.subUnitPrice || '';
+            if (document.getElementById('subFixedClientSelect')) {
+                document.getElementById('subFixedClientSelect').value = savedSettings.subFixedClient || '';
+                document.getElementById('subFixedClientSelect').parentElement?._dropdownSync?.();
+            }
             document.getElementById('subPalletToggle').checked = !!savedSettings.subPalletOn;
             document.getElementById('subPalletPrice').value = savedSettings.subPalletPrice || '';
 
@@ -5843,6 +5912,7 @@ function loadSettings() {
         }
 
         if(document.getElementById('bizName')) document.getElementById('bizName').value = savedSettings.bizName || '';
+        if(document.getElementById('bizRepresentative')) document.getElementById('bizRepresentative').value = savedSettings.bizRepresentative || '';
         if(document.getElementById('bizNumber')) document.getElementById('bizNumber').value = savedSettings.bizNumber || '';
         if(document.getElementById('bizAddress')) document.getElementById('bizAddress').value = savedSettings.bizAddress || '';
         if(document.getElementById('bizType')) document.getElementById('bizType').value = savedSettings.bizType || '';
@@ -5852,6 +5922,7 @@ function loadSettings() {
         document.getElementById('userPhone').value = savedSettings.userPhone || '';
         document.getElementById('bankName').value = savedSettings.bankName || '';
         document.getElementById('accountNumber').value = savedSettings.accountNumber || '';
+        if(document.getElementById('accountHolder')) document.getElementById('accountHolder').value = savedSettings.accountHolder || '';
 
         toggleFixedSubSettings();
         togglePalletSubSettings();
@@ -6034,53 +6105,54 @@ async function renderBackupStatus() {
     el.classList.toggle('overdue', !cloudSynced && (!lastBackup || days >= BACKUP_REMINDER_DAYS));
 }
 
-// 메인 화면 상단의 백업 유도 배너를 조건에 따라 보이거나 숨긴다.
-// - 비로그인 상태: 기존과 동일하게 백업한 적이 없거나 BACKUP_REMINDER_DAYS일이 넘게
-//   지났으면 경고 톤(빨간 계열)으로 노출한다.
+// 백업 필요 여부를 판단해 알림 패널용 알림 아이템 객체를 반환한다(필요 없으면 null).
+// 예전에는 이 판단 결과로 달력 상단 배너를 직접 켜고 껐지만, 이제는 알림 패널의 알림
+// 목록/뱃지 카운트에 통합됐다 — updateOverdueNotification()/renderNotificationPanel()이 이
+// 함수를 함께 쓴다.
+// - 비로그인 상태: 기존과 동일하게 백업한 적이 없거나 BACKUP_REMINDER_DAYS일이 넘게 지났으면 필요.
 // - Supabase 로그인 상태(클라우드에 이미 자동 백업 중): 훨씬 느슨한 기준(BACKUP_REMINDER_
-//   DAYS_CLOUD_SYNCED)으로만 노출하고, 문구도 "사라질 수 있다"는 위협적 표현 없이 안심시키는
-//   톤으로 바꾸며, 배너 자체도 .calm 클래스로 차분한 색상을 쓴다.
-// - 오늘 이미 닫기(dismissBackupReminder)를 눌렀다면 당일 안에는 다시 띄우지 않는다.
-async function checkBackupReminder() {
-    const banner = document.getElementById('backupReminderBanner');
-    if (!banner) return;
-
+//   DAYS_CLOUD_SYNCED)으로만 필요 판정하고, 문구도 안심시키는 톤으로 다르게 쓴다.
+// - "오늘 하루 닫기" 대신, 알림 카드를 스와이프로 지우면(dismissNotification) 그 백업
+//   시점 기준 키가 dismissedReceivableNotifications에 남아 같은 상태에서는 다시 뜨지 않는다
+//   (마지막 백업일이 바뀌면(=새로 백업하면) 키 자체가 달라져 자연스럽게 다시 평가된다).
+async function getBackupNotificationItem() {
     const cloudSynced = await isCloudBackupActive();
     const reminderDays = cloudSynced ? BACKUP_REMINDER_DAYS_CLOUD_SYNCED : BACKUP_REMINDER_DAYS;
     const lastBackup = getLastBackupDate();
     const days = getDaysSinceLastBackup();
     const needsBackup = !lastBackup || days >= reminderDays;
 
-    if (!needsBackup || localStorage.getItem('backupReminderDismissedDate') === getTodayDateKey()) {
-        banner.classList.add('hidden');
-        return;
+    if (!needsBackup) return null;
+
+    const key = `backup_reminder_${lastBackup ? lastBackup.getTime() : 'never'}`;
+    const dismissed = getDismissedNotificationKeys();
+    if (dismissed.has(key)) return null;
+
+    let message = '';
+    if (cloudSynced) {
+        message = lastBackup
+            ? `로컬 백업으로부터 ${days}일이 지났습니다. 클라우드 자동 저장과 함께 로컬 백업도 보관해 두세요.`
+            : '클라우드 자동 저장 중입니다. 만약을 위해 로컬 백업 파일도 함께 보관해 두세요.';
+    } else {
+        message = lastBackup
+            ? `마지막 백업으로부터 ${days}일이 지났습니다. 최신 데이터로 백업해 주세요.`
+            : '아직 백업한 적이 없습니다. 브라우저 데이터 삭제 시 기록이 사라질 수 있습니다.';
     }
 
-    const titleEl = document.getElementById('backupReminderTitle');
-    const textEl = document.getElementById('backupReminderText');
-    if (cloudSynced) {
-        if (!lastBackup) {
-            titleEl.textContent = '클라우드에 자동으로 백업되고 있어요.';
-            textEl.textContent = '그래도 만약을 위해 가끔 로컬 백업도 함께 받아두시는 걸 추천드려요.';
-        } else {
-            titleEl.textContent = `로컬 백업으로부터 ${days}일이 지났어요.`;
-            textEl.textContent = '클라우드에는 계속 자동으로 저장되고 있어요. 여유 있을 때 로컬 백업도 한 번 받아두시면 더 안심돼요.';
-        }
-    } else if (!lastBackup) {
-        titleEl.textContent = '아직 백업한 적이 없어요.';
-        textEl.textContent = '지금 이 브라우저에만 데이터가 저장되어 있습니다. 기기를 바꾸거나 브라우저 데이터가 지워지면 기록이 사라질 수 있어요.';
-    } else {
-        titleEl.textContent = `마지막 백업으로부터 ${days}일이 지났어요.`;
-        textEl.textContent = '최신 데이터로 다시 백업해 주세요.';
-    }
-    banner.classList.toggle('calm', cloudSynced);
-    banner.classList.remove('hidden');
+    return {
+        type: 'backup',
+        key: key,
+        title: '데이터 백업 권장',
+        message: message,
+        metaText: lastBackup ? `마지막 백업: ${formatBackupDateText(lastBackup)}` : '백업 이력 없음',
+        actionLabel: '지금 백업'
+    };
 }
 
-// 배너 닫기: 완전히 없애지 않고 "오늘 하루만" 숨긴다 — 조건이 여전히 유효하면 다음날 다시 뜬다.
-function dismissBackupReminder() {
-    localStorage.setItem('backupReminderDismissedDate', getTodayDateKey());
-    document.getElementById('backupReminderBanner')?.classList.add('hidden');
+// 예전에는 이 함수가 달력 상단 배너를 직접 켜고 껐지만, 이제 백업 알림은 알림 패널로
+// 통합됐다 — updateOverdueNotification()을 호출해 뱃지/목록 상태만 다시 계산하면 된다.
+function checkBackupReminder() {
+    updateOverdueNotification();
 }
 
 async function exportData() {
@@ -6393,15 +6465,23 @@ function buildCalendar() {
                     dayWorkCount += parseInt(record.fixedCount, 10);
                     let fAmount = record.fixedCount * fixedUnitPrice;
                     dayFare += fAmount;
-                    dayFixedFare += fAmount;
+                    // 고정 거래처가 지정돼 있으면 "기본 운송료"가 아니라 그 거래처 매출로
+                    // 집계한다(고정노선 거래처 연동) — dayFare(당일 총액)는 동일하게 유지되고,
+                    // 어느 버킷(기본요금 vs 거래처별)으로 잡히는지만 달라진다.
+                    const fixedClientName = isMain ? savedSettings.fixedClient : savedSettings.subFixedClient;
+                    if (fixedClientName) {
+                        monthFareByClient[fixedClientName] = (monthFareByClient[fixedClientName] || 0) + fAmount;
+                    } else {
+                        dayFixedFare += fAmount;
+                    }
                 }
-                
+
                 if (record.palletCount > 0 && activeFixedOn && activePalletOn) {
                     dayPalletFare += record.palletCount * palletUnitPrice;
                 }
-                
+
                 monthTotalDistance += getRecordTotalDistance(record);
-                
+
                 if (record.callDetails && record.callDetails.length > 0) {
                     record.callDetails.forEach(detail => {
                         let type = detail.distanceType || '';
@@ -6523,12 +6603,6 @@ function buildCalendar() {
         } else {
             cell.classList.add('empty');
         }
-    }
-
-    {
-        const { fareAdjustment, commAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, savedSettings);
-        monthTotalFare += fareAdjustment;
-        monthTotalCommission -= commAdjustment;
     }
 
     // 하단 미수금 미니 카드 노출 처리
@@ -7677,7 +7751,13 @@ function buildReportPage(isForExport = false) {
                     dayWorkCount += parseInt(record.fixedCount, 10);
                     let fAmt = record.fixedCount * fixedUnitPrice;
                     dayFare += fAmt;
-                    dayDefaultFare += fAmt;
+                    // 고정 거래처가 지정돼 있으면 그 거래처 매출로 집계한다(고정노선 거래처 연동).
+                    const fixedClientName = isMain ? savedSettings.fixedClient : savedSettings.subFixedClient;
+                    if (fixedClientName) {
+                        monthFareByClient[fixedClientName] = (monthFareByClient[fixedClientName] || 0) + fAmt;
+                    } else {
+                        dayDefaultFare += fAmt;
+                    }
                 }
                 totalMonthDistance += getRecordTotalDistance(record);
 
@@ -7757,11 +7837,6 @@ function buildReportPage(isForExport = false) {
         }
     }
 
-    {
-        const { fareAdjustment, commAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, savedSettings);
-        totalFare += fareAdjustment;
-        totalCommission -= commAdjustment;
-    }
 
     const container = document.getElementById('reportTableContainer');
     container.innerHTML = '';
@@ -8028,12 +8103,6 @@ function viewDetailReport(isForExport) {
         }
     }
 
-    {
-        const { fareAdjustment, commAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, savedSettings);
-        totalFare += fareAdjustment;
-        totalCommission -= commAdjustment;
-    }
-
     let tableHTML = '';
     const showClientColumn = clientFilter === 'ALL';
 
@@ -8194,6 +8263,7 @@ function resetCarForm() {
     updateDriverSettlementModeGuide();
     document.getElementById('newBankName').value = '';
     document.getElementById('newAccountNumber').value = '';
+    if (document.getElementById('newAccountHolder')) document.getElementById('newAccountHolder').value = '';
 
     // 차량 단위 사업자정보 — 기본값은 "내 사업자 정보와 동일" ON(요구사항 대부분의 기사차량이
     // 차주 사업자 하나로 운영될 것이므로, 매번 새 사업자를 입력해야 하는 부담을 줄인다).
@@ -8279,6 +8349,7 @@ function editCar(idx) {
                 if (car.personalInfo) {
                     document.getElementById('newBankName').value = car.personalInfo.bank || '';
                     document.getElementById('newAccountNumber').value = car.personalInfo.account || '';
+                    if (document.getElementById('newAccountHolder')) document.getElementById('newAccountHolder').value = car.personalInfo.accountHolder || '';
                 }
             } else {
                 selectInfoType('existing');
@@ -8830,19 +8901,22 @@ function getVisibleOverdueNotifications() {
     return getOverdueReceivableItems().filter(item => !dismissed.has(getNotificationItemKey(item)));
 }
 
-function updateOverdueNotification(announce = false) {
+async function updateOverdueNotification(announce = false) {
     const overdueItems = getVisibleOverdueNotifications();
+    const backupItem = await getBackupNotificationItem();
+    const totalCount = overdueItems.length + (backupItem ? 1 : 0);
+
     const badge = document.getElementById('overdueNotificationBadge');
     const notificationButton = document.getElementById('notificationBtn');
     if (!badge || !notificationButton) return;
 
-    badge.hidden = overdueItems.length === 0;
-    badge.textContent = overdueItems.length > 99 ? '99+' : String(overdueItems.length);
-    const label = overdueItems.length > 0 ? `연체 미수금 ${overdueItems.length}건` : '새로운 알림 없음';
+    badge.hidden = totalCount === 0;
+    badge.textContent = totalCount > 99 ? '99+' : String(totalCount);
+    const label = totalCount > 0 ? `확인 필요한 알림 ${totalCount}건` : '새로운 알림 없음';
     notificationButton.title = label;
     notificationButton.setAttribute('aria-label', label);
 
-    if (!announce || overdueItems.length === 0) return;
+    if (!announce || totalCount === 0) return;
     const now = new Date();
     const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const signature = overdueItems
@@ -8850,31 +8924,60 @@ function updateOverdueNotification(announce = false) {
         .sort()
         .join('|');
     // 이제 여러 차량 로그를 합산한 결과이므로 activeLogId로 더 이상 범위를 좁히지 않는다
-    // (그러면 로그를 전환할 때마다 같은 연체 알림 토스트가 다시 뜨게 된다).
-    const alertKey = `${todayKey}|${signature}`;
+    // (그러면 로그를 전환할 때마다 같은 연체 알림 토스트가 다시 뜨게 된다). 백업 알림 유무도
+    // 시그니처에 포함해서, 연체 미수금은 그대로인데 백업 알림만 새로 생긴/사라진 경우에도
+    // 토스트가 다시 안내되게 한다.
+    const signatureWithBackup = `${signature}|backup:${backupItem ? backupItem.key : '0'}`;
+    const alertKey = `${todayKey}|${signatureWithBackup}`;
     if (localStorage.getItem('lastOverdueReceivableAlert') === alertKey) return;
 
     localStorage.setItem('lastOverdueReceivableAlert', alertKey);
-    const total = overdueItems.reduce((sum, item) => sum + item.remainingAmount, 0);
-    showToastMessage(`연체 미수금 ${overdueItems.length}건 · ${total.toLocaleString()}원이 있습니다.`);
+    if (overdueItems.length > 0) {
+        const total = overdueItems.reduce((sum, item) => sum + item.remainingAmount, 0);
+        showToastMessage(`연체 미수금 ${overdueItems.length}건 · ${total.toLocaleString()}원이 있습니다.`);
+    } else if (backupItem) {
+        showToastMessage('데이터 백업을 권장합니다. 알림 메뉴를 확인해 주세요.');
+    }
 }
 
-function renderNotificationPanel() {
+async function renderNotificationPanel() {
     const container = document.getElementById('notificationPanelList');
     if (!container) return;
 
     const overdueItems = getVisibleOverdueNotifications()
         .sort((a, b) => a.paymentDueDate.localeCompare(b.paymentDueDate));
+    const backupItem = await getBackupNotificationItem();
 
-    if (overdueItems.length === 0) {
+    if (overdueItems.length === 0 && !backupItem) {
         container.innerHTML = '<div class="notification-panel-empty">현재 확인이 필요한 알림이 없습니다.</div>';
         return;
     }
 
     // 서브 차량이 하나도 없는(메인만 쓰는) 계정에는 차량 구분 배지를 아예 노출하지 않는다.
     const hasSubCars = (getUserSettings().cars || []).some(car => car.type === 'sub');
+    let html = '';
 
-    container.innerHTML = overdueItems.map(item => `
+    // 백업 알림은 최상단에, 전용 카드로 렌더링한다("지금 백업" 버튼은 목록 클릭(연체 미수금
+    // 이동)과 별개로 즉시 exportData()를 실행해야 하므로 stopPropagation으로 분리한다).
+    if (backupItem) {
+        html += `
+            <div class="notification-swipe-shell" data-notification-key="${escapeDetailText(backupItem.key)}">
+                <div class="notification-delete-backdrop" aria-hidden="true"><span>삭제</span><span>삭제</span></div>
+                <div class="notification-panel-item backup-notification-item">
+                    <div class="notification-panel-item-head">
+                        <strong style="color: var(--primary-color);">${escapeDetailText(backupItem.title)}</strong>
+                        <button type="button" class="backup-quick-btn" onclick="event.stopPropagation(); runSaveAction(this, 'backup-export', exportData);">${escapeDetailText(backupItem.actionLabel)}</button>
+                    </div>
+                    <p class="notification-panel-item-message">${escapeDetailText(backupItem.message)}</p>
+                    <div class="notification-panel-item-meta">
+                        <span>${escapeDetailText(backupItem.metaText)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    html += overdueItems.map(item => `
         <div class="notification-swipe-shell" data-notification-key="${escapeDetailText(getNotificationItemKey(item))}">
             <div class="notification-delete-backdrop" aria-hidden="true"><span>삭제</span><span>삭제</span></div>
             <button type="button" class="notification-panel-item" onclick="handleNotificationItemClick(event)">
@@ -8892,6 +8995,7 @@ function renderNotificationPanel() {
         </div>
     `).join('');
 
+    container.innerHTML = html;
     initNotificationSwipeInteractions();
 }
 
@@ -9488,29 +9592,6 @@ function getMonthlyDriverTotals(data, monthKey, link = null) {
     return { grossAmount, insuranceAmount, count };
 }
 
-// 거래처 월정액(정액) 계약 반영: 건별로 합산된 거래처 운송료를 월 정액으로 대체하고,
-// 해당 거래처의 건별 수수료 합산분은 차감한다. 그 달에 운행 기록이 있는 거래처에만 적용된다.
-function applyFixedMonthlyClientOverrides(monthFareByClient, monthCommByClient, clientCommLabels, settings) {
-    let fareAdjustment = 0;
-    let commAdjustment = 0;
-    (settings.clients || []).forEach(client => {
-        if (!client?.fixedMonthlyOn) return;
-        const name = client.companyName;
-        if (!name || !Object.prototype.hasOwnProperty.call(monthFareByClient, name)) return;
-
-        const fixedAmount = parseCurrencyValue(client.fixedMonthlyAmount);
-        const previousFare = monthFareByClient[name] || 0;
-        fareAdjustment += (fixedAmount - previousFare);
-        monthFareByClient[name] = fixedAmount;
-
-        if (monthCommByClient[name]) {
-            commAdjustment += monthCommByClient[name];
-            monthCommByClient[name] = 0;
-        }
-        clientCommLabels[name] = '월정액 계약';
-    });
-    return { fareAdjustment, commAdjustment };
-}
 
 function calculateDriverVehicleCommission(car, grossAmount, count) {
     if (!car?.commEnabled || !car.commission) return 0;
@@ -9552,7 +9633,6 @@ function getMonthlyFareRevenue(monthKey) {
 
         let vehicleFare = 0;
         let vehicleCount = 0;
-        const monthFareByClient = {};
 
         Object.entries(source.data || {}).forEach(([dateKey, record]) => {
             if (!dateKey.startsWith(monthKey) || !record || typeof record !== 'object' || record.isOff) return;
@@ -9581,14 +9661,8 @@ function getMonthlyFareRevenue(monthKey) {
 
                 const gross = parseCurrencyValue(detail?.fare);
                 vehicleFare += gross;
-                const clientName = detail?.client ? String(detail.client).trim() : '';
-                if (clientName) monthFareByClient[clientName] = (monthFareByClient[clientName] || 0) + gross;
             });
         });
-
-        // 거래처 월정액 계약이 있으면 buildCalendar()와 동일하게 건별 합산분을 정액으로 대체한다.
-        const { fareAdjustment } = applyFixedMonthlyClientOverrides(monthFareByClient, {}, {}, settings);
-        vehicleFare += fareAdjustment;
 
         totalFare += vehicleFare;
         tripCount += vehicleCount;
@@ -9956,7 +10030,7 @@ function saveTaxInvoiceDraft() {
 // 쓴다 — 이번 작업은 기사 정산 계산서와 섞지 않는다(요구사항 21).
 function getTaxInvoiceSupplierBiz(item, settings = getUserSettings()) {
     if (item?.flow === 'sales' && item.supplierBiz) return item.supplierBiz;
-    return { name: settings.bizName || '', bizNumber: settings.bizNumber || '', representative: settings.userName || '', address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || '' };
+    return { name: settings.bizName || '', bizNumber: settings.bizNumber || '', representative: settings.bizRepresentative || settings.userName || '', address: settings.bizAddress || '', bizType: settings.bizType || '', bizItem: settings.bizItem || '', email: settings.bizEmail || '' };
 }
 
 function changeTaxInvoiceStatus(encodedPartyKey, status) {
@@ -10251,10 +10325,6 @@ function openClientModal(index = -1) {
         document.getElementById('clientCommValue').value = client.commValue || '';
         toggleClientComm();
 
-        document.getElementById('clientFixedMonthlyToggle').checked = !!client.fixedMonthlyOn;
-        document.getElementById('clientFixedMonthlyAmount').value = client.fixedMonthlyAmount ? parseCurrencyValue(client.fixedMonthlyAmount).toLocaleString() : '';
-        toggleClientFixedMonthly();
-
         const savedPaymentTerm = client.paymentTerm || 'next_month_end';
         document.getElementById('clientPaymentTerm').value = savedPaymentTerm === 'second_month_end' ? 'second_month_day' : savedPaymentTerm;
         document.getElementById('clientPaymentTermValue').value = savedPaymentTerm === 'second_month_end' ? '31' : (client.paymentTermValue || '');
@@ -10277,10 +10347,6 @@ function openClientModal(index = -1) {
         document.getElementById('clientCommToggle').checked = false;
         setClientCommType('percent');
         document.getElementById('clientCommValue').value = '';
-
-        document.getElementById('clientFixedMonthlyToggle').checked = false;
-        document.getElementById('clientFixedMonthlyAmount').value = '';
-        toggleClientFixedMonthly();
 
         document.getElementById('clientPaymentTerm').value = 'next_month_end';
         document.getElementById('clientPaymentTermValue').value = '';
@@ -10309,8 +10375,6 @@ function saveClient() {
     const commEnabled = isPinned ? document.getElementById('clientCommToggle').checked : false;
     const commType = document.getElementById('clientCommType').value;
     const commValue = document.getElementById('clientCommValue').value.trim();
-    const fixedMonthlyOn = document.getElementById('clientFixedMonthlyToggle').checked;
-    const fixedMonthlyAmount = document.getElementById('clientFixedMonthlyAmount').value.trim();
     const paymentTerm = document.getElementById('clientPaymentTerm').value;
     const paymentTermValue = document.getElementById('clientPaymentTermValue').value.trim();
 
@@ -10329,12 +10393,6 @@ function saveClient() {
     if (commEnabled && !commValue) {
         markFieldError('clientCommValue');
         document.getElementById('clientCommValue').focus();
-        return;
-    }
-
-    if (fixedMonthlyOn && !fixedMonthlyAmount) {
-        markFieldError('clientFixedMonthlyAmount');
-        document.getElementById('clientFixedMonthlyAmount').focus();
         return;
     }
 
@@ -10376,8 +10434,6 @@ function saveClient() {
         commEnabled,
         commType,
         commValue,
-        fixedMonthlyOn,
-        fixedMonthlyAmount,
         paymentTerm,
         paymentTermValue
     };
@@ -10393,6 +10449,7 @@ function saveClient() {
     setUserSettings(settings);
     closeClientModal();
     renderClientList();
+    populateFixedClientSelects();
     buildCalendar();
 
     if (clientModalOpenedFromCallDetail) {

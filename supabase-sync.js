@@ -389,16 +389,31 @@ async function initSettingsFromSupabase(userId) {
     // 일부 실패, 방금 추가했지만 아직 백그라운드 동기화가 못 끝난 항목 등이 하이드레이션 한
     // 번에 조용히 사라져버릴 수 있다(실제로 재현해서 확인한 문제).
     const previousSettings = getUserSettings();
-    const unsyncedLocalCars = (Array.isArray(previousSettings.cars) ? previousSettings.cars : []).filter(c => c && !c.supabaseId);
-    const unsyncedLocalClients = (Array.isArray(previousSettings.clients) ? previousSettings.clients : []).filter(c => c && !c.supabaseId);
+    const previousCars = Array.isArray(previousSettings.cars) ? previousSettings.cars : [];
+    const previousClients = Array.isArray(previousSettings.clients) ? previousSettings.clients : [];
+    const unsyncedLocalCars = previousCars.filter(c => c && !c.supabaseId);
+    const unsyncedLocalClients = previousClients.filter(c => c && !c.supabaseId);
+
+    // 안전장치: 이 기기에 이미 "서버에 실제로 동기화됐던" 차량/거래처(supabaseId 있음)가
+    // 있는데, 이번 조회에서 서버가 vehicles/clients를 0건(또는 에러)으로 반환했다면 — 이건
+    // 거의 항상 "차주가 전부 실제로 지웠다"가 아니라 네트워크 문제 등 일시적 조회 실패다.
+    // 그런 응답을 그대로 믿고 로컬 목록을 통째로 비우면 안 되므로, 그 경우엔 서버 결과를
+    // 신뢰하지 않고 이 기기의 기존 목록을 그대로 유지한다(실제 삭제는 deleteCar/deleteClient가
+    // 이미 이 기기 로컬에도 즉시 반영해 두므로, 정상적인 삭제까지 막지는 않는다).
+    const previousSyncedCars = previousCars.filter(c => c && c.supabaseId);
+    const previousSyncedClients = previousClients.filter(c => c && c.supabaseId);
+    const carsLookSuspiciouslyEmpty = vehiclesError || (cars.length === 0 && previousSyncedCars.length > 0);
+    const clientsLookSuspiciouslyEmpty = clientsError || (clientsList.length === 0 && previousSyncedClients.length > 0);
+    if (carsLookSuspiciouslyEmpty) console.warn('[Supabase] vehicles 조회가 비정상적으로 비어 있어 로컬 차량 목록을 그대로 유지합니다.');
+    if (clientsLookSuspiciouslyEmpty) console.warn('[Supabase] clients 조회가 비정상적으로 비어 있어 로컬 거래처 목록을 그대로 유지합니다.');
 
     // 위에서 살려둔 "아직 안 올라간" 항목이 사실은 서버에 이미 올라간 것과 같은 차량/거래처일
     // 수 있다(예: 방금 동기화가 끝났는데 로컬 supabaseId 반영이 이 하이드레이션보다 아주
     // 살짝 늦게 붙는 경우). 그대로 합치면 화면에 같은 차량이 두 번 보이는 문제로 이어지므로,
     // 합친 뒤 반드시 한 번 더 정리한다(메인 차량은 최대 1대, 기사차량은 번호 기준 — 실제로
     // 이 경합으로 중복이 생기는 걸 재현해서 이 정리 로직을 추가했다).
-    const mergedCars = [...cars, ...unsyncedLocalCars];
-    const mergedClients = [...clientsList, ...unsyncedLocalClients];
+    const mergedCars = carsLookSuspiciouslyEmpty ? previousCars : [...cars, ...unsyncedLocalCars];
+    const mergedClients = clientsLookSuspiciouslyEmpty ? previousClients : [...clientsList, ...unsyncedLocalClients];
     const dedupedCars = typeof dedupeCars === 'function' ? dedupeCars(mergedCars).cars : mergedCars;
     const dedupedClients = typeof dedupeClients === 'function' ? dedupeClients(mergedClients).clients : mergedClients;
 
@@ -657,6 +672,7 @@ async function initWorkDataFromSupabase(cars) {
                 client.from('fuel_records').select('*').eq('vehicle_id', vehicleId).order('sequence', { ascending: true }),
                 client.from('misc_expense_records').select('*').eq('vehicle_id', vehicleId).order('sequence', { ascending: true })
             ]);
+            if (dailyRes.error) throw dailyRes.error;
 
             const byDate = {};
             (dailyRes.data || []).forEach(row => {
@@ -673,15 +689,29 @@ async function initWorkDataFromSupabase(cars) {
             (fuelRes.data || []).forEach(row => { if (byDate[row.work_date]) byDate[row.work_date].fuelItems.push(row.raw && typeof row.raw === 'object' ? row.raw : {}); });
             (miscRes.data || []).forEach(row => { if (byDate[row.work_date]) byDate[row.work_date].miscItems.push(row.raw && typeof row.raw === 'object' ? row.raw : {}); });
 
-            localStorage.setItem(key, JSON.stringify(byDate));
+            // 서버 응답으로 완전히 덮어쓰지 않고, 날짜 단위로 "로컬 위에 서버를 얹는" 방식으로
+            // 합친다. 서버가 가진 날짜는 서버 값이 우선(정상 케이스)이지만, 서버 응답에 없는
+            // 날짜(아직 배경 동기화 큐에 남아있는 최근 입력분 등)는 로컬 값을 그대로 보존한다.
+            // 예전에는 매번 localStorage.setItem(key, JSON.stringify(byDate))로 통째로 덮어써서,
+            // 쿼리가 일시적으로 빈 배열을 반환하면(네트워크 문제 등, 명시적 에러 없이도 발생 가능)
+            // 로컬에 이미 있던 운행기록이 통째로 사라지는 문제가 있었다.
+            let localExisting = {};
+            try {
+                localExisting = JSON.parse(localStorage.getItem(key) || '{}') || {};
+            } catch (error) {
+                localExisting = {};
+            }
+            const mergedByDate = { ...localExisting, ...byDate };
+
+            localStorage.setItem(key, JSON.stringify(mergedByDate));
 
             // 이번 세션의 동기화 스냅샷도 방금 받아온 서버 상태로 맞춰서, 로그인 직후 첫 저장 때
             // 불필요하게 전체 재업로드하지 않도록 한다.
             const snapshot = {};
-            Object.keys(byDate).forEach(date => { snapshot[date] = JSON.stringify(byDate[date]); });
+            Object.keys(mergedByDate).forEach(date => { snapshot[date] = JSON.stringify(mergedByDate[date]); });
             __supabaseWorkDataSyncedSnapshot[logId] = snapshot;
         } catch (error) {
-            console.error('운행기록 Supabase 로드 실패:', logId, error);
+            console.error('운행기록 Supabase 로드 실패(기존 로컬 데이터 보존):', logId, error);
         }
     }
 }
@@ -856,9 +886,15 @@ async function hydrateFromSupabaseAndMigrate() {
         }
     }
 
-    const settings = await initSettingsFromSupabase(user.id);
-    await initWorkDataFromSupabase(settings.cars || []);
+    let settings = await initSettingsFromSupabase(user.id);
 
+    // 기사연동 상태 복원은 반드시 운행기록(initWorkDataFromSupabase)보다 먼저 끝내야 한다.
+    // 연동된 소속기사의 'main' 로그는 resolveVehicleIdForLogId()가 employerLink.vehicleId를
+    // 봐서 조회 대상을 정하는데, 이 값이 아직 로컬에 복원되기 전(특히 새 기기 첫 로그인처럼
+    // employerLink 캐시 자체가 없는 경우)에 initWorkDataFromSupabase가 먼저 돌면 대상
+    // vehicle_id를 못 찾아 건너뛰고, 그 결과 기사 앱에 운행일지가 0건으로 보이는 문제가
+    // 있었다(실제로 재현되는 순서 문제였다). 그래서 이 블록을 먼저 실행한다.
+    //
     // 차주 계정이면 기사 연동 목록도 로그인 시점에 서버 기준으로 갱신해 둔다.
     // 이걸 안 하면 settings.driverLinks가 예전 캐시(연동 전 상태 등)에 머물러 있어서,
     // 로그인 직후 햄버거 메뉴에 "OOOO 관리"(연동 기사 바로가기) 항목이 빠져 보이고,
@@ -877,10 +913,9 @@ async function hydrateFromSupabaseAndMigrate() {
         // 미연결 상태로 진입한다"는 요구사항의 핵심 지점.
         try {
             await syncEmployerLinkFromSupabase();
-            // 로그인/새로고침 시점에도 연결된 차량의 최신 사업자정보를 함께 반영한다. 이걸
-            // 개인정보 화면 진입 시에만 하면, 로그인 직후 메인 화면 등 다른 곳에 머무는 동안은
-            // 여전히 예전 사업자정보가 남아있게 된다(요구사항: 로그인/새로고침/개인정보 진입
-            // 세 시점 모두 최신값이어야 함).
+            // 로그인/새로고침 시점에도 연결된 차량의 최신 사업자정보(+ 차량번호/톤수)를 함께
+            // 반영한다. 이걸 개인정보 화면 진입 시에만 하면, 로그인 직후 메인 화면 등 다른
+            // 곳에 머무는 동안은 여전히 예전 사업자정보가 남아있게 된다.
             const refreshedSettings = getUserSettings();
             const link = refreshedSettings.employerLink;
             if (link?.status === 'linked' && link.ownerId && typeof applyEmployerAutoFilledInfo === 'function') {
@@ -890,6 +925,11 @@ async function hydrateFromSupabaseAndMigrate() {
             console.error('[Supabase] 로그인 시 기사 연동 상태/사업자정보 갱신 실패(기존 캐시로 계속 진행):', error);
         }
     }
+
+    // employerLink 복원(및 그에 따른 mainCar 자동입력)이 방금 settings.cars를 바꿨을 수 있으니
+    // 최신 상태로 다시 읽어서 운행기록을 불러온다.
+    settings = getUserSettings();
+    await initWorkDataFromSupabase(settings.cars || []);
 
     // 지금 화면에 보이는 로그(activeLogId)를 새로 불러온 데이터로 갱신
     if (typeof loadWorkDataForLog === 'function') {

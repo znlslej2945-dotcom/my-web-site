@@ -39,7 +39,7 @@
             <div class="notification-panel-header">
                 <div>
                     <h2 id="notificationPanelTitle">알림</h2>
-                    <p>확인이 필요한 정산 내역입니다.</p>
+                    <p>확인이 필요한 알림 내역입니다.</p>
                 </div>
                 <button type="button" class="icon-btn notification-panel-close" onclick="closeNotificationPanel()" title="알림 닫기" aria-label="알림 닫기">
                     <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -261,19 +261,6 @@
 
                     <button class="arrow-btn" onclick="changeMonth(1)" title="다음 달">
                         <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    </button>
-                </div>
-            </div>
-
-            <div id="backupReminderBanner" class="backup-reminder-banner hidden">
-                <div class="backup-reminder-copy">
-                    <strong id="backupReminderTitle">아직 백업한 적이 없어요.</strong>
-                    <span id="backupReminderText">지금 이 브라우저에만 데이터가 저장되어 있습니다. 기기를 바꾸거나 브라우저 데이터가 지워지면 기록이 사라질 수 있어요.</span>
-                </div>
-                <div class="backup-reminder-actions">
-                    <button type="button" class="backup-reminder-btn" onclick="runSaveAction(this, 'backup-export', exportData)">지금 백업하기</button>
-                    <button type="button" class="icon-btn backup-reminder-close" onclick="dismissBackupReminder()" title="오늘 하루 닫기" aria-label="오늘 하루 닫기">
-                        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
             </div>
@@ -647,6 +634,10 @@
                         <input type="text" id="bizName" class="input-box" placeholder="사업자명을 입력하세요" oninput="savePersonalInfo()">
                     </div>
                     <div class="form-group">
+                        <label for="bizRepresentative">대표자명</label>
+                        <input type="text" id="bizRepresentative" class="input-box" placeholder="대표자명을 입력하세요" oninput="savePersonalInfo()">
+                    </div>
+                    <div class="form-group">
                         <label for="bizNumber">사업자 번호</label>
                         <input type="text" id="bizNumber" class="input-box" placeholder="사업자 번호를 입력하세요" oninput="savePersonalInfo()">
                     </div>
@@ -691,6 +682,10 @@
                     <div class="form-group">
                         <label for="accountNumber">계좌번호</label>
                         <input type="text" id="accountNumber" class="input-box" inputmode="numeric" placeholder="계좌번호 입력" oninput="savePersonalInfo()">
+                    </div>
+                    <div class="form-group">
+                        <label for="accountHolder">예금주 (계좌 명의)</label>
+                        <input type="text" id="accountHolder" class="input-box" placeholder="예금주명을 입력하세요" oninput="savePersonalInfo()">
                     </div>
                 </section>
 
@@ -786,7 +781,7 @@
                 <div class="driver-form-grid">
                     <div class="form-group"><label for="linkedDriverName">기사 이름</label><input type="text" id="linkedDriverName" class="input-box" placeholder="기사 이름" oninput="clearFieldError(this)"></div>
                     <div class="form-group"><label for="linkedDriverPhone">기사 전화번호</label><input type="tel" id="linkedDriverPhone" class="input-box" placeholder="010-0000-0000" oninput="formatPhoneNumber(this)"></div>
-                    <div class="form-group driver-form-wide"><label for="linkedDriverInviteCode">초대 코드</label><div class="driver-code-input"><input type="text" id="linkedDriverInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateDriverInviteCode()">코드 생성</button></div></div>
+                    <div class="form-group driver-form-wide"><label for="linkedDriverInviteCode">초대 코드</label><div class="driver-code-input"><input type="text" id="linkedDriverInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateDriverInviteCode()">코드 생성</button><button type="button" class="driver-sms-btn" onclick="sendDriverInviteSms('management')">문자 발송</button></div></div>
                     <div class="form-group driver-form-wide"><label for="linkedDriverVehicle">할당 차량</label><input type="text" id="linkedDriverVehicle" class="input-box" list="linkedDriverVehicleOptions" placeholder="차량번호 입력" oninput="handleLinkedDriverVehicleInput(this)"><datalist id="linkedDriverVehicleOptions"></datalist></div>
                     <div class="form-group"><label for="linkedDriverAssignmentStart">할당 시작일</label><input type="date" id="linkedDriverAssignmentStart" class="input-box" oninput="clearFieldError(this)"></div>
                     <div class="form-group"><label for="linkedDriverAssignmentEnd">할당 종료일</label><input type="date" id="linkedDriverAssignmentEnd" class="input-box"><small>종료일이 없으면 계속 할당됩니다.</small></div>
@@ -1113,6 +1108,12 @@
                 </div>
                 <div id="fixedSubSettings" class="sub-setting-group tree-line-group" style="display: none;">
                     <div class="setting-item">
+                        <label for="fixedClientSelect">고정 거래처 연동</label>
+                        <select id="fixedClientSelect" class="input-box" data-app-dropdown onchange="saveSettings();" style="width: 140px; margin-top: 0;">
+                            <option value="">미지정</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
                         <label for="unitPrice">고정 기본 단가 (원)</label>
                         <input type="text" id="unitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
                     </div>
@@ -1237,6 +1238,12 @@
                 
                 <div id="subFixedSubSettings" class="sub-setting-group tree-line-group" style="display: none;">
                     <div class="setting-item">
+                        <label for="subFixedClientSelect">고정 거래처 연동</label>
+                        <select id="subFixedClientSelect" class="input-box" data-app-dropdown onchange="saveSettings();" style="width: 140px; margin-top: 0;">
+                            <option value="">미지정</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
                         <label for="subUnitPrice">고정 기본 단가 (원)</label>
                         <input type="text" id="subUnitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
                     </div>
@@ -1278,10 +1285,17 @@
                 <div class="settings-title">고객센터</div><div style="width: 40px;"></div>
             </div>
             <div class="support-tabs" role="tablist">
-                <button class="support-tab active" onclick="openSupportTab('inquiry', this)">1:1 문의/건의</button>
-                <button class="support-tab" onclick="openSupportTab('faq', this)">FAQ</button>
+                <button class="support-tab active" onclick="openSupportTab('faq', this)">FAQ</button>
+                <button class="support-tab" onclick="openSupportTab('inquiry', this)">1:1 문의/건의</button>
             </div>
-            <section id="support-inquiry" class="support-panel">
+            <section id="support-faq" class="support-panel">
+                <div class="support-card"><div class="support-card-label">FAQ</div><h3>자주 묻는 질문</h3><p>궁금한 내용을 빠르게 확인해 보세요.</p></div>
+                <button class="faq-item" onclick="toggleSupportItem(this)"><span>운행 기록은 자동으로 저장되나요?</span><i>+</i><div class="support-detail">입력한 운행 기록은 이 기기의 브라우저에만 자동 저장됩니다. 브라우저 데이터를 삭제하거나 기기를 바꾸면 기록이 사라질 수 있으니, 설정의 백업 기능으로 꼭 백업해 주세요.</div></button>
+                <button class="faq-item" onclick="toggleSupportItem(this)"><span>차량을 추가하거나 변경하려면 어떻게 하나요?</span><i>+</i><div class="support-detail">메뉴의 차량 관리에서 차량을 추가하고 기본 차량을 변경할 수 있습니다.</div></button>
+                <button class="faq-item" onclick="toggleSupportItem(this)"><span>데이터를 다른 기기로 옮길 수 있나요?</span><i>+</i><div class="support-detail">앱 설정의 백업 파일 내보내기와 가져오기 기능을 이용해 이동할 수 있습니다.</div></button>
+                <button class="faq-item" onclick="toggleSupportItem(this)"><span>문의 답변은 어디서 확인하나요?</span><i>+</i><div class="support-detail">현재는 접수 시 안내된 연락처로 답변드립니다. 앱 내 답변함은 추후 제공될 예정입니다.</div></button>
+            </section>
+            <section id="support-inquiry" class="support-panel hidden">
                 <div class="support-card"><div class="support-card-label">1:1 SUPPORT</div><h3>무엇을 도와드릴까요?</h3><p>문의나 개선 의견을 남겨주시면 확인 후 답변드리겠습니다.</p></div>
                 <form class="inquiry-form" onsubmit="submitSupportInquiry(event)">
                     <label>문의 유형<select id="inquiryType" class="input-box" data-app-dropdown required><option>문의</option><option>기능 건의</option><option>오류 신고</option></select></label>
@@ -1289,13 +1303,6 @@
                     <label>내용<textarea id="inquiryContent" class="input-box" rows="6" maxlength="1000" placeholder="문의 내용을 자세히 적어주세요" required></textarea></label>
                     <button class="support-submit-btn" type="submit">문의 접수하기</button>
                 </form>
-            </section>
-            <section id="support-faq" class="support-panel hidden">
-                <div class="support-card"><div class="support-card-label">FAQ</div><h3>자주 묻는 질문</h3><p>궁금한 내용을 빠르게 확인해 보세요.</p></div>
-                <button class="faq-item" onclick="toggleSupportItem(this)"><span>운행 기록은 자동으로 저장되나요?</span><i>+</i><div class="support-detail">입력한 운행 기록은 이 기기의 브라우저에만 자동 저장됩니다. 브라우저 데이터를 삭제하거나 기기를 바꾸면 기록이 사라질 수 있으니, 설정의 백업 기능으로 꼭 백업해 주세요.</div></button>
-                <button class="faq-item" onclick="toggleSupportItem(this)"><span>차량을 추가하거나 변경하려면 어떻게 하나요?</span><i>+</i><div class="support-detail">메뉴의 차량 관리에서 차량을 추가하고 기본 차량을 변경할 수 있습니다.</div></button>
-                <button class="faq-item" onclick="toggleSupportItem(this)"><span>데이터를 다른 기기로 옮길 수 있나요?</span><i>+</i><div class="support-detail">앱 설정의 백업 파일 내보내기와 가져오기 기능을 이용해 이동할 수 있습니다.</div></button>
-                <button class="faq-item" onclick="toggleSupportItem(this)"><span>문의 답변은 어디서 확인하나요?</span><i>+</i><div class="support-detail">현재는 접수 시 안내된 연락처로 답변드립니다. 앱 내 답변함은 추후 제공될 예정입니다.</div></button>
             </section>
         </div>
 
@@ -1788,6 +1795,10 @@
                             <label for="newAccountNumber">계좌번호</label>
                             <input type="text" id="newAccountNumber" class="input-box" inputmode="numeric" placeholder="계좌번호 입력">
                         </div>
+                        <div class="form-group">
+                            <label for="newAccountHolder">예금주 (계좌 명의)</label>
+                            <input type="text" id="newAccountHolder" class="input-box" placeholder="예금주명을 입력하세요">
+                        </div>
                     </div>
                 </div>
 
@@ -1889,7 +1900,7 @@
             </div>
             <div class="form-group driver-form-wide">
                 <label for="carInviteCode">초대 코드</label>
-                <div class="driver-code-input"><input type="text" id="carInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateDriverInviteCode('carInviteCode')">코드 생성</button></div>
+                <div class="driver-code-input"><input type="text" id="carInviteCode" class="input-box" inputmode="numeric" maxlength="6" placeholder="6자리 코드"><button type="button" onclick="generateDriverInviteCode('carInviteCode')">코드 생성</button><button type="button" class="driver-sms-btn" onclick="sendDriverInviteSms('carModal')">문자 발송</button></div>
             </div>
             <div class="form-group">
                 <label for="carInviteAssignmentStart">할당 시작일</label>
@@ -2022,23 +2033,6 @@
                 </div>
             </div>
             <input type="hidden" id="clientCommType" value="percent">
-
-            <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
-
-            <div class="setting-item">
-                <label for="clientFixedMonthlyToggle">월정액 계약</label>
-                <label class="switch">
-                    <input type="checkbox" id="clientFixedMonthlyToggle" onchange="toggleClientFixedMonthly()">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <div id="clientFixedMonthlySection" class="sub-setting-group" style="display: none;">
-                <div class="form-group">
-                    <label for="clientFixedMonthlyAmount">월 정산 금액 (원)</label>
-                    <input type="text" id="clientFixedMonthlyAmount" class="input-box" inputmode="numeric" placeholder="월정액 계약 금액 입력" oninput="formatCurrencyInput(this); clearFieldError(this);">
-                </div>
-                <p class="payment-term-guide">이번 달 운행 기록이 있으면, 건별 운송료 합계 대신 이 금액이 정산에 반영됩니다.</p>
-            </div>
 
             <hr style="margin: 18px 0 12px; border: none; border-top: 1px solid var(--border-color);">
 
