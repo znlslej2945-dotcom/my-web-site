@@ -9964,10 +9964,12 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
     const settings = getUserSettings();
     const cars = settings.cars || [];
     if (flow === 'sales') {
-        // 그룹 키는 "월 + 공급사업자 + 거래처" 기준이다(요구사항 18) — 같은 거래처라도
-        // 실제로 다른 사업자(차량)가 운송했다면 절대 하나로 합치지 않는다. 반대로 서로 다른
-        // 차량이라도 "내 사업자와 동일"이거나 같은 bizNumber면 자연스럽게 같은 그룹으로
-        // 합산된다(getVehicleSupplierIdentity의 key 규칙).
+        // 그룹 키는 "월 + 차량(운행 로그) + 거래처" 기준이다 — 같은 거래처라도 차량이 다르면
+        // (설령 두 차량이 같은 사업자로 정산되는 소속기사 차량이라도) 절대 하나로 합치지 않고
+        // 차량별로 세금계산서를 분리한다. 예전에는 "공급사업자(supplier.key)"만 같으면 메인
+        // 차량과 소속기사 차량 매출이 한 장으로 합산돼서, 캘린더(차량 1대분)와 세금계산서
+        // (여러 차량 합산분) 금액이 안 맞아 보이는 문제가 있었다(실제로 보고됨: 사용자가 차량별
+        // 분리 발행을 원함).
         const grouped = {};
         // 소속기사(employed_driver) 본인 화면에는 "차주가 세금계산서 대상으로 지정한 거래처만"
         // 걸러내는 taxInvoiceEnabled 기준을 적용하지 않는다 — 그건 차주의 거래처 관리 데이터라
@@ -9982,8 +9984,8 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
             const mode = getEffectiveDriverSettlementMode(car, settings);
             if (mode === 'company' || mode === 'employee') sources.push({ logId: car.number, car, data: getDriverCarWorkData(car, settings) });
         });
-        const getOrCreateGroup = (clientName, supplier) => {
-            const groupKey = `${clientName}__${supplier.key}`;
+        const getOrCreateGroup = (clientName, supplier, vehicleKey) => {
+            const groupKey = `${clientName}__${vehicleKey}`;
             if (!grouped[groupKey]) {
                 grouped[groupKey] = {
                     partyKey: groupKey, clientName, partyType: 'client',
@@ -10011,7 +10013,7 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
                     const clientName = (detail.client || '').trim();
                     const supplyAmount = parseCurrencyValue(detail.fare);
                     if (!workDate.startsWith(monthKey) || !clientName || (taxClients && !taxClients.has(clientName)) || supplyAmount <= 0) return;
-                    const group = getOrCreateGroup(clientName, supplier);
+                    const group = getOrCreateGroup(clientName, supplier, source.logId);
                     group.count += 1;
                     group.supplyAmount += supplyAmount;
                     group.taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
@@ -10022,7 +10024,7 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
                 if (fixedCount > 0 && fixedClientName && dateKey.startsWith(monthKey) && (!taxClients || taxClients.has(fixedClientName))) {
                     const supplyAmount = fixedCount * fixedUnitPrice;
                     if (supplyAmount > 0) {
-                        const group = getOrCreateGroup(fixedClientName, supplier);
+                        const group = getOrCreateGroup(fixedClientName, supplier, source.logId);
                         group.count += fixedCount;
                         group.supplyAmount += supplyAmount;
                         group.taxAmount += Math.round(supplyAmount * .1);
