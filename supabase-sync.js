@@ -723,6 +723,191 @@ async function syncWorkDataToSupabase(logId, data) {
     __supabaseWorkDataSyncedSnapshot[logId] = nextSnapshot;
 }
 
+// ---------- taxInvoiceRecords(세금계산서 작성/발급 상태) <-> tax_invoices ----------
+// 전수 점검 중 발견: 세금계산서는 작성(persistTaxInvoice)/발급완료 처리(changeTaxInvoiceStatus)
+// 모두 localStorage(taxInvoiceRecords)에만 저장되고 있었다 — Supabase로는 계정 최초 생성 시
+// 1회 마이그레이션(migrateLocalDataToSupabase)에서만 올라갔을 뿐, 그 이후의 신규 작성/상태
+// 변경은 전혀 서버에 반영되지 않았다. 즉 기기를 바꾸거나 저장공간이 지워지면 세금계산서
+// 작성/발급 이력이 통째로 사라지는 상태였다(실제로 코드 추적으로 확인됨). 이 앱에서 금액·
+// 법적으로 가장 민감한 기록이라 최우선으로 고친다.
+
+// item.carNumber(기사 매입/수수료 발행) 또는 item.vehicleNumbers[0](매출 발행, §오늘 차량별
+// 분리 수정 이후 항상 차량 1대분) 순으로 차량번호를 찾고, 둘 다 없으면(매출 발행이 메인
+// 차량 몫이면 vehicleNumbers 자체가 비어있다 — getVehicleSupplierIdentity가 메인 차량엔
+// carNumber를 안 붙이기 때문) 메인 차량으로 간주한다.
+function resolveTaxInvoiceVehicleId(item, settings) {
+    const cars = Array.isArray(settings.cars) ? settings.cars : [];
+    const carNumber = item.carNumber || (Array.isArray(item.vehicleNumbers) ? item.vehicleNumbers[0] : null);
+    if (carNumber) {
+        const car = cars.find(c => c.number === carNumber);
+        return car?.supabaseId || null;
+    }
+    const mainCar = cars.find(c => c.type === 'main');
+    return mainCar?.supabaseId || null;
+}
+
+// persistTaxInvoice()가 호출한다(작성/상태변경 둘 다 이 함수를 거친다). id는
+// getTaxInvoiceRecordId()가 "flow|월|partyKey" 형태로 결정론적으로 만들어주므로, 같은
+// 거래처·같은 달·같은 발행유형이면 항상 같은 id가 나온다 — 여러 기기에서 독립적으로 같은
+// 항목을 먼저 만들어도 서버에 중복 행이 생기지 않고 자연스럽게 같은 레코드로 수렴한다.
+function scheduleSupabaseTaxInvoiceSync(localId) {
+    if (typeof queueBackgroundSave !== 'function' || !localId) return;
+    queueBackgroundSave('supabase-tax-invoice-sync-' + localId, () => syncTaxInvoiceToSupabase(localId), 600);
+}
+
+async function syncTaxInvoiceToSupabase(localId) {
+    const user = await getSupabaseUser();
+    if (!user) return;
+
+    // flush 시점의 최신 로컬 상태를 다시 읽는다(디바운스 구간에 여러 번 바뀌었어도 마지막
+    // 상태만 반영하기 위함 — 다른 큐잉 저장들과 동일한 관례).
+    const records = getTaxInvoiceRecords();
+    const item = records.find(record => record.id === localId);
+    if (!item) return;
+
+    const settings = getUserSettings();
+    const matchedClient = (settings.clients || []).find(c => c.companyName === item.clientName);
+    const row = {
+        user_id: user.id,
+        vehicle_id: resolveTaxInvoiceVehicleId(item, settings),
+        client_id: matchedClient?.supabaseId || null,
+        flow: item.flow || null,
+        month_key: item.monthKey || null,
+        supply_amount: parseEntityNumber(item.supplyAmount),
+        tax_amount: parseEntityNumber(item.taxAmount),
+        total_amount: parseEntityNumber(item.totalAmount),
+        status: item.status || 'draft',
+        raw: item
+    };
+
+    try {
+        const client = await getSupabaseClient();
+        if (item.supabaseId) {
+            const { error } = await client.from('tax_invoices').update(row).eq('id', item.supabaseId);
+            if (error) throw error;
+        } else {
+            const { data, error } = await client.from('tax_invoices').insert(row).select('id').single();
+            if (error) throw error;
+            // 방금 발급받은 supabaseId를 로컬에도 즉시 반영해서, 다음 저장부터는 update로
+            // 가게 한다(안 그러면 저장할 때마다 새 행이 계속 insert된다).
+            const freshRecords = getTaxInvoiceRecords();
+            const idx = freshRecords.findIndex(record => record.id === localId);
+            if (idx >= 0) {
+                freshRecords[idx].supabaseId = data.id;
+                localStorage.setItem('taxInvoiceRecords', JSON.stringify(freshRecords));
+            }
+        }
+    } catch (error) {
+        console.error('세금계산서 Supabase 저장 실패:', localId, error);
+        throw error; // queueBackgroundSave가 실패 토스트/재시도를 처리하도록 그대로 던진다.
+    }
+}
+
+// 로그인 시 서버의 tax_invoices를 로컬 taxInvoiceRecords와 합친다. 날짜 단위 병합(로컬에
+// 있는데 서버 응답에 없으면 로컬 보존)과 같은 이유로, 여기서도 "로컬에서 지우고 서버 것으로
+// 덮어쓰기"가 아니라 "id 기준으로 합치기"를 쓴다 — 다른 기기에서 아직 이 기기로 안 내려온
+// 로컬 전용 초안까지 지워버리면 안 되기 때문이다.
+async function initTaxInvoicesFromSupabase() {
+    const user = await getSupabaseUser();
+    if (!user) return;
+    try {
+        const client = await getSupabaseClient();
+        const { data, error } = await client.from('tax_invoices').select('*').eq('user_id', user.id);
+        if (error) throw error;
+
+        const localRecords = getTaxInvoiceRecords();
+        const merged = [...localRecords];
+        (data || []).forEach(row => {
+            const raw = (row.raw && typeof row.raw === 'object') ? row.raw : {};
+            if (!raw.id) return; // raw가 비어있는(예전 마이그레이션 등) 행은 매칭할 로컬 id가 없어 건너뜀
+            const record = { ...raw, supabaseId: row.id };
+            const idx = merged.findIndex(item => item.id === record.id);
+            if (idx >= 0) merged[idx] = record;
+            else merged.push(record);
+        });
+
+        localStorage.setItem('taxInvoiceRecords', JSON.stringify(merged));
+    } catch (error) {
+        console.error('세금계산서 내역 Supabase 로드 실패(기존 로컬 데이터 보존):', error);
+    }
+}
+
+// ---------- supportInquiries(고객센터 1:1 문의/건의) <-> support_inquiries ----------
+// 세금계산서와 같은 이유로 새로 연결한다 — 예전엔 문의를 접수해도 이 기기의 localStorage에만
+// 저장되고 "문의가 접수되었습니다" 토스트만 뜰 뿐, 실제로는 어디에도 전달되지 않았다.
+// 패턴은 세금계산서 동기화와 완전히 동일하다: supabaseId 있으면 update, 없으면 insert하고
+// 받은 id를 로컬에 반영. raw jsonb에 로컬 원본을 통째로 저장해서, 하이드레이션 때 raw.id
+// 기준으로 로컬과 병합한다.
+function scheduleSupabaseInquirySync(localId) {
+    if (typeof queueBackgroundSave !== 'function' || !localId) return;
+    queueBackgroundSave('supabase-inquiry-sync-' + localId, () => syncInquiryToSupabase(localId), 600);
+}
+
+async function syncInquiryToSupabase(localId) {
+    const user = await getSupabaseUser();
+    if (!user) return;
+
+    const inquiries = getSupportInquiries();
+    const item = inquiries.find(entry => entry.id === localId);
+    if (!item) return;
+
+    const row = {
+        user_id: user.id,
+        type: item.type || null,
+        title: item.title || null,
+        content: item.content || null,
+        status: item.status || 'open',
+        raw: item
+    };
+
+    try {
+        const client = await getSupabaseClient();
+        if (item.supabaseId) {
+            const { error } = await client.from('support_inquiries').update(row).eq('id', item.supabaseId);
+            if (error) throw error;
+        } else {
+            const { data, error } = await client.from('support_inquiries').insert(row).select('id').single();
+            if (error) throw error;
+            const fresh = getSupportInquiries();
+            const idx = fresh.findIndex(entry => entry.id === localId);
+            if (idx >= 0) {
+                fresh[idx].supabaseId = data.id;
+                localStorage.setItem('supportInquiries', JSON.stringify(fresh));
+            }
+        }
+    } catch (error) {
+        console.error('문의/건의 Supabase 저장 실패:', localId, error);
+        throw error;
+    }
+}
+
+// 로그인 시 서버의 문의 내역(및 사장님이 답변을 달아준 answer/answered_at)을 로컬과 합친다.
+// "나의 문의·건의 확인" 화면이 이 로컬 캐시를 그대로 읽는다.
+async function initSupportInquiriesFromSupabase() {
+    const user = await getSupabaseUser();
+    if (!user) return;
+    try {
+        const client = await getSupabaseClient();
+        const { data, error } = await client.from('support_inquiries').select('*').eq('user_id', user.id);
+        if (error) throw error;
+
+        const localInquiries = getSupportInquiries();
+        const merged = [...localInquiries];
+        (data || []).forEach(row => {
+            const raw = (row.raw && typeof row.raw === 'object') ? row.raw : {};
+            if (!raw.id) return;
+            const record = { ...raw, supabaseId: row.id, answer: row.answer || '', answeredAt: row.answered_at || '' };
+            const idx = merged.findIndex(item => item.id === record.id);
+            if (idx >= 0) merged[idx] = record;
+            else merged.push(record);
+        });
+
+        localStorage.setItem('supportInquiries', JSON.stringify(merged));
+    } catch (error) {
+        console.error('문의/건의 내역 Supabase 로드 실패(기존 로컬 데이터 보존):', error);
+    }
+}
+
 // Supabase(daily_logs+하위 4개 테이블)에서 읽어와 기존 workData 객체(날짜를 키로 하는 형태)와
 // 동일한 모양으로 조립한 뒤 localStorage(workData / workData_<logId>)에 그대로 반영한다.
 async function initWorkDataFromSupabase(cars) {
@@ -1029,6 +1214,25 @@ async function hydrateFromSupabaseAndMigrate() {
         // 최신 상태로 다시 읽어서 운행기록을 불러온다.
         settings = getUserSettings();
         await initWorkDataFromSupabase(settings.cars || []);
+
+        // 세금계산서 작성/발급 이력도 서버 기준으로 합쳐 온다(§전수 점검에서 발견: 예전엔
+        // 로그인해도 이 이력을 서버에서 다시 안 불러왔다 — 최초 마이그레이션 이후로는 로컬
+        // 전용이었던 것과 사실상 같은 문제). 다른 섹션 실패가 하이드레이션 전체를 막지
+        // 않는 것과 같은 이유로 별도 try/catch로 감싼다.
+        if (typeof initTaxInvoicesFromSupabase === 'function') {
+            try {
+                await initTaxInvoicesFromSupabase();
+            } catch (error) {
+                console.error('[Supabase] 세금계산서 내역 로드 실패(기존 캐시로 계속 진행):', error);
+            }
+        }
+        if (typeof initSupportInquiriesFromSupabase === 'function') {
+            try {
+                await initSupportInquiriesFromSupabase();
+            } catch (error) {
+                console.error('[Supabase] 문의/건의 내역 로드 실패(기존 캐시로 계속 진행):', error);
+            }
+        }
 
         // 지금 화면에 보이는 로그(activeLogId)를 새로 불러온 데이터로 갱신
         if (typeof loadWorkDataForLog === 'function') {

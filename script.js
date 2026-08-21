@@ -3192,6 +3192,7 @@ function openSupportTab(tabName, button) {
     document.querySelectorAll('.support-tab').forEach(tab => tab.classList.remove('active'));
     document.getElementById(`support-${tabName}`).classList.remove('hidden');
     button.classList.add('active');
+    if (tabName === 'myInquiries') renderMyInquiries();
 }
 
 function toggleSupportItem(item) {
@@ -3200,19 +3201,67 @@ function toggleSupportItem(item) {
     if (icon) icon.textContent = item.classList.contains('open') ? '−' : '+';
 }
 
+function getSupportInquiries() {
+    try {
+        const inquiries = JSON.parse(localStorage.getItem('supportInquiries') || '[]');
+        return Array.isArray(inquiries) ? inquiries : [];
+    } catch (error) {
+        return [];
+    }
+}
+
 function submitSupportInquiry(event) {
     event.preventDefault();
     const inquiry = {
+        id: generateLocalId('inquiry'),
         type: document.getElementById('inquiryType').value,
         title: document.getElementById('inquiryTitle').value.trim(),
         content: document.getElementById('inquiryContent').value.trim(),
+        status: 'open',
+        answer: '',
+        answeredAt: '',
         createdAt: new Date().toISOString()
     };
-    const inquiries = JSON.parse(localStorage.getItem('supportInquiries') || '[]');
+    const inquiries = getSupportInquiries();
     inquiries.unshift(inquiry);
     localStorage.setItem('supportInquiries', JSON.stringify(inquiries));
+    // 예전엔 이 기기 안에만 저장되고 실제로는 아무 데도 전달되지 않았다(§전수 점검에서 발견).
+    // 이제 Supabase로도 반영해서 실제로 확인 가능하게 한다.
+    if (typeof scheduleSupabaseInquirySync === 'function') scheduleSupabaseInquirySync(inquiry.id);
     event.target.reset();
     showToastMessage('문의가 접수되었습니다.');
+    renderMyInquiries();
+}
+
+// "나의 문의·건의 확인" 탭 — 본인이 접수한 문의를 최신순으로 보여준다. 아직 사장님이 답변
+// 기능을 안 만드셨어도(=support_inquiries.answer가 비어있어도) 목록/상태는 바로 쓸 수 있게
+// "답변 대기" 상태로 표시해 둔다.
+function renderMyInquiries() {
+    const container = document.getElementById('myInquiriesList');
+    if (!container) return;
+    const inquiries = getSupportInquiries();
+
+    if (!inquiries.length) {
+        container.innerHTML = '<div class="support-panel-empty">아직 접수한 문의·건의가 없습니다.</div>';
+        return;
+    }
+
+    container.innerHTML = inquiries.map(inquiry => {
+        const answered = !!inquiry.answer;
+        const dateText = inquiry.createdAt ? new Date(inquiry.createdAt).toLocaleDateString('ko-KR') : '';
+        return `
+            <div class="my-inquiry-card">
+                <div class="my-inquiry-head">
+                    <span class="my-inquiry-type">${escapeDetailText(inquiry.type || '문의')}</span>
+                    <span class="my-inquiry-status ${answered ? 'answered' : 'pending'}">${answered ? '답변 완료' : '답변 대기'}</span>
+                </div>
+                <strong class="my-inquiry-title">${escapeDetailText(inquiry.title || '')}</strong>
+                <p class="my-inquiry-content">${escapeDetailText(inquiry.content || '')}</p>
+                <div class="my-inquiry-date">${dateText}</div>
+                ${answered ? `<div class="my-inquiry-answer"><span class="my-inquiry-answer-label">운영자 답변</span><p>${escapeDetailText(inquiry.answer)}</p></div>` : ''}
+            </div>
+        `;
+    }).join('');
 }
 
 // 회원탈퇴 — 실제로 Supabase 계정과 그 계정에 연결된 모든 데이터(vehicles/clients/
@@ -8390,18 +8439,28 @@ function buildReportPage(isForExport = false) {
             }
         }
     } else if (savedSettings.cars && savedSettings.cars.length > 0) {
-        const mainCar = savedSettings.cars.find(c => c.type === 'main') || savedSettings.cars[0];
+        // 예전엔 메인 차량이 없으면(데이터 이상 등 정상적으론 발생 안 함) 그냥 목록의 첫 번째
+        // 차량으로 대신했는데, 그게 서브 차량이면 그 기사 개인정보(이름/계좌 등)가 메인 차량
+        // 자리에 잘못 표시될 수 있었다(§전수 점검에서 발견). 위의 서브 차량 분기(activeLogId
+        // !== 'main')와 동일하게, 못 찾으면 아무 것도 대신 채우지 않고 그대로 둔다 — 엉뚱한
+        // 차량 정보를 보여주는 것보다 기본값(차주 개인정보) 그대로가 안전하다.
+        const mainCar = savedSettings.cars.find(c => c.type === 'main');
+        if (mainCar) {
+            if (mainCar.logEnabled && mainCar.infoType === 'new' && mainCar.personalInfo) {
+                rptName = mainCar.personalInfo.name || rptName;
+                rptPhone = mainCar.personalInfo.phone || rptPhone;
+                rptBank = mainCar.personalInfo.bank || rptBank;
+                rptAccount = mainCar.personalInfo.account || rptAccount;
+                rptAccountHolder = mainCar.personalInfo.accountHolder || rptAccountHolder;
+            }
 
-        if (mainCar.logEnabled && mainCar.infoType === 'new' && mainCar.personalInfo) {
-            rptName = mainCar.personalInfo.name || rptName;
-            rptPhone = mainCar.personalInfo.phone || rptPhone;
-            rptBank = mainCar.personalInfo.bank || rptBank;
-            rptAccount = mainCar.personalInfo.account || rptAccount;
-            rptAccountHolder = mainCar.personalInfo.accountHolder || rptAccountHolder;
+            document.getElementById('rptCarNumber').textContent = mainCar.number || '-';
+            document.getElementById('rptCarTonnage').textContent = mainCar.tonnage || '-';
+        } else {
+            // 이전 렌더링에서 남아있던 값이 그대로 보이지 않도록 확실히 기본값으로 되돌린다.
+            document.getElementById('rptCarNumber').textContent = '-';
+            document.getElementById('rptCarTonnage').textContent = '-';
         }
-
-        document.getElementById('rptCarNumber').textContent = mainCar.number || '-';
-        document.getElementById('rptCarTonnage').textContent = mainCar.tonnage || '-';
 
     } else {
         document.getElementById('rptCarNumber').textContent = '-';
@@ -10800,9 +10859,14 @@ function collectTaxInvoiceForm() {
 function persistTaxInvoice(item) {
     const records = getTaxInvoiceRecords();
     const index = records.findIndex(record => record.id === item.id);
-    if (index >= 0) records[index] = item;
+    // 이미 로컬에 supabaseId가 붙어있던 기존 레코드라면 그대로 이어받는다 — 안 이어받으면
+    // 업데이트해야 할 서버 행을 못 찾아서 매번 새 행으로 insert되는 사고로 이어진다.
+    if (index >= 0) records[index] = { ...records[index], ...item };
     else records.push(item);
     saveTaxInvoiceRecords(records);
+    // 세금계산서 작성/발급 상태를 클라우드에도 반영한다 — 로컬에만 저장하면 기기를 바꾸거나
+    // 저장공간이 지워졌을 때 이 이력이 통째로 사라진다(실제로 그런 상태였다가 고침).
+    if (typeof scheduleSupabaseTaxInvoiceSync === 'function') scheduleSupabaseTaxInvoiceSync(item.id);
 }
 
 function saveTaxInvoicePartyInfo(item) {
