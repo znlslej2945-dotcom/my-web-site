@@ -6252,6 +6252,37 @@ function isAppBackupStorageKey(key) {
         || key.startsWith('linkedDriverWorkData_');
 }
 
+// 계정을 바꿔가며 로그인할 때(A 계정 로그아웃 → 같은 기기에서 B 계정으로 로그인) A 계정의
+// 로컬 캐시(운행일지/차량/거래처 등)가 그대로 남아있으면, initSettingsFromSupabase/
+// initWorkDataFromSupabase의 "서버에 없는 항목은 로컬을 보존" 병합 로직 때문에 A 계정 데이터가
+// B 계정 데이터에 섞여 들어간다(실제로 보고됨: "1번 계정 정보가 2번 계정으로 덧씌워짐").
+// 로그아웃이 로컬 기록을 일부러 안 지우는 것(오프라인 상태에서도 같은 계정으로 다시 들어올 수
+// 있게 하려는 의도, 로그아웃 확인창에도 "기기에 저장된 기록은 유지됩니다"라고 명시) 자체는
+// 맞는 설계라, 로그아웃 시점이 아니라 "하이드레이션 시점에 로그인한 계정이 마지막으로 이
+// 기기를 쓴 계정과 다를 때만" 지운다 — 그래야 같은 계정 재로그인은 그대로 보존되고, 다른
+// 계정으로 전환할 때만 안전하게 초기화된다. theme(기기 화면 설정)은 계정과 무관하므로 지우지
+// 않는다.
+function clearAccountScopedLocalCache() {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key !== 'theme' && isAppBackupStorageKey(key)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    localStorage.removeItem('supabaseMigrationDone');
+}
+
+// hydrateFromSupabaseAndMigrate()가 로그인 직후 호출한다. "이 기기가 마지막으로 하이드레이션한
+// 계정"과 지금 로그인한 계정이 다르면 위 초기화를 실행하고, 같으면 아무 것도 하지 않는다.
+function clearAccountScopedLocalCacheIfAccountChanged(currentUserId) {
+    if (!currentUserId) return;
+    const lastUserId = localStorage.getItem('lastHydratedSupabaseUserId');
+    if (lastUserId && lastUserId !== currentUserId) {
+        clearAccountScopedLocalCache();
+    }
+    localStorage.setItem('lastHydratedSupabaseUserId', currentUserId);
+}
+
 function readBackupJsonStorage(key, fallback) {
     try {
         const raw = localStorage.getItem(key);

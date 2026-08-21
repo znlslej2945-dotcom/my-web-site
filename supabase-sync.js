@@ -493,8 +493,18 @@ async function initSettingsFromSupabase(userId) {
 // 못 보는 문제가 있었다(실제로 재현해서 확인).
 function resolveVehicleIdForLogId(logId) {
     const settings = getUserSettings();
-    if (logId === 'main' && settings.accountType === 'employed_driver' && settings.employerLink?.status === 'linked' && settings.employerLink?.vehicleId) {
-        return settings.employerLink.vehicleId;
+    if (logId === 'main' && settings.accountType === 'employed_driver') {
+        // 연동된(linked) 소속기사인데 employerLink.vehicleId가 아직 없거나 유실된 상태라면,
+        // 절대로 아래의 "본인 소유 main 차량"으로 조용히 대체해서는 안 된다 — 그 차량은
+        // 차주의 실제 운행기록이 쌓이는 차량과 무관한, 기사 본인 명의의 별도(대개 비어있는)
+        // vehicles 행이기 때문이다. 이 상태에서 계속 진행하면 기사 화면에는 아무 기록도 안
+        // 보이는데 차주 화면에는 기록이 잘 보이는(실제로 보고된) 증상으로 이어진다 — 겉으로는
+        // 조용히 동작하는 것처럼 보여서 한참 뒤에야 발견된다. 그래서 이 경우엔 null을 반환해
+        // 호출부가(이미 다들 null 체크 후 스킵하도록 돼 있다) 아무 것도 하지 않고 넘어가게
+        // 한다 — 잘못된 차량에 조용히 쓰거나 읽는 것보다, 이번 저장/조회를 건너뛰는 편이 훨씬
+        // 안전하다. syncEmployerLinkFromSupabase()가 다음 하이드레이션 때 vehicleId를 다시
+        // 채워주면 정상화된다.
+        return settings.employerLink?.status === 'linked' ? (settings.employerLink?.vehicleId || null) : null;
     }
     const cars = Array.isArray(settings.cars) ? settings.cars : [];
     const car = logId === 'main'
@@ -915,6 +925,15 @@ async function migrateLocalDataToSupabase(userId) {
 async function hydrateFromSupabaseAndMigrate() {
     const user = await getSupabaseUser();
     if (!user) { supabaseHydrationCompleted = true; return; }
+
+    // 이 기기에서 마지막으로 하이드레이션한 계정과 지금 로그인한 계정이 다르면(=같은 기기에서
+    // 로그아웃 후 다른 계정으로 로그인), 이전 계정의 로컬 캐시(운행일지/차량/거래처 등)를 먼저
+    // 지운다 — 안 지우면 아래 initSettingsFromSupabase/initWorkDataFromSupabase의 "서버에 없는
+    // 항목은 로컬을 보존" 병합 로직 때문에 이전 계정 데이터가 지금 계정 데이터에 섞여 들어간다
+    // (실제로 보고됨: "1번 계정 정보가 로그아웃 후 2번 계정으로 로그인하니 그대로 덧씌워짐").
+    if (typeof clearAccountScopedLocalCacheIfAccountChanged === 'function') {
+        clearAccountScopedLocalCacheIfAccountChanged(user.id);
+    }
 
     // 아래 본문 전체를 try/finally로 감싸서, 중간에 어디서 예외가 나든(개별 단계는 대부분
     // 이미 자체 try/catch로 보호되지만, initSettingsFromSupabase/initWorkDataFromSupabase
