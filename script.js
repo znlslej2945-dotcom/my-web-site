@@ -41,6 +41,10 @@ let activeLinkedDriverId = '';
 let toastHideTimer = null;
 const activeSaveActions = new Set();
 const backgroundSaveStates = new Map();
+// 하단 저장 상태 표시기(save-status-indicator)가 "저장실패"로 보여줄, 아직 재시도에
+// 성공하지 못한 백그라운드 저장 키 목록. flushBackgroundSave가 성공/재시도 시작 때마다
+// 지우고, 실패할 때마다 채운다.
+const failedBackgroundSaveKeys = new Set();
 
 async function runSaveAction(button, actionKey, action) {
     if (typeof action !== 'function') return false;
@@ -84,6 +88,7 @@ function queueBackgroundSave(actionKey, action, delay = 320) {
     if (state.timer) clearTimeout(state.timer);
     state.timer = setTimeout(() => flushBackgroundSave(key), Math.max(0, delay));
     backgroundSaveStates.set(key, state);
+    updateSaveStatusIndicator();
 }
 
 async function flushBackgroundSave(actionKey) {
@@ -101,21 +106,28 @@ async function flushBackgroundSave(actionKey) {
     state.nextAction = null;
     if (!action) {
         backgroundSaveStates.delete(actionKey);
+        updateSaveStatusIndicator();
         return;
     }
 
     state.running = true;
     state.runningPromise = Promise.resolve().then(action);
+    // 이번 시도가 실패든 성공이든, 재시도가 다시 시작됐다는 뜻이므로 일단 "저장실패" 표시는
+    // 내리고 스피너로 되돌린다(성공하면 그대로 사라지고, 다시 실패하면 아래 catch에서 다시 켠다).
+    failedBackgroundSaveKeys.delete(actionKey);
+    updateSaveStatusIndicator();
     try {
         await state.runningPromise;
     } catch (error) {
         console.error(`${actionKey} 자동 저장 실패:`, error);
-        showToastMessage(getSaveErrorMessage(error, true), { duration: 7000 });
+        failedBackgroundSaveKeys.add(actionKey);
+        showToastMessage(getSaveErrorMessage(error, true, actionKey), { duration: 7000 });
     } finally {
         state.running = false;
         state.runningPromise = null;
         if (state.nextAction) state.timer = setTimeout(() => flushBackgroundSave(actionKey), 0);
         else backgroundSaveStates.delete(actionKey);
+        updateSaveStatusIndicator();
     }
 }
 
@@ -123,6 +135,21 @@ async function flushAllBackgroundSaves() {
     while (backgroundSaveStates.size) {
         await Promise.all([...backgroundSaveStates.keys()].map(flushBackgroundSave));
     }
+}
+
+// 하단 네비게이션 바로 위에 떠 있는 저장 상태 표시기(#saveStatusIndicator). 평소엔 완전히
+// 숨어 있다가, 백그라운드 저장(queueBackgroundSave 계열: 앱 설정/개인정보/운행기록 클라우드
+// 동기화 등)이 대기·진행 중일 때만 조용히 스피너를 띄우고, 저장이 끝나면 바로 사라진다.
+// 실패해서 재시도가 필요한 항목이 하나라도 있으면(failedBackgroundSaveKeys) 스피너 대신
+// "저장실패" 문구로 바뀐다 — 이때 구체적으로 뭐가 실패했는지는 이 표시기가 아니라 토스트
+// (getSaveErrorMessage)에서 안내한다.
+function updateSaveStatusIndicator() {
+    const el = document.getElementById('saveStatusIndicator');
+    if (!el) return;
+    const saving = backgroundSaveStates.size > 0;
+    const failed = !saving && failedBackgroundSaveKeys.size > 0;
+    el.classList.toggle('is-visible', saving || failed);
+    el.classList.toggle('is-failed', failed);
 }
 
 // 오프라인 상태에서 저장이 실패해도(디바운스 타이머가 아직 남아있는 경우) 온라인으로
@@ -187,14 +214,29 @@ async function executeApiRequest(requestFactory, { timeoutMs = 10000 } = {}) {
     }
 }
 
-function getSaveErrorMessage(error, isAutomatic = false) {
+// queueBackgroundSave의 actionKey만 보고 "무엇이" 저장 안 됐는지 사람이 읽을 수 있는 말로
+// 바꾼다. 토스트 문구에서 "자동 저장에 실패했습니다"처럼 뭉뚱그리지 않고, 실제로 뭘 다시
+// 저장해야 하는지 구체적으로 안내하기 위함이다. 매핑에 없는(내부용) 키는 빈 문자열을 반환해
+// 기존처럼 일반 문구로 자연스럽게 대체된다.
+function getSaveKeySubject(actionKey) {
+    if (actionKey === 'settings') return '앱 설정';
+    if (actionKey === 'personal-info') return '개인정보';
+    if (actionKey === 'billing-settings') return '정산 설정';
+    if (actionKey === 'supabase-settings-sync') return '앱 설정/개인정보(클라우드 동기화)';
+    if (typeof actionKey === 'string' && actionKey.indexOf('supabase-workdata-sync-') === 0) return '운행 기록(클라우드 동기화)';
+    return '';
+}
+
+function getSaveErrorMessage(error, isAutomatic = false, actionKey = '') {
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const timedOut = error?.code === 'REQUEST_TIMEOUT'
         || error?.name === 'RequestTimeoutError'
         || error?.name === 'AbortError';
-    if (offline) return `${isAutomatic ? '자동 저장' : '저장'}하지 못했습니다. 인터넷 연결을 확인해 주세요.`;
-    if (timedOut) return `서버 응답이 늦어 ${isAutomatic ? '자동 저장' : '저장'}을 완료하지 못했습니다.`;
-    return `${isAutomatic ? '자동 저장' : '저장'} 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.`;
+    const subject = getSaveKeySubject(actionKey);
+    const label = subject ? `${subject} ` : '';
+    if (offline) return `${label}${isAutomatic ? '자동 저장' : '저장'}하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.`;
+    if (timedOut) return `${label}서버 응답이 늦어 ${isAutomatic ? '자동 저장' : '저장'}을 완료하지 못했습니다. 다시 시도해 주세요.`;
+    return `${label}${isAutomatic ? '자동 저장' : '저장'} 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.`;
 }
 
 function showRetryableSaveError(error, retryCallback) {
@@ -6072,6 +6114,35 @@ function loadSettings() {
         updateToggleDependencies('main');
     }
     updateAccountRoleUI();
+    applySettingsHydrationLock();
+}
+
+// 로그인 직후 하이드레이션(서버 → 로컬 동기화)이 아직 끝나지 않았을 때(supabaseHydrationCompleted
+// === false) 앱 설정 화면에 들어와 값을 바꾸면, 그 직후 하이드레이션이 로컬 값을 서버 값으로
+// 덮어써서 방금 바꾼 게 사라진 것처럼 보일 수 있다(실제 데이터 유실 자체는 하이드레이션이
+// 끝나는 시점에 다시 서버로 밀어 올리도록 이미 막아뒀지만, 이 짧은 구간 동안은 화면이 혼란
+// 스러울 수 있다). 그래서 이 구간에는 입력 자체를 잠그고 안내 문구를 보여준다. loadSettings()가
+// 화면 진입 시/하이드레이션 완료 시 양쪽에서 다 호출되므로 여기 한 곳에서만 처리하면 된다.
+function applySettingsHydrationLock() {
+    const page = document.getElementById('settingsPage');
+    const notice = document.getElementById('settingsHydrationLockNotice');
+    if (!page) return;
+    const locked = typeof supabaseHydrationCompleted !== 'undefined' && !supabaseHydrationCompleted;
+    notice?.classList.toggle('hidden', !locked);
+
+    page.querySelectorAll('input, select, textarea').forEach(el => { el.disabled = locked; });
+    page.querySelectorAll('.settings-segmented-control .toggle-btn').forEach(el => { el.disabled = locked; });
+
+    // updateToggleDependencies()처럼 이 화면 안에 이미 있는 업무 로직이 일부 필드를 의도적으로
+    // disabled 처리해 두는 경우가 있다(예: 고정노선 OFF일 때 세부입력 토글은 항상 강제로
+    // 켜지고 비활성화된다). 잠금을 풀 때 무조건 전부 enable하면 그 규칙이 깨지므로, 스냅샷을
+    // 저장했다 복원하는 대신 그 로직을 다시 실행해 "지금 값 기준"으로 다시 계산한다 — 잠겨
+    // 있던 사이에 하이드레이션으로 값 자체가 바뀌었을 수도 있어서, 예전 상태를 그대로 복원하는
+    // 것보다 이 편이 더 정확하다.
+    if (!locked && typeof updateToggleDependencies === 'function') {
+        updateToggleDependencies('main');
+        if (document.getElementById('subFixedToggle')) updateToggleDependencies('sub');
+    }
 }
 
 // 스위치 간의 종속성을 관리하는 새로운 함수 (하단에 추가)

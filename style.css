@@ -4621,6 +4621,63 @@ body.pdf-export-mode .summary-row.total {
     100% { transform: scale(0.95); opacity: 0.8; }
 }
 
+/* --- 자동 저장 상태 표시기: 평소엔 숨어 있다가 백그라운드 저장 중일 때만 아이콘이 돌고,
+   저장이 끝나면 사라진다. 실패 시엔 같은 자리에 "저장실패" 문구로 바뀐다. --- */
+.save-status-indicator {
+    position: fixed;
+    left: 16px;
+    bottom: calc(58px + env(safe-area-inset-bottom) + 8px);
+    z-index: 901;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+}
+.save-status-indicator.is-visible {
+    display: flex;
+}
+.save-status-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--sub-text-color);
+    animation: save-status-spin 0.7s linear infinite;
+}
+.save-status-indicator.is-failed .save-status-spinner {
+    display: none;
+}
+.save-status-text {
+    display: none;
+    font-size: var(--fs-floor);
+    font-weight: 700;
+    color: #ef4444;
+    white-space: nowrap;
+}
+.save-status-indicator.is-failed .save-status-text {
+    display: inline;
+}
+@keyframes save-status-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* --- 앱 설정: 로그인 직후 서버 동기화(하이드레이션)가 끝나기 전엔 값이 다시 덮일 수 있어
+   입력을 잠깐 잠그고 안내 문구를 보여준다 --- */
+.settings-hydration-lock-notice {
+    margin: 10px 16px 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--sub-text-color);
+    font-size: var(--fs-3);
+    font-weight: 600;
+    text-align: center;
+}
+.settings-hydration-lock-notice.hidden {
+    display: none;
+}
+
 /* --- 신규 추가: 하단 네비게이션 바 --- */
 .bottom-nav-bar {
     position: fixed;

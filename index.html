@@ -1193,6 +1193,10 @@
                 <div style="width: 40px;"></div>
             </div>
 
+            <div id="settingsHydrationLockNotice" class="settings-hydration-lock-notice hidden">
+                서버와 동기화하는 중입니다. 잠시 후 다시 시도해 주세요.
+            </div>
+
             <div class="setting-section settings-theme-card" style="padding: 12px 16px;">
                 <div class="setting-item" style="margin-bottom: 0;">
                     <label style="font-weight: 700; font-size: 1.1rem;">테마 선택</label>
@@ -2295,6 +2299,12 @@
     <!-- 토스트 알림 메시지 -->
     <div id="toastMessage" class="toast-message" role="status" aria-live="polite">
         <span id="toastMessageText">저장되었습니다.</span>
+    </div>
+
+    <!-- 자동 저장 상태 표시(저장 중일 때만 아이콘이 돌고, 저장되면 사라짐 / 실패 시 "저장실패") -->
+    <div id="saveStatusIndicator" class="save-status-indicator" role="status" aria-live="polite">
+        <span class="save-status-spinner" aria-hidden="true"></span>
+        <span class="save-status-text">저장실패</span>
     </div>
 
     <!-- 하단 네비게이션 바 -->

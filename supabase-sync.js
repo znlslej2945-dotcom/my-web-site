@@ -746,9 +746,18 @@ async function initWorkDataFromSupabase(cars) {
             localStorage.setItem(key, JSON.stringify(mergedByDate));
 
             // 이번 세션의 동기화 스냅샷도 방금 받아온 서버 상태로 맞춰서, 로그인 직후 첫 저장 때
-            // 불필요하게 전체 재업로드하지 않도록 한다.
+            // 불필요하게 전체 재업로드하지 않도록 한다 — 단, 반드시 "서버가 실제로 확인해 준"
+            // byDate 기준으로만 만들어야 한다. 예전엔 mergedByDate(=localExisting까지 합친 것)
+            // 기준으로 만들어서, 아직 서버에 한 번도 올라간 적 없는 로컬 전용 날짜(예: 하이드레이션
+            // 도중 사용자가 막 입력한 오늘자 기록)까지 "이미 서버와 동일함"으로 표시돼 버렸다.
+            // 그러면 뒤이어 실행되는 scheduleSupabaseWorkDataSync()가 diff 비교에서 그 날짜를
+            // "변경 없음"으로 판단해 실제로는 서버에 한 번도 안 올라간 기록을 영영 안 올리고
+            // 넘어가고, 다음 로그인 때 initWorkDataFromSupabase가 서버의 예전 값으로 그 날짜를
+            // 다시 덮어써서 "운행일지가 비워져 있다"는 형태로 나타났다(실제로 보고됨). byDate
+            // 기준으로 바꾸면, 로컬에만 있는 날짜는 계속 "미동기화"로 남아 있다가 정상적으로
+            // 업로드된다.
             const snapshot = {};
-            Object.keys(mergedByDate).forEach(date => { snapshot[date] = JSON.stringify(mergedByDate[date]); });
+            Object.keys(byDate).forEach(date => { snapshot[date] = JSON.stringify(byDate[date]); });
             __supabaseWorkDataSyncedSnapshot[logId] = snapshot;
         } catch (error) {
             console.error('운행기록 Supabase 로드 실패(기존 로컬 데이터 보존):', logId, error);
@@ -998,6 +1007,10 @@ async function hydrateFromSupabaseAndMigrate() {
         // 플래그가 선 직후 현재 로컬 설정 기준으로 한 번 더 동기화를 걸어 이 유실을 막는다
         // (편집이 없었다면 서버 값을 그대로 다시 쓰는 것뿐이라 무해하다).
         if (typeof scheduleSupabaseSettingsSync === 'function') scheduleSupabaseSettingsSync();
+        // loadSettings()는 위 try 블록 안(플래그가 서기 전)에 이미 한 번 호출됐으므로, 지금
+        // 앱 설정 화면이 열려 있었다면 그때 잠금(applySettingsHydrationLock)이 걸린 채로
+        // 남아있다. 플래그가 방금 선 지금, 다시 한 번 불러서 잠금을 풀어준다.
+        if (typeof applySettingsHydrationLock === 'function') applySettingsHydrationLock();
     }
 }
 
