@@ -127,6 +127,16 @@ async function flushAllBackgroundSaves() {
     }
 }
 
+// 오프라인 상태에서 저장이 실패해도(디바운스 타이머가 아직 남아있는 경우) 온라인으로
+// 복귀하는 즉시 대기 중인 백그라운드 저장을 다시 시도한다. 이미 실패해서 큐에서 빠진
+// 항목까지 되살리지는 못하지만(다음 편집 때 diff로 자연스럽게 재시도됨), 아직 대기 중인
+// 저장은 온라인 복귀를 몇 분씩 기다리지 않고 즉시 반영된다.
+window.addEventListener('online', () => {
+    flushAllBackgroundSaves().catch(error => {
+        console.error('온라인 복귀 후 대기 중인 저장 재시도 실패:', error);
+    });
+});
+
 class RequestTimeoutError extends Error {
     constructor(message = '서버 응답 시간이 초과되었습니다.') {
         super(message);
@@ -6471,6 +6481,21 @@ function buildCalendar() {
                     const fixedClientName = isMain ? savedSettings.fixedClient : savedSettings.subFixedClient;
                     if (fixedClientName) {
                         monthFareByClient[fixedClientName] = (monthFareByClient[fixedClientName] || 0) + fAmount;
+                        // 콜상세 거래처와 동일하게, 고정 거래처도 수수료가 켜져 있으면 그대로
+                        // 적용한다 — 고정노선이라고 수수료 계산에서 예외를 둘 이유가 없다.
+                        const fixedClientObj = savedSettings.clients?.find(c => c.companyName === fixedClientName);
+                        if (fixedClientObj?.commEnabled) {
+                            let fixedComm = 0;
+                            if (fixedClientObj.commType === 'percent' || !fixedClientObj.commType) {
+                                fixedComm = Math.floor(fAmount * (parseFloat(fixedClientObj.commValue) / 100));
+                                clientCommLabels[fixedClientName] = `${fixedClientObj.commValue}%`;
+                            } else {
+                                fixedComm = parseCurrencyValue(fixedClientObj.commValue) * Math.max(1, record.fixedCount || 0);
+                                clientCommLabels[fixedClientName] = `${parseCurrencyValue(fixedClientObj.commValue).toLocaleString()}원`;
+                            }
+                            monthCommByClient[fixedClientName] = (monthCommByClient[fixedClientName] || 0) + fixedComm;
+                            monthTotalCommission += fixedComm;
+                        }
                     } else {
                         dayFixedFare += fAmount;
                     }
@@ -6673,10 +6698,9 @@ function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, fuelTotal
             `;
         }
         for (let client in monthFareByClient) {
-            const isFixedMonthly = clientCommLabels[client] === '월정액 계약';
             html += `
                 <div class="summary-row">
-                    <span>${escapeDetailText(client)} ${isFixedMonthly ? '월정액 정산' : '기본 운송료'}</span>
+                    <span>${escapeDetailText(client)} 기본 운송료</span>
                     <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
                 </div>
             `;
@@ -7674,28 +7698,31 @@ function buildReportPage(isForExport = false) {
     let rptPhone = savedSettings.userPhone || '-';
     let rptBank = savedSettings.bankName || '-';
     let rptAccount = savedSettings.accountNumber || '-';
-    
+    let rptAccountHolder = savedSettings.accountHolder || '-';
+
     if (activeLogId !== 'main') {
         const currentCar = savedSettings.cars.find(c => c.number === activeLogId);
         if (currentCar) {
             document.getElementById('rptCarNumber').textContent = currentCar.number || '-';
             document.getElementById('rptCarTonnage').textContent = currentCar.tonnage || '-';
-            
+
             if (currentCar.logEnabled && currentCar.infoType === 'new' && currentCar.personalInfo) {
                 rptName = currentCar.personalInfo.name || rptName;
                 rptPhone = currentCar.personalInfo.phone || rptPhone;
                 rptBank = currentCar.personalInfo.bank || rptBank;
                 rptAccount = currentCar.personalInfo.account || rptAccount;
+                rptAccountHolder = currentCar.personalInfo.accountHolder || rptAccountHolder;
             }
         }
     } else if (savedSettings.cars && savedSettings.cars.length > 0) {
         const mainCar = savedSettings.cars.find(c => c.type === 'main') || savedSettings.cars[0];
-        
+
         if (mainCar.logEnabled && mainCar.infoType === 'new' && mainCar.personalInfo) {
             rptName = mainCar.personalInfo.name || rptName;
             rptPhone = mainCar.personalInfo.phone || rptPhone;
             rptBank = mainCar.personalInfo.bank || rptBank;
             rptAccount = mainCar.personalInfo.account || rptAccount;
+            rptAccountHolder = mainCar.personalInfo.accountHolder || rptAccountHolder;
         }
 
         document.getElementById('rptCarNumber').textContent = mainCar.number || '-';
@@ -7710,6 +7737,7 @@ function buildReportPage(isForExport = false) {
     document.getElementById('rptUserPhone').textContent = rptPhone;
     document.getElementById('rptBankName').textContent = rptBank;
     document.getElementById('rptAccountNumber').textContent = rptAccount;
+    if (document.getElementById('rptAccountHolder')) document.getElementById('rptAccountHolder').textContent = rptAccountHolder;
 
     const isMain = activeLogId === 'main';
     const fixedUnitPrice = parseCurrencyValue(isMain ? savedSettings.unitPrice : savedSettings.subUnitPrice);
@@ -7755,6 +7783,20 @@ function buildReportPage(isForExport = false) {
                     const fixedClientName = isMain ? savedSettings.fixedClient : savedSettings.subFixedClient;
                     if (fixedClientName) {
                         monthFareByClient[fixedClientName] = (monthFareByClient[fixedClientName] || 0) + fAmt;
+                        // 콜상세 거래처와 동일하게, 고정 거래처도 수수료가 켜져 있으면 그대로 적용한다.
+                        const fixedClientObj = savedSettings.clients?.find(c => c.companyName === fixedClientName);
+                        if (fixedClientObj?.commEnabled) {
+                            let fixedComm = 0;
+                            if (fixedClientObj.commType === 'percent' || !fixedClientObj.commType) {
+                                fixedComm = Math.floor(fAmt * (parseFloat(fixedClientObj.commValue) / 100));
+                                clientCommLabels[fixedClientName] = `${fixedClientObj.commValue}%`;
+                            } else {
+                                fixedComm = parseCurrencyValue(fixedClientObj.commValue) * Math.max(1, record.fixedCount || 0);
+                                clientCommLabels[fixedClientName] = `${parseCurrencyValue(fixedClientObj.commValue).toLocaleString()}원`;
+                            }
+                            monthCommByClient[fixedClientName] = (monthCommByClient[fixedClientName] || 0) + fixedComm;
+                            totalCommission += fixedComm;
+                        }
                     } else {
                         dayDefaultFare += fAmt;
                     }
@@ -7895,10 +7937,9 @@ function buildReportPage(isForExport = false) {
         `;
     }
     for (let client in monthFareByClient) {
-        const isFixedMonthlyReport = clientCommLabels[client] === '월정액 계약';
         baseFareHtml += `
             <div class="summary-row">
-                <span>${escapeDetailText(client)} ${isFixedMonthlyReport ? '월정액 정산' : '기본 운송료'}</span>
+                <span>${escapeDetailText(client)} 기본 운송료</span>
                 <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
             </div>
         `;
@@ -8151,10 +8192,9 @@ function viewDetailReport(isForExport) {
         `;
     }
     for (let client in monthFareByClient) {
-        const isFixedMonthlyReport = clientCommLabels[client] === '월정액 계약';
         baseFareHtml += `
             <div class="summary-row">
-                <span>${escapeDetailText(client)} ${isFixedMonthlyReport ? '월정액 정산' : '기본 운송료'}</span>
+                <span>${escapeDetailText(client)} 기본 운송료</span>
                 <span class="summary-value">${monthFareByClient[client].toLocaleString()} 원</span>
             </div>
         `;

@@ -164,9 +164,7 @@ function buildClientRow(userId, client, index) {
         is_pinned: !!client.isPinned,
         comm_enabled: !!client.commEnabled,
         comm_type: client.commType || null,
-        comm_value: client.commission != null ? String(client.commission) : null,
-        fixed_monthly_on: !!client.fixedMonthlyOn,
-        fixed_monthly_amount: client.fixedMonthlyAmount != null ? String(client.fixedMonthlyAmount) : null,
+        comm_value: client.commValue != null ? String(client.commValue) : null,
         payment_term: client.paymentTerm || null,
         payment_term_value: client.paymentTermValue || null,
         display_order: index,
@@ -209,11 +207,24 @@ function patchSupabaseIdsIntoLocalSettings(carsWithIds, clientsWithIds) {
     });
 }
 
+// 이번 세션에서 hydrateFromSupabaseAndMigrate()가 (성공/실패 여부와 무관하게) 한 번 끝까지
+// 실행됐는지 표시하는 플래그. 로그인 세션이 있는데 아직 이 값이 true가 되기 전이라면,
+// getUserSettings()가 반환하는 로컬 settings는 아직 서버 값으로 채워지기 전(빈 값이거나
+// 이전 캐시)일 수 있다 — 이 상태에서 profiles 동기화가 나가면 서버에 이미 저장돼 있던
+// 이름/전화번호/사업자정보/계좌 등을 null로 덮어써 버리는 사고로 이어진다(실제 감사에서
+// 지적된 지점). 그래서 scheduleSupabaseSettingsSync()는 이 플래그가 서기 전까지는 아예
+// 큐잉하지 않는다.
+let supabaseHydrationCompleted = false;
+
 // setUserSettings()가 호출될 때마다(디바운스되어) 실행되는 백그라운드 동기화.
 // 항상 flush 시점의 최신 localStorage 값을 다시 읽어서 보내므로, 디바운스 구간에서
 // 여러 번 호출돼도 마지막 상태 하나만 서버로 나간다.
 function scheduleSupabaseSettingsSync() {
     if (typeof queueBackgroundSave !== 'function') return;
+    // 이번 세션에서 아직 하이드레이션이 끝나지 않았다면 건너뛴다(위 supabaseHydrationCompleted
+    // 설명 참고). 하이드레이션이 끝난 뒤에 실제로 값을 지운 정상적인 수정은 그때 다시
+    // setUserSettings()가 호출되면서 정상적으로 반영된다.
+    if (!supabaseHydrationCompleted) return;
     queueBackgroundSave('supabase-settings-sync', () => syncSettingsToSupabase(getUserSettings()), 600);
 }
 
@@ -299,14 +310,21 @@ async function syncSettingsToSupabase(settings) {
 // 않게 하기 위함.
 async function resolveVehicleBusinessInfoFromSupabase(client, vehicleId, ownerId) {
     const [{ data: ownerProfile }, vehicleResult] = await Promise.all([
-        client.from('profiles').select('name, business_name, business_number, business_address, business_type, business_item, business_email').eq('id', ownerId).maybeSingle(),
+        client.from('profiles').select('name, business_name, business_number, business_address, business_type, business_item, business_email, settings').eq('id', ownerId).maybeSingle(),
         vehicleId ? client.from('vehicles').select('id, number, tonnage, raw').eq('id', vehicleId).maybeSingle() : Promise.resolve({ data: null })
     ]);
 
+    // bizRepresentative(사업자 대표자명)는 전용 컬럼이 없고 profiles.settings(jsonb)에만
+    // 저장된다(buildSettingsJsonbPayload 참고). 로컬 버전인 getCarBusinessInfo()와 동일하게
+    // "대표자명 입력값 우선, 없으면 차주 개인 성명(name)으로 폴백" 순서를 그대로 따른다 —
+    // 예전에는 이 값을 아예 안 읽고 항상 ownerProfile.name(개인 성명)만 썼기 때문에, 개인
+    // 성명과 사업자 등록상 대표자명이 다른 차주의 경우 연동된 기사 쪽에 잘못된 대표자명이
+    // 자동입력되는 문제가 있었다(실제로 확인됨).
+    const ownerJsonbSettings = (ownerProfile?.settings && typeof ownerProfile.settings === 'object') ? ownerProfile.settings : {};
     const ownerBiz = {
         name: ownerProfile?.business_name || '',
         bizNumber: ownerProfile?.business_number || '',
-        representative: ownerProfile?.name || '',
+        representative: ownerJsonbSettings.bizRepresentative || ownerProfile?.name || '',
         address: ownerProfile?.business_address || '',
         bizType: ownerProfile?.business_type || '',
         bizItem: ownerProfile?.business_item || '',
@@ -865,81 +883,91 @@ async function migrateLocalDataToSupabase(userId) {
 // 3) 화면 다시 그리기
 async function hydrateFromSupabaseAndMigrate() {
     const user = await getSupabaseUser();
-    if (!user) return;
+    if (!user) { supabaseHydrationCompleted = true; return; }
 
-    if (checkHasLocalLegacyData() && !localStorage.getItem('supabaseMigrationDone')) {
-        try {
-            const { hadFailures } = await migrateLocalDataToSupabase(user.id);
-            if (hadFailures) {
-                // 일부 항목만 실패해도 플래그를 세우지 않는다 — 세워버리면 실패한 항목은
-                // 다시는 마이그레이션 대상으로 재검토되지 않는다. supabaseId가 없는 항목은
-                // 어차피 insert-or-update 로직상 재실행해도 중복이 생기지 않으므로 안전하다.
-                console.warn('[Supabase] 로컬 데이터 마이그레이션 일부 실패 — 다음 로그인 때 나머지를 재시도합니다.');
-            } else {
-                localStorage.setItem('supabaseMigrationDone', 'true');
-                console.log('[Supabase] 기존 로컬 데이터 마이그레이션 완료');
+    // 아래 본문 전체를 try/finally로 감싸서, 중간에 어디서 예외가 나든(개별 단계는 대부분
+    // 이미 자체 try/catch로 보호되지만, initSettingsFromSupabase/initWorkDataFromSupabase
+    // 자체가 던지는 경우까지 포함) supabaseHydrationCompleted는 반드시 true가 되도록 한다.
+    // 이 플래그를 "성공했을 때만" 세우면, 하이드레이션이 한 번 실패한 세션에서는 로그인
+    // 상태인데도 scheduleSupabaseSettingsSync()가 영원히 아무것도 큐잉하지 않아 그 세션 동안의
+    // 모든 설정 변경이 서버에 조용히 반영되지 않는 더 나쁜 문제가 생긴다.
+    try {
+        if (checkHasLocalLegacyData() && !localStorage.getItem('supabaseMigrationDone')) {
+            try {
+                const { hadFailures } = await migrateLocalDataToSupabase(user.id);
+                if (hadFailures) {
+                    // 일부 항목만 실패해도 플래그를 세우지 않는다 — 세워버리면 실패한 항목은
+                    // 다시는 마이그레이션 대상으로 재검토되지 않는다. supabaseId가 없는 항목은
+                    // 어차피 insert-or-update 로직상 재실행해도 중복이 생기지 않으므로 안전하다.
+                    console.warn('[Supabase] 로컬 데이터 마이그레이션 일부 실패 — 다음 로그인 때 나머지를 재시도합니다.');
+                } else {
+                    localStorage.setItem('supabaseMigrationDone', 'true');
+                    console.log('[Supabase] 기존 로컬 데이터 마이그레이션 완료');
+                }
+            } catch (error) {
+                // 실패해도 로컬 데이터는 그대로 보존된다(삭제/덮어쓰기 없음). 플래그를 세우지 않으므로
+                // 다음 로그인 때 다시 시도한다.
+                console.error('[Supabase] 로컬 데이터 마이그레이션 실패 — 로컬 데이터는 보존되며 다음 로그인 때 재시도합니다.', error);
             }
-        } catch (error) {
-            // 실패해도 로컬 데이터는 그대로 보존된다(삭제/덮어쓰기 없음). 플래그를 세우지 않으므로
-            // 다음 로그인 때 다시 시도한다.
-            console.error('[Supabase] 로컬 데이터 마이그레이션 실패 — 로컬 데이터는 보존되며 다음 로그인 때 재시도합니다.', error);
         }
-    }
 
-    let settings = await initSettingsFromSupabase(user.id);
+        let settings = await initSettingsFromSupabase(user.id);
 
-    // 기사연동 상태 복원은 반드시 운행기록(initWorkDataFromSupabase)보다 먼저 끝내야 한다.
-    // 연동된 소속기사의 'main' 로그는 resolveVehicleIdForLogId()가 employerLink.vehicleId를
-    // 봐서 조회 대상을 정하는데, 이 값이 아직 로컬에 복원되기 전(특히 새 기기 첫 로그인처럼
-    // employerLink 캐시 자체가 없는 경우)에 initWorkDataFromSupabase가 먼저 돌면 대상
-    // vehicle_id를 못 찾아 건너뛰고, 그 결과 기사 앱에 운행일지가 0건으로 보이는 문제가
-    // 있었다(실제로 재현되는 순서 문제였다). 그래서 이 블록을 먼저 실행한다.
-    //
-    // 차주 계정이면 기사 연동 목록도 로그인 시점에 서버 기준으로 갱신해 둔다.
-    // 이걸 안 하면 settings.driverLinks가 예전 캐시(연동 전 상태 등)에 머물러 있어서,
-    // 로그인 직후 햄버거 메뉴에 "OOOO 관리"(연동 기사 바로가기) 항목이 빠져 보이고,
-    // "기사 연동 관리" 화면을 한 번 들어갔다 나와야만(그 화면이 자체적으로 동기화하므로) 나타나는
-    // 문제가 있었다.
-    if (typeof isOwnerAccountType === 'function' && isOwnerAccountType(settings.accountType) && typeof syncDriverLinksFromSupabase === 'function') {
-        try {
-            await syncDriverLinksFromSupabase();
-        } catch (error) {
-            console.error('[Supabase] 로그인 시 기사 연동 목록 갱신 실패(기존 캐시로 계속 진행):', error);
-        }
-    } else if (settings.accountType === 'employed_driver' && typeof syncEmployerLinkFromSupabase === 'function') {
-        // 소속 기사는 로그인/새 기기 진입 시마다 서버의 실제 연결 상태(driver_links)로
-        // employerLink를 복원한다. 로컬에 없다고 새로 만들지 않고, 서버에 없으면 비운다 —
-        // "기존 연결이 있으면 초대코드 없이 그대로 복원되고, 연결이 없으면 로그인은 성공하되
-        // 미연결 상태로 진입한다"는 요구사항의 핵심 지점.
-        try {
-            await syncEmployerLinkFromSupabase();
-            // 로그인/새로고침 시점에도 연결된 차량의 최신 사업자정보(+ 차량번호/톤수)를 함께
-            // 반영한다. 이걸 개인정보 화면 진입 시에만 하면, 로그인 직후 메인 화면 등 다른
-            // 곳에 머무는 동안은 여전히 예전 사업자정보가 남아있게 된다.
-            const refreshedSettings = getUserSettings();
-            const link = refreshedSettings.employerLink;
-            if (link?.status === 'linked' && link.ownerId && typeof applyEmployerAutoFilledInfo === 'function') {
-                await applyEmployerAutoFilledInfo(link.ownerId, link.vehicleId);
+        // 기사연동 상태 복원은 반드시 운행기록(initWorkDataFromSupabase)보다 먼저 끝내야 한다.
+        // 연동된 소속기사의 'main' 로그는 resolveVehicleIdForLogId()가 employerLink.vehicleId를
+        // 봐서 조회 대상을 정하는데, 이 값이 아직 로컬에 복원되기 전(특히 새 기기 첫 로그인처럼
+        // employerLink 캐시 자체가 없는 경우)에 initWorkDataFromSupabase가 먼저 돌면 대상
+        // vehicle_id를 못 찾아 건너뛰고, 그 결과 기사 앱에 운행일지가 0건으로 보이는 문제가
+        // 있었다(실제로 재현되는 순서 문제였다). 그래서 이 블록을 먼저 실행한다.
+        //
+        // 차주 계정이면 기사 연동 목록도 로그인 시점에 서버 기준으로 갱신해 둔다.
+        // 이걸 안 하면 settings.driverLinks가 예전 캐시(연동 전 상태 등)에 머물러 있어서,
+        // 로그인 직후 햄버거 메뉴에 "OOOO 관리"(연동 기사 바로가기) 항목이 빠져 보이고,
+        // "기사 연동 관리" 화면을 한 번 들어갔다 나와야만(그 화면이 자체적으로 동기화하므로) 나타나는
+        // 문제가 있었다.
+        if (typeof isOwnerAccountType === 'function' && isOwnerAccountType(settings.accountType) && typeof syncDriverLinksFromSupabase === 'function') {
+            try {
+                await syncDriverLinksFromSupabase();
+            } catch (error) {
+                console.error('[Supabase] 로그인 시 기사 연동 목록 갱신 실패(기존 캐시로 계속 진행):', error);
             }
-        } catch (error) {
-            console.error('[Supabase] 로그인 시 기사 연동 상태/사업자정보 갱신 실패(기존 캐시로 계속 진행):', error);
+        } else if (settings.accountType === 'employed_driver' && typeof syncEmployerLinkFromSupabase === 'function') {
+            // 소속 기사는 로그인/새 기기 진입 시마다 서버의 실제 연결 상태(driver_links)로
+            // employerLink를 복원한다. 로컬에 없다고 새로 만들지 않고, 서버에 없으면 비운다 —
+            // "기존 연결이 있으면 초대코드 없이 그대로 복원되고, 연결이 없으면 로그인은 성공하되
+            // 미연결 상태로 진입한다"는 요구사항의 핵심 지점.
+            try {
+                await syncEmployerLinkFromSupabase();
+                // 로그인/새로고침 시점에도 연결된 차량의 최신 사업자정보(+ 차량번호/톤수)를 함께
+                // 반영한다. 이걸 개인정보 화면 진입 시에만 하면, 로그인 직후 메인 화면 등 다른
+                // 곳에 머무는 동안은 여전히 예전 사업자정보가 남아있게 된다.
+                const refreshedSettings = getUserSettings();
+                const link = refreshedSettings.employerLink;
+                if (link?.status === 'linked' && link.ownerId && typeof applyEmployerAutoFilledInfo === 'function') {
+                    await applyEmployerAutoFilledInfo(link.ownerId, link.vehicleId);
+                }
+            } catch (error) {
+                console.error('[Supabase] 로그인 시 기사 연동 상태/사업자정보 갱신 실패(기존 캐시로 계속 진행):', error);
+            }
         }
-    }
 
-    // employerLink 복원(및 그에 따른 mainCar 자동입력)이 방금 settings.cars를 바꿨을 수 있으니
-    // 최신 상태로 다시 읽어서 운행기록을 불러온다.
-    settings = getUserSettings();
-    await initWorkDataFromSupabase(settings.cars || []);
+        // employerLink 복원(및 그에 따른 mainCar 자동입력)이 방금 settings.cars를 바꿨을 수 있으니
+        // 최신 상태로 다시 읽어서 운행기록을 불러온다.
+        settings = getUserSettings();
+        await initWorkDataFromSupabase(settings.cars || []);
 
-    // 지금 화면에 보이는 로그(activeLogId)를 새로 불러온 데이터로 갱신
-    if (typeof loadWorkDataForLog === 'function') {
-        workData = loadWorkDataForLog(typeof activeLogId !== 'undefined' ? activeLogId : 'main');
+        // 지금 화면에 보이는 로그(activeLogId)를 새로 불러온 데이터로 갱신
+        if (typeof loadWorkDataForLog === 'function') {
+            workData = loadWorkDataForLog(typeof activeLogId !== 'undefined' ? activeLogId : 'main');
+        }
+        if (typeof normalizeLegacyData === 'function') normalizeLegacyData();
+        if (typeof loadSettings === 'function') loadSettings();
+        if (typeof buildCalendar === 'function') buildCalendar();
+        if (typeof renderSubCarMenu === 'function') renderSubCarMenu();
+        if (typeof updateAccountRoleUI === 'function') updateAccountRoleUI();
+    } finally {
+        supabaseHydrationCompleted = true;
     }
-    if (typeof normalizeLegacyData === 'function') normalizeLegacyData();
-    if (typeof loadSettings === 'function') loadSettings();
-    if (typeof buildCalendar === 'function') buildCalendar();
-    if (typeof renderSubCarMenu === 'function') renderSubCarMenu();
-    if (typeof updateAccountRoleUI === 'function') updateAccountRoleUI();
 }
 
 // script.js의 importData()가 백업 파일을 복원한 직후 호출한다. restoreBackupStorage()는
