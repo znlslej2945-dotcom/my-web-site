@@ -394,6 +394,30 @@ async function deleteVehicleFromSupabase(vehicleSupabaseId) {
     if (error) throw error;
 }
 
+// 거래처(clients) 행을 서버에서 삭제한다. deleteClient()가 로컬 삭제 직후 호출해야 한다 —
+// 차량 삭제와 똑같은 이유로(로컬에서만 지우면 다음 하이드레이션 때 서버에 남아있는 이
+// 거래처 행을 initSettingsFromSupabase가 다시 읽어와 되살려 놓는다) 반드시 필요한데, 이
+// 함수 자체가 이번 전수 점검 전까지 아예 없었다 — deleteClient()는 로컬 배열에서만 지우고
+// 끝나서, 지운 거래처가 재로그인/새로고침할 때마다 목록에 다시 나타나는 결함이 있었다.
+//
+// 차량 삭제와 다른 점: 거래처를 지운다고 그 거래처로 기록된 과거 운행/세금계산서 내역까지
+// 지우면 안 된다(차량은 그 차량 자체의 기록이 무의미해지지만, 거래처는 "앞으로 목록에서
+// 빼는 것"뿐 과거 거래 이력은 그대로 남아야 한다). 그래서 하위 레코드를 지우는 대신
+// client_id 참조만 끊어(null) 이력은 보존하고, clients 행 자체만 삭제한다 — DB에 client_id
+// 외래키가 RESTRICT로 걸려 있어도 삭제가 막히지 않게 하는 안전장치이기도 하다.
+async function deleteClientFromSupabase(clientSupabaseId) {
+    if (!clientSupabaseId) return;
+    const client = await getSupabaseClient();
+
+    await Promise.all([
+        client.from('transport_details').update({ client_id: null }).eq('client_id', clientSupabaseId),
+        client.from('tax_invoices').update({ client_id: null }).eq('client_id', clientSupabaseId)
+    ]);
+
+    const { error } = await client.from('clients').delete().eq('id', clientSupabaseId);
+    if (error) throw error;
+}
+
 // Supabase(profiles+vehicles+clients)에서 읽어와 기존 getUserSettings()가 반환하던 것과
 // 동일한 모양으로 조립한 뒤 localStorage(userSettings)에 그대로 반영한다.
 async function initSettingsFromSupabase(userId) {

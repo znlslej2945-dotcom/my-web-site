@@ -2928,6 +2928,13 @@ function showMain(skipRedirect = false) {
 
     hideAllPages();
     document.getElementById('mainPage').classList.remove('hidden');
+    // 차량관리 등 다른 화면에서 무언가 저장하고 홈으로 돌아왔을 때, 홈 화면(mainPage)은
+    // hideAllPages()로 숨겨져만 있었을 뿐 DOM에 그대로 남아있던 예전 렌더링을 다시 보여주는
+    // 것뿐이라 그 사이의 변경(수수료 설정 등 달력 수치에 영향을 주는 값)이 반영 안 된 "이전
+    // 기록"이 잠깐 보였다가, 다른 계기로 buildCalendar()가 다시 불릴 때에야 최신 값으로
+    // 바뀌는 것처럼 보이는 문제가 있었다(실제로 보고됨). 여기서 항상 다시 그려서 이 화면이
+    // 뜰 때는 항상 최신 상태이게 한다.
+    buildCalendar();
 
     const notificationBtn = document.getElementById('notificationBtn');
     if (notificationBtn) notificationBtn.style.display = 'flex';
@@ -4089,12 +4096,22 @@ function deleteClient(idx) {
     showConfirmModal('해당 업체를 삭제하시겠습니까?', () => {
         const settings = getUserSettings();
         if (settings.clients && settings.clients[idx]) {
+            const deletedSupabaseId = settings.clients[idx].supabaseId;
             settings.clients.splice(idx, 1);
             setUserSettings(settings);
             showToastMessage('삭제되었습니다.');
             renderClientList();
             populateFixedClientSelects();
             buildCalendar();
+
+            // 로컬에서만 지우고 끝내면, 재로그인/하이드레이션 시 서버 clients 테이블에 남아있는
+            // 이 거래처 행을 다시 읽어와 로컬에 되살려 놓는다(차량 삭제 때 이미 한 번 확인·수정된
+            // 것과 같은 종류의 결함이라 동일하게 처리) — 서버에서도 함께 삭제한다.
+            if (deletedSupabaseId && typeof deleteClientFromSupabase === 'function') {
+                deleteClientFromSupabase(deletedSupabaseId).catch(error => {
+                    console.error('서버 거래처 삭제 실패(로컬 삭제는 반영됨, 다음 동기화 때 재확인 필요):', error);
+                });
+            }
         }
     });
 }
@@ -4859,6 +4876,12 @@ function deleteCar(idx) {
         // 메인 로그 전체를 지워버리는 사고를 막기 위함.
         if (deletedCar.type !== 'main') {
             localStorage.removeItem('workData_' + deletedCarNum);
+        }
+        // 이 차량의 동기화 diff 기준점도 함께 지운다 — 안 지우면 나중에 같은 차량번호로
+        // 새 차량을 등록했을 때, 예전 차량의 "이미 서버와 동일함" 기록이 남아있어 새 차량의
+        // 실제 첫 저장이 조용히 스킵될 수 있다(§오늘 찾은 __supabaseWorkDataSyncedSnapshot 패턴).
+        if (typeof __supabaseWorkDataSyncedSnapshot === 'object' && __supabaseWorkDataSyncedSnapshot) {
+            delete __supabaseWorkDataSyncedSnapshot[deletedCarNum];
         }
 
         // 로컬에서만 지우고 끝내면, 재로그인/하이드레이션 시 서버 vehicles 테이블에 남아있는
@@ -6270,6 +6293,15 @@ function clearAccountScopedLocalCache() {
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
     localStorage.removeItem('supabaseMigrationDone');
+
+    // localStorage뿐 아니라, 로그인 상태에서만 쓰는 "메모리 안" 캐시도 있다. 로그아웃/재로그인은
+    // 페이지를 새로고침하지 않으므로(SPA), 이런 모듈 전역 변수는 계정을 바꿔도 저절로 안
+    // 비워진다. __supabaseWorkDataSyncedSnapshot(운행기록 동기화 diff 기준점)이 이전 계정
+    // 값을 그대로 들고 있으면, 새 계정에서 우연히 같은 날짜 키를 쓸 때 "이미 서버와 동일함"으로
+    // 잘못 판단해 실제로 새 계정 몫으로 올려야 할 기록이 누락될 수 있다.
+    if (typeof __supabaseWorkDataSyncedSnapshot === 'object' && __supabaseWorkDataSyncedSnapshot) {
+        Object.keys(__supabaseWorkDataSyncedSnapshot).forEach(key => delete __supabaseWorkDataSyncedSnapshot[key]);
+    }
 }
 
 // hydrateFromSupabaseAndMigrate()가 로그인 직후 호출한다. "이 기기가 마지막으로 하이드레이션한
