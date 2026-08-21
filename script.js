@@ -8587,13 +8587,25 @@ window.addEventListener('load', () => {
             setTimeout(() => {
                 splashScreen.style.display = 'none';
 
-                updateOverdueNotification(true);
-
                 // guestMode(비회원으로 시작하기)를 선택한 사용자는 isLoggedIn이 계속 false라도
                 // 새로고침할 때마다 로그인 화면으로 돌려보내지 않는다 — 그러면 "비회원으로
                 // 시작하기"가 사실상 매번 다시 눌러야 하는 무의미한 버튼이 된다.
-                if (!settings.isLoggedIn && !settings.guestMode) showLocalLoginPage();
-                else if (settings.guestMode) showMain(true);
+                if (!settings.isLoggedIn && !settings.guestMode) {
+                    // 아직 로그인 전(로그인/회원가입 선택 화면으로 보내지는 상태)이다 — 이
+                    // 시점의 로컬 백업 이력(lastBackupAt)은 항상 비어있으므로(브라우저에
+                    // 저장된 적 없는 완전 신규 방문자 포함) getBackupNotificationItem()이
+                    // 무조건 "백업이 필요하다"고 판단해, 계정도 없고 데이터도 하나 없는
+                    // 사용자에게 로그인 화면이 뜨자마자 "데이터 백업을 권장합니다" 토스트가
+                    // 뜨는 결함이 있었다(실제로 재현됨). 실제로 지킬 데이터가 있는 로그인/
+                    // 비회원 사용자에게만 안내하도록, 로그인 화면으로 보낼 때는 이 안내를
+                    // 건너뛴다.
+                    showLocalLoginPage();
+                } else if (settings.guestMode) {
+                    showMain(true);
+                    updateOverdueNotification(true);
+                } else {
+                    updateOverdueNotification(true);
+                }
             }, fadeMs);
         }, holdMs);
     })();
