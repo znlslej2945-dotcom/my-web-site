@@ -989,6 +989,15 @@ async function hydrateFromSupabaseAndMigrate() {
         if (typeof updateAccountRoleUI === 'function') updateAccountRoleUI();
     } finally {
         supabaseHydrationCompleted = true;
+        // 하이드레이션이 끝나기 전(아직 이 플래그가 서기 전)에 사용자가 앱 설정 등을 미리
+        // 건드렸다면, scheduleSupabaseSettingsSync() 맨 위 가드(!supabaseHydrationCompleted)에
+        // 걸려서 그 변경이 로컬(userSettings)에는 즉시 반영됐지만 서버로는 조용히 유실됐을 수
+        // 있다 — 실제로 "재로그인할 때마다 앱 설정이 초기화돼 있고, 다시 조정해야 합계 금액이
+        // 정상으로 돌아온다"는 형태로 보고됨: 그 세션에서의 편집이 서버에 못 올라간 채로 다음
+        // 로그인 때 initSettingsFromSupabase()가 예전 서버 값으로 로컬을 덮어써 버린 것.
+        // 플래그가 선 직후 현재 로컬 설정 기준으로 한 번 더 동기화를 걸어 이 유실을 막는다
+        // (편집이 없었다면 서버 값을 그대로 다시 쓰는 것뿐이라 무해하다).
+        if (typeof scheduleSupabaseSettingsSync === 'function') scheduleSupabaseSettingsSync();
     }
 }
 
