@@ -731,10 +731,10 @@ async function executeLoginAction() {
     renderSubCarMenu();
     showToastMessage('로그인되었습니다.');
 
-    if (settings.accountType === 'employed_driver' && settings.employerLink?.status !== 'linked') {
-        setTimeout(() => showToastMessage('아직 소속 사장님과 연결되지 않았어요. 마이페이지 > 소속 연결에서 연결해 주세요.'), 1500);
-    }
-
+    // 미연동 소속기사 안내는 더 이상 1.5초 뒤 스쳐 지나가는 토스트로 띄우지 않는다 — 로그인
+    // 직후 잠깐 보이고 사라져서 놓치기 쉬웠다. 이제 알림 패널(getEmployerLinkNotificationItem)에
+    // 연동되기 전까지 계속 남아있으면서, 눌러서 바로 연동 화면으로 갈 수 있다. showMain()이
+    // 곧바로 updateOverdueNotification()을 통해 뱃지에 반영해 준다.
     showMain();
 }
 
@@ -1322,12 +1322,29 @@ function sendDriverInviteSms(source = 'management') {
     window.location.href = `sms:${phone}${separator}body=${encodeURIComponent(message)}`;
 }
 
+// "할당 차량" 자동완성 목록. 두 종류를 제외한다:
+// 1) 메인 차량 — 메인 차량은 차주 본인 차량이라 애초에 기사에게 할당할 대상이 아니다.
+// 2) 지금 이 순간 다른 기사에게 이미(할당 종료일이 없거나 아직 안 지난) 활성 할당돼 있는
+//    기사차량 — 겹치는 기간으로 저장하면 performSaveLinkedDriverInvitation()의 겹침 검사에서
+//    어차피 막히지만, 애초에 자동완성에 후보로 뜨지 않는 편이 헷갈리지 않는다. 지금 수정
+//    중인 초대 자신의 차량은 계속 후보에 남아야 하므로 제외 대상에서 뺀다.
 function populateLinkedDriverVehicleOptions() {
     const datalist = document.getElementById('linkedDriverVehicleOptions');
     if (!datalist) return;
-    const cars = getUserSettings().cars || [];
+    const settings = getUserSettings();
+    const cars = settings.cars || [];
+    const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
+    const editingId = document.getElementById('linkedDriverEditId')?.value || '';
+    const today = getTodayDateKey();
+
+    const activelyAssignedNumbers = new Set(
+        links
+            .filter(link => link.id !== editingId && link.status !== 'disconnected' && link.vehicleNumber && (!link.assignmentEnd || link.assignmentEnd >= today))
+            .map(link => link.vehicleNumber)
+    );
+
     datalist.innerHTML = cars
-        .filter(car => car.number)
+        .filter(car => car.number && car.type !== 'main' && !activelyAssignedNumbers.has(car.number))
         .map(car => `<option value="${escapeDetailText(car.number)}"></option>`)
         .join('');
 }
@@ -1390,6 +1407,9 @@ function resetLinkedDriverForm() {
     // (기사차량이 1대뿐이면 그 차량 정보로, 여러 대면 차주가 직접 고를 때까지 비워 둔다).
     linkedDriverFormAutoFilledVehicle = null;
     initializeLinkedDriverInvitationForm();
+    // linkedDriverEditId를 방금 비웠으니 "할당 차량" 자동완성도 새 초대 기준으로 다시 계산한다
+    // — 그러지 않으면 방금까지 수정 중이던 초대의 차량 제외 예외가 계속 남아있게 된다.
+    populateLinkedDriverVehicleOptions();
 }
 
 // ---------- 차량 관리 ↔ 기사연동 기사 기본정보 자동입력 ----------
@@ -1490,6 +1510,15 @@ async function performSaveLinkedDriverInvitation({ name, phone, inviteCode, vehi
     const settings = getUserSettings();
     const links = Array.isArray(settings.driverLinks) ? settings.driverLinks : [];
     const editing = editId ? links.find(link => link.id === editId) : null;
+
+    // 메인 차량(차주 본인 차량)은 기사에게 할당할 수 없다. populateLinkedDriverVehicleOptions()가
+    // 자동완성 목록에서 이미 빼두지만, <input list="...">는 자동완성일 뿐 자유 입력을 막지
+    // 않으므로(직접 타이핑하면 그대로 통과된다) 실제 저장 시점에도 반드시 한 번 더 막는다.
+    const targetCar = (settings.cars || []).find(item => item.number === vehicleNumber);
+    if (targetCar?.type === 'main') {
+        showToastMessage('메인 차량은 기사에게 할당할 수 없습니다. 기사차량 번호를 입력해 주세요.');
+        return null;
+    }
 
     const conflictingLink = findOverlappingDriverLink(links, vehicleNumber, assignmentStart, assignmentEnd, editId);
     if (conflictingLink) {
@@ -1615,6 +1644,10 @@ function editLinkedDriver(encodedId) {
     document.getElementById('linkedDriverAssignmentStart').value = link.assignmentStart || '';
     document.getElementById('linkedDriverAssignmentEnd').value = link.assignmentEnd || '';
     document.getElementById('linkedDriverSaveBtn').textContent = link.status === 'linked' ? '할당 정보 저장' : '초대 수정';
+    // linkedDriverEditId가 방금 이 초대의 id로 바뀌었으니, "할당 차량" 자동완성도 다시
+    // 계산한다 — 안 그러면 이 초대 자신의 차량이 "이미 다른 초대에 활성 할당됨"으로 오인돼
+    // 자동완성 목록에서 빠져 있는 상태로 남는다.
+    populateLinkedDriverVehicleOptions();
     document.querySelector('.driver-invite-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -6224,6 +6257,30 @@ async function getBackupNotificationItem() {
     };
 }
 
+// 소속 기사인데 아직 차주와 연동되지 않은 경우, 알림 패널에 항상 뜨는 안내 카드다.
+// 예전에는 로그인 직후 1회성 토스트로만 안내했는데, 로그인하자마자 1.5초 뒤 잠깐 스쳐가는
+// 토스트라 놓치기 쉬웠다 — 연동 전까지는 알림 패널(및 뱃지 카운트)에 계속 남아있게 해서
+// 언제든 눌러서 바로 연동 화면으로 갈 수 있게 한다. 백업 알림과 같은 방식으로 스와이프
+// 지우기(dismissedReceivableNotifications)도 지원하되, employerLink.status가 실제로
+// 'linked'가 되기 전까지는 키가 그대로라 지워도 다음 로그인/새로고침 때 다시 뜬다 — 완전히
+// 무시하게 두면 정말 중요한 안내를 놓칠 수 있어서 의도적으로 그렇게 뒀다.
+function getEmployerLinkNotificationItem() {
+    const settings = getUserSettings();
+    if (settings.accountType !== 'employed_driver' || settings.employerLink?.status === 'linked') return null;
+
+    const key = 'employer_link_reminder';
+    const dismissed = getDismissedNotificationKeys();
+    if (dismissed.has(key)) return null;
+
+    return {
+        type: 'employerLink',
+        key: key,
+        title: '사장님과 연결이 필요해요',
+        message: '아직 소속 사장님과 연결되지 않았어요. 초대 코드를 입력하면 차량 정보와 운행 기록이 자동으로 연결돼요.',
+        actionLabel: '지금 연결하기'
+    };
+}
+
 // 예전에는 이 함수가 달력 상단 배너를 직접 켜고 껐지만, 이제 백업 알림은 알림 패널로
 // 통합됐다 — updateOverdueNotification()을 호출해 뱃지/목록 상태만 다시 계산하면 된다.
 function checkBackupReminder() {
@@ -9061,7 +9118,8 @@ function getVisibleOverdueNotifications() {
 async function updateOverdueNotification(announce = false) {
     const overdueItems = getVisibleOverdueNotifications();
     const backupItem = await getBackupNotificationItem();
-    const totalCount = overdueItems.length + (backupItem ? 1 : 0);
+    const employerLinkItem = getEmployerLinkNotificationItem();
+    const totalCount = overdueItems.length + (backupItem ? 1 : 0) + (employerLinkItem ? 1 : 0);
 
     const badge = document.getElementById('overdueNotificationBadge');
     const notificationButton = document.getElementById('notificationBtn');
@@ -9081,14 +9139,16 @@ async function updateOverdueNotification(announce = false) {
         .sort()
         .join('|');
     // 이제 여러 차량 로그를 합산한 결과이므로 activeLogId로 더 이상 범위를 좁히지 않는다
-    // (그러면 로그를 전환할 때마다 같은 연체 알림 토스트가 다시 뜨게 된다). 백업 알림 유무도
-    // 시그니처에 포함해서, 연체 미수금은 그대로인데 백업 알림만 새로 생긴/사라진 경우에도
-    // 토스트가 다시 안내되게 한다.
-    const signatureWithBackup = `${signature}|backup:${backupItem ? backupItem.key : '0'}`;
+    // (그러면 로그를 전환할 때마다 같은 연체 알림 토스트가 다시 뜨게 된다). 백업/기사연동
+    // 알림 유무도 시그니처에 포함해서, 연체 미수금은 그대로인데 이 둘만 새로 생긴/사라진
+    // 경우에도 토스트가 다시 안내되게 한다.
+    const signatureWithBackup = `${signature}|backup:${backupItem ? backupItem.key : '0'}|employerLink:${employerLinkItem ? employerLinkItem.key : '0'}`;
     const alertKey = `${todayKey}|${signatureWithBackup}`;
     if (localStorage.getItem('lastOverdueReceivableAlert') === alertKey) return;
 
     localStorage.setItem('lastOverdueReceivableAlert', alertKey);
+    // 기사연동 안내는 토스트로 스쳐 지나가지 않고 알림 패널(뱃지 카운트)에만 남겨둔다 — 여기서는
+    // 의도적으로 토스트를 띄우지 않는다. 연체 미수금/백업 안내는 기존과 동일하게 유지한다.
     if (overdueItems.length > 0) {
         const total = overdueItems.reduce((sum, item) => sum + item.remainingAmount, 0);
         showToastMessage(`연체 미수금 ${overdueItems.length}건 · ${total.toLocaleString()}원이 있습니다.`);
@@ -9104,8 +9164,9 @@ async function renderNotificationPanel() {
     const overdueItems = getVisibleOverdueNotifications()
         .sort((a, b) => a.paymentDueDate.localeCompare(b.paymentDueDate));
     const backupItem = await getBackupNotificationItem();
+    const employerLinkItem = getEmployerLinkNotificationItem();
 
-    if (overdueItems.length === 0 && !backupItem) {
+    if (overdueItems.length === 0 && !backupItem && !employerLinkItem) {
         container.innerHTML = '<div class="notification-panel-empty">현재 확인이 필요한 알림이 없습니다.</div>';
         return;
     }
@@ -9114,7 +9175,25 @@ async function renderNotificationPanel() {
     const hasSubCars = (getUserSettings().cars || []).some(car => car.type === 'sub');
     let html = '';
 
-    // 백업 알림은 최상단에, 전용 카드로 렌더링한다("지금 백업" 버튼은 목록 클릭(연체 미수금
+    // 기사연동 안내는 다른 기능(운행기록 조회 등)이 전부 이 연동을 전제로 하므로 맨 위,
+    // 카드 전체가 클릭되는 형태로 보여준다 — 누르면 바로 연동 화면(개인정보의 소속 연결
+    // 카드)으로 이동한다.
+    if (employerLinkItem) {
+        html += `
+            <div class="notification-swipe-shell" data-notification-key="${escapeDetailText(employerLinkItem.key)}">
+                <div class="notification-delete-backdrop" aria-hidden="true"><span>삭제</span><span>삭제</span></div>
+                <button type="button" class="notification-panel-item" onclick="handleEmployerLinkNotificationClick(event)">
+                    <div class="notification-panel-item-head">
+                        <strong style="color: var(--primary-color);">${escapeDetailText(employerLinkItem.title)}</strong>
+                        <span>${escapeDetailText(employerLinkItem.actionLabel)} &gt;</span>
+                    </div>
+                    <p class="notification-panel-item-message">${escapeDetailText(employerLinkItem.message)}</p>
+                </button>
+            </div>
+        `;
+    }
+
+    // 백업 알림은 전용 카드로 렌더링한다("지금 백업" 버튼은 목록 클릭(연체 미수금
     // 이동)과 별개로 즉시 exportData()를 실행해야 하므로 stopPropagation으로 분리한다).
     if (backupItem) {
         html += `
@@ -9164,6 +9243,20 @@ function handleNotificationItemClick(event) {
         return;
     }
     openNotificationReceivables();
+}
+
+// 알림 패널의 "사장님과 연결이 필요해요" 카드 클릭 — 패널을 닫고 바로 연동 화면으로
+// 이동한다. showDriverConnectionManagement()는 이미 소속 기사 계정이면 개인정보 페이지의
+// "소속 연결" 카드로 자동 안내해 주므로 그대로 재사용한다.
+function handleEmployerLinkNotificationClick(event) {
+    const shell = event.currentTarget.closest('.notification-swipe-shell');
+    if (shell?.dataset.suppressClick === 'true') {
+        event.preventDefault();
+        shell.dataset.suppressClick = 'false';
+        return;
+    }
+    closeNotificationPanel();
+    showDriverConnectionManagement('main');
 }
 
 function dismissNotification(shell) {
