@@ -36,8 +36,6 @@ let isDetailReportView = appState.isDetailReportView;
 let currentDetailClientFilter = appState.currentDetailClientFilter;
 const calendarCells = appState.calendarCells;
 let confirmCallback = appState.confirmCallback;
-let pendingAccountType = '';
-let accountTypeReturnPage = 'login';
 let driverConnectionReturnPage = 'main';
 let activeLinkedDriverId = '';
 let toastHideTimer = null;
@@ -561,22 +559,6 @@ function getNormalizedEntitySnapshot() {
     };
 }
 
-function getAccountTypeMeta(type) {
-    const types = {
-        owner_driver: {
-            label: '차주',
-            description: '본인 차량 일지 및 기사를 관리합니다.',
-            icon: '<svg viewBox="0 0 24 24"><path d="M3 14.5v-2l2.5-1.4 1.6-3.7A2.3 2.3 0 0 1 9.2 6h5.6a2.3 2.3 0 0 1 2.1 1.4l1.6 3.7 2.5 1.4v4.2"></path><path d="M5 18h14M6 11h12"></path><circle cx="6.8" cy="17.5" r="2.5"></circle><circle cx="17.2" cy="17.5" r="2.5"></circle></svg>'
-        },
-        employed_driver: {
-            label: '소속 기사',
-            description: '초대 코드나 전화번호로 소속 사장님과 연결합니다.',
-            icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"></circle><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"></path><path d="M9 21v-4h6v4"></path></svg>'
-        }
-    };
-    return types[type] || { label: '유형 미선택', description: '사용자 유형을 선택해 주세요.', icon: '' };
-}
-
 function isOwnerAccountType(type) {
     return type === 'owner_driver';
 }
@@ -596,131 +578,118 @@ function getEffectiveDriverSettlementMode(car, settings = getUserSettings()) {
     return selected === 'default' ? (settings.defaultDriverSettlementMode || 'company') : selected;
 }
 
-function showAccountTypePage(returnPage = 'login') {
-    accountTypeReturnPage = returnPage === 'personal' ? 'personal' : 'login';
-    const settings = getUserSettings();
-    pendingAccountType = settings.accountType || '';
-    hideAllPages();
-    document.body.classList.add('account-flow-active');
-    document.getElementById('accountTypePage').classList.remove('hidden');
-    document.getElementById('accountTypeBackBtn')?.classList.toggle('hidden', accountTypeReturnPage !== 'personal');
-    document.querySelectorAll('.account-type-option').forEach(button => {
-        const selected = button.dataset.accountType === pendingAccountType;
-        button.classList.toggle('active', selected);
-        button.setAttribute('aria-checked', String(selected));
-    });
-    const continueButton = document.getElementById('accountTypeContinueBtn');
-    if (continueButton) continueButton.disabled = !pendingAccountType;
-}
-
-function selectAccountType(type) {
-    if (!getAccountTypeMeta(type).label || !['owner_driver', 'employed_driver'].includes(type)) return;
-    pendingAccountType = type;
-    document.querySelectorAll('.account-type-option').forEach(button => {
-        const selected = button.dataset.accountType === type;
-        button.classList.toggle('active', selected);
-        button.setAttribute('aria-checked', String(selected));
-    });
-    const continueButton = document.getElementById('accountTypeContinueBtn');
-    if (continueButton) continueButton.disabled = false;
-}
-
-function continueAccountTypeSelection() {
-    if (!pendingAccountType) {
-        showToastMessage('사용자 유형을 선택해 주세요.');
-        return;
-    }
-    const settings = getUserSettings();
-    settings.accountType = pendingAccountType;
-    settings.driverType = pendingAccountType;
-    setUserSettings(settings);
-    updateAccountRoleUI();
-
-    if (accountTypeReturnPage === 'personal') {
-        showPersonalInfo(personalInfoReturnPage);
-    } else {
-        showLocalLoginPage();
-    }
-}
-
-function cancelAccountTypeSelection() {
-    if (accountTypeReturnPage === 'personal') {
-        showPersonalInfo(personalInfoReturnPage);
-    } else {
-        showLocalLoginPage();
-    }
-}
-
-// 로그인 화면의 로그인/회원가입 탭 상태. Supabase Auth는 이메일/비밀번호 방식이라
-// 신규 가입과 재로그인을 명시적으로 구분해야 하므로 탭으로 분리한다.
-let loginAuthMode = 'signup';
-
-function setLoginAuthMode(mode) {
-    loginAuthMode = mode === 'login' ? 'login' : 'signup';
-    document.querySelectorAll('.auth-mode-btn').forEach(btn => {
-        const selected = btn.dataset.authMode === loginAuthMode;
-        btn.classList.toggle('active', selected);
-        btn.setAttribute('aria-selected', String(selected));
-    });
-    document.getElementById('loginPasswordConfirmField')?.classList.toggle('hidden', loginAuthMode !== 'signup');
-    // 초대코드 입력란은 "회원가입 + 소속 기사"일 때만 보여준다. 로그인 모드에서는 항상 숨긴다 —
-    // 인증(로그인)과 소속 연결은 별개의 단계이며, 이미 연결돼 있던 기존 기사가 코드를 몰라도
-    // 전화번호/비밀번호만으로 로그인할 수 있어야 한다.
-    const settings = getUserSettings();
-    const showInviteField = loginAuthMode === 'signup' && settings.accountType === 'employed_driver';
-    document.getElementById('loginInviteField')?.classList.toggle('hidden', !showInviteField);
-    const continueButton = document.getElementById('loginContinueBtn');
-    if (continueButton) continueButton.textContent = loginAuthMode === 'signup' ? '가입하고 시작하기' : '로그인';
-    updateLoginContinueState();
-}
-
+// ========== 로그인/회원가입 3뷰 라우팅 ==========
+// 구 "첫 시작 사용자 유형 선택"(accountTypePage) 화면은 앱 진입 흐름에서 완전히 제거됐다 —
+// 차주/소속 기사 선택은 이제 회원가입 화면(authSignupView) 안의 탭으로 통합된다. 로그인
+// 페이지는 항상 authIntroView(선택 화면)로 시작하고, 한 번에 반드시 1개 뷰만 보인다.
 function showLocalLoginPage() {
-    const settings = getUserSettings();
-    if (!settings.accountType) {
-        showAccountTypePage('login');
-        return;
-    }
-    const meta = getAccountTypeMeta(settings.accountType);
     hideAllPages();
     document.body.classList.add('account-flow-active');
-    document.getElementById('loginPage').classList.remove('hidden');
-    const selectedType = document.getElementById('loginSelectedAccountType');
-    if (selectedType) selectedType.innerHTML = `<span>${meta.icon}</span><span><strong>${meta.label}</strong><small>${meta.description}</small></span>`;
-    document.getElementById('loginUserName').value = settings.userName || '';
-    document.getElementById('loginUserPhone').value = settings.userPhone || '';
-    const passwordInput = document.getElementById('loginPassword');
-    const passwordConfirmInput = document.getElementById('loginPasswordConfirm');
-    if (passwordInput) passwordInput.value = '';
-    if (passwordConfirmInput) passwordConfirmInput.value = '';
-    // 초대코드는 이번 로그인/가입 시도마다 새로 입력받는다(과거 캐시값을 재사용하지 않음) —
-    // 연결 여부는 로그인 이후 서버 데이터(driver_links)로 판단하지, 이 입력란 값으로 판단하지 않는다.
-    const inviteInput = document.getElementById('loginInviteCode');
-    if (inviteInput) inviteInput.value = '';
-    setLoginAuthMode(typeof getDefaultAuthMode === 'function' ? getDefaultAuthMode(settings) : 'signup');
+    document.getElementById('loginPage')?.classList.remove('hidden');
+    showAuthSubView('intro');
 }
 
-function updateLoginContinueState() {
+// intro/login/signup 3개 뷰 중 하나만 보이게 전환하는 단일 함수.
+function showAuthSubView(view) {
+    const introView = document.getElementById('authIntroView');
+    const loginView = document.getElementById('authLoginView');
+    const signupView = document.getElementById('authSignupView');
+
+    introView?.classList.toggle('hidden', view !== 'intro');
+    loginView?.classList.toggle('hidden', view !== 'login');
+    signupView?.classList.toggle('hidden', view !== 'signup');
+
+    if (view === 'login') {
+        // 로그인 화면에 들어올 때마다 입력값을 비워서 이전 시도의 흔적이 남지 않게 한다.
+        const nameInput = document.getElementById('loginUserName');
+        const phoneInput = document.getElementById('loginUserPhone');
+        const passwordInput = document.getElementById('loginPassword');
+        if (nameInput) nameInput.value = '';
+        if (phoneInput) phoneInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        updateLoginButtonState();
+    } else if (view === 'signup') {
+        switchSignupRole(currentSignupRole || 'owner_driver');
+        const nameInput = document.getElementById('signupName');
+        const phoneInput = document.getElementById('signupPhone');
+        const pwInput = document.getElementById('signupPw');
+        const pwConfirmInput = document.getElementById('signupPwConfirm');
+        const inviteInput = document.getElementById('signupInviteCode');
+        if (nameInput) nameInput.value = '';
+        if (phoneInput) phoneInput.value = '';
+        if (pwInput) pwInput.value = '';
+        if (pwConfirmInput) pwConfirmInput.value = '';
+        if (inviteInput) inviteInput.value = '';
+        updateSignupButtonState();
+    }
+}
+
+// 회원가입 화면의 차주/소속 기사 탭 전환.
+let currentSignupRole = 'owner_driver';
+function switchSignupRole(role) {
+    currentSignupRole = (role === 'employed_driver') ? 'employed_driver' : 'owner_driver';
+    document.querySelectorAll('.auth-role-tab').forEach(tab => {
+        const isTarget = tab.dataset.role === currentSignupRole;
+        tab.classList.toggle('active', isTarget);
+        tab.setAttribute('aria-checked', String(isTarget));
+    });
+
+    const subText = document.getElementById('signupRoleSubtitle');
+    const inviteRow = document.getElementById('signupInviteBlock');
+    if (currentSignupRole === 'owner_driver') {
+        if (subText) subText.textContent = '본인 차량 일지 및 기사를 관리해요.';
+        if (inviteRow) inviteRow.classList.add('hidden');
+    } else {
+        if (subText) subText.textContent = '초대 코드나 전화번호로 사장님과 연결해요.';
+        if (inviteRow) inviteRow.classList.remove('hidden');
+    }
+    updateSignupButtonState();
+}
+
+function openForgotPwModal() {
+    showConfirmModal(
+        '비밀번호를 분실하셨나요?\n\n소속 기사님의 경우 사장님을 통해 임시 비밀번호를 재발급받으실 수 있습니다.\n기타 문의는 고객센터 1:1 문의를 이용해 주세요.',
+        null,
+        { title: '비밀번호 찾기', confirmLabel: '확인', cancelLabel: '닫기', tone: 'primary' }
+    );
+}
+
+// [비회원으로 시작하기] — Supabase 계정을 만들지 않고 로컬에서만 앱을 사용한다.
+// accountType(차주/소속기사)은 앱 전역의 아주 많은 로직(isOwnerAccountType 등)이 전제로
+// 삼는 값이라 빈 채로 두지 않는다 — 이제 accountTypePage가 없어 별도 선택 화면으로
+// 보낼 수 없으므로, 별도 선택 없이 기본값(차주)으로 시작하고 필요하면 나중에 마이페이지에서
+// 정식 가입/역할을 다시 정할 수 있게 한다.
+function startGuestMode() {
     const settings = getUserSettings();
+    settings.accountType = settings.accountType || 'owner_driver';
+    settings.driverType = settings.driverType || settings.accountType;
+    settings.isLoggedIn = false;
+    settings.onboardingCompleted = true;
+    // isLoggedIn:false만으로는 "아직 로그인 전인 새 설치"와 "의도적으로 비회원을 선택함"을
+    // 구분할 수 없다 — 이 플래그가 없으면 새로고침할 때마다(부팅 로직이 isLoggedIn이 false인
+    // 사용자를 로그인 화면으로 보내므로) 매번 다시 "비회원으로 시작하기"를 눌러야 한다.
+    settings.guestMode = true;
+    setUserSettings(settings);
+    document.body.classList.remove('account-flow-active');
+    if (typeof loadSettings === 'function') loadSettings();
+    updateAccountRoleUI();
+    showToastMessage('비회원 모드로 시작합니다. 언제든 마이페이지에서 로그인할 수 있어요.');
+    showMain();
+}
+
+// ---------- 로그인 화면 ----------
+function updateLoginButtonState() {
     const name = document.getElementById('loginUserName')?.value.trim() || '';
     const phoneDigits = document.getElementById('loginUserPhone')?.value.replace(/\D/g, '') || '';
-    const inviteDigits = document.getElementById('loginInviteCode')?.value.replace(/\D/g, '') || '';
     const password = document.getElementById('loginPassword')?.value || '';
-    const passwordConfirm = document.getElementById('loginPasswordConfirm')?.value || '';
-    const isSignup = loginAuthMode === 'signup';
-    // 초대코드는 "회원가입 + 소속기사"일 때만, 그것도 선택 입력이다 — 아예 안 써도 되지만
-    // (회원가입 후 나중에 연결해도 됨), 일부만 입력한 채로는 진행하지 못하게 막는다.
-    // 로그인 모드에서는 이 조건 자체가 절대 버튼 활성화를 막지 않는다.
-    const inviteFilledPartially = isSignup && settings.accountType === 'employed_driver' && inviteDigits.length > 0 && inviteDigits.length < 6;
-    const passwordOk = password.length >= 6 && (!isSignup || password === passwordConfirm);
-    const button = document.getElementById('loginContinueBtn');
-    if (button) button.disabled = !name || phoneDigits.length < 10 || !passwordOk || inviteFilledPartially;
+    const btn = document.getElementById('loginSubmitBtn');
+    if (btn) btn.disabled = !name || phoneDigits.length < 10 || password.length < 6;
 }
 
-async function completeLocalLogin() {
+async function executeLoginAction() {
     const name = document.getElementById('loginUserName')?.value.trim() || '';
     const phone = document.getElementById('loginUserPhone')?.value.trim() || '';
     const password = document.getElementById('loginPassword')?.value || '';
-    const passwordConfirm = document.getElementById('loginPasswordConfirm')?.value || '';
     if (!name || phone.replace(/\D/g, '').length < 10) {
         showToastMessage('이름과 휴대전화 번호를 확인해 주세요.');
         return;
@@ -729,47 +698,109 @@ async function completeLocalLogin() {
         showToastMessage('비밀번호는 6자 이상 입력해 주세요.');
         return;
     }
-    const isSignup = loginAuthMode === 'signup';
-    if (isSignup && password !== passwordConfirm) {
+
+    let authUser = null;
+    if (typeof getSupabaseClient === 'function') {
+        const email = phoneToFakeEmail(phone);
+        const { data, error } = await supabaseSignIn(email, password);
+        if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
+        authUser = data?.user || null;
+        if (authUser && typeof markSupabaseAccountEverCreated === 'function') markSupabaseAccountEverCreated();
+    }
+
+    // 로그인은 항상 "이미 계정이 있는" 기존 유저의 재접속이다 — 서버에 저장된 accountType/
+    // 사업자정보 등을 그대로 복원한다(로컬에 남아있던 값으로 덮어쓰지 않는다).
+    if (authUser && typeof hydrateFromSupabaseAndMigrate === 'function') {
+        try {
+            await hydrateFromSupabaseAndMigrate();
+        } catch (error) {
+            console.error('Supabase 데이터 동기화 실패(로컬 데이터로 계속 진행합니다):', error);
+        }
+    }
+
+    const settings = getUserSettings();
+    settings.userName = name;
+    settings.userPhone = phone;
+    settings.isLoggedIn = true;
+    settings.onboardingCompleted = true;
+    settings.guestMode = false;
+    setUserSettings(settings);
+
+    loadSettings();
+    updateAccountRoleUI();
+    renderSubCarMenu();
+    showToastMessage('로그인되었습니다.');
+
+    if (settings.accountType === 'employed_driver' && settings.employerLink?.status !== 'linked') {
+        setTimeout(() => showToastMessage('아직 소속 사장님과 연결되지 않았어요. 마이페이지 > 소속 연결에서 연결해 주세요.'), 1500);
+    }
+
+    showMain();
+}
+
+// ---------- 회원가입 화면 ----------
+function updateSignupButtonState() {
+    const name = document.getElementById('signupName')?.value.trim() || '';
+    const phoneDigits = document.getElementById('signupPhone')?.value.replace(/\D/g, '') || '';
+    const pw = document.getElementById('signupPw')?.value || '';
+    const pwConfirm = document.getElementById('signupPwConfirm')?.value || '';
+    const inviteDigits = document.getElementById('signupInviteCode')?.value.replace(/\D/g, '') || '';
+
+    // 초대코드는 "소속 기사"일 때만, 그것도 선택 입력이다 — 아예 안 써도 되지만(가입 후
+    // 나중에 연결해도 됨), 일부만 입력한 채로는 진행하지 못하게 막는다.
+    const inviteFilledPartially = currentSignupRole === 'employed_driver' && inviteDigits.length > 0 && inviteDigits.length < 6;
+    const pwOk = pw.length >= 6 && pw === pwConfirm;
+
+    const btn = document.getElementById('signupSubmitBtn');
+    if (btn) btn.disabled = !name || phoneDigits.length < 10 || !pwOk || inviteFilledPartially;
+}
+
+async function executeSignupAction() {
+    const name = document.getElementById('signupName')?.value.trim() || '';
+    const phone = document.getElementById('signupPhone')?.value.trim() || '';
+    const pw = document.getElementById('signupPw')?.value || '';
+    const pwConfirm = document.getElementById('signupPwConfirm')?.value || '';
+    const inviteCode = currentSignupRole === 'employed_driver' ? (document.getElementById('signupInviteCode')?.value.trim() || '') : '';
+
+    if (!name || phone.replace(/\D/g, '').length < 10) {
+        showToastMessage('이름과 휴대전화 번호를 확인해 주세요.');
+        return;
+    }
+    if (pw.length < 6) {
+        showToastMessage('비밀번호는 6자 이상 입력해 주세요.');
+        return;
+    }
+    if (pw !== pwConfirm) {
         showToastMessage('비밀번호 확인이 일치하지 않습니다.');
         return;
     }
-    const settings = getUserSettings();
-    // 초대코드는 "회원가입 + 소속기사"일 때만, 그것도 선택 입력으로 취급한다.
-    // 로그인 모드에서는 이 값 자체를 아예 쓰지 않는다 — 인증(로그인)과 소속 연결은 완전히
-    // 별개의 단계이며, 이미 연결된 적 있는 기존 기사가 코드를 몰라도 로그인할 수 있어야 한다.
-    const inviteCode = isSignup ? (document.getElementById('loginInviteCode')?.value.trim() || '') : '';
-    if (isSignup && settings.accountType === 'employed_driver' && inviteCode && !/^\d{6}$/.test(inviteCode)) {
+    if (inviteCode && !/^\d{6}$/.test(inviteCode)) {
         showToastMessage('초대코드는 6자리 숫자로 입력해 주세요.');
         return;
     }
 
-    // Supabase Auth 로그인/회원가입 (휴대전화번호는 내부적으로 가짜 이메일로 변환해서 사용)
-    // 여기서는 오직 "계정 인증"만 처리한다 — 기사 연결(redeemDriverInviteCode)은 인증이
-    // 완전히 끝난 뒤 별도 단계로 시도하며, 그 단계가 실패해도 여기서 만든 계정/로그인
-    // 상태는 절대 되돌리지 않는다.
+    const settings = getUserSettings();
+    settings.accountType = currentSignupRole;
+    settings.driverType = currentSignupRole;
+    setUserSettings(settings);
+    updateAccountRoleUI();
+
+    // 여기서는 오직 "계정 생성"만 처리한다 — 기사 연결(redeemDriverInviteCode)은 가입이
+    // 완전히 끝난 뒤 별도 단계로 시도하며, 그 단계가 실패해도 이미 만든 계정은 절대
+    // 되돌리지 않는다.
     let authUser = null;
     if (typeof getSupabaseClient === 'function') {
         const email = phoneToFakeEmail(phone);
-        if (isSignup) {
-            const { data, error } = await supabaseSignUp(email, password);
-            if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
-            authUser = data?.user || null;
-            if (authUser) await ensureProfileRow(authUser.id, settings.accountType, name, phone);
-        } else {
-            const { data, error } = await supabaseSignIn(email, password);
-            if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
-            authUser = data?.user || null;
-        }
+        const { data, error } = await supabaseSignUp(email, pw);
+        if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
+        authUser = data?.user || null;
+        if (authUser) await ensureProfileRow(authUser.id, currentSignupRole, name, phone);
         if (authUser && typeof markSupabaseAccountEverCreated === 'function') markSupabaseAccountEverCreated();
     }
 
-    // Supabase 데이터 로드 + (기존 로컬 데이터가 있다면) 1회 마이그레이션.
-    // 반드시 "신규 유저 여부" 판별보다 먼저 실행해야 한다 — 그래야 새 기기에서 재로그인하는
-    // 기존 유저(이 기기엔 로컬 기록이 없음)를 신규 유저로 오인해서 온보딩 마법사를 다시
-    // 띄우는 일이 없다.
-    // 소속기사라면 이 안에서 서버의 실제 driver_links를 조회해 employerLink를 복원한다
-    // (syncEmployerLinkFromSupabase) — 로컬에 없다고 임의로 새로 만들지 않는다.
+    // Supabase 데이터 로드 + (기존 로컬 데이터가 있다면) 1회 마이그레이션. 반드시 "신규 유저
+    // 여부" 판별보다 먼저 실행해야 새 기기에서 가입하는 기존 로컬 데이터 보유자를 신규 유저로
+    // 오인해 온보딩 마법사를 불필요하게 다시 띄우지 않는다.
     if (authUser && typeof hydrateFromSupabaseAndMigrate === 'function') {
         try {
             await hydrateFromSupabaseAndMigrate();
@@ -781,29 +812,23 @@ async function completeLocalLogin() {
     const settingsAfterHydration = getUserSettings();
     settingsAfterHydration.userName = name;
     settingsAfterHydration.userPhone = phone;
-    // 신규 유저 여부는 "회원가입" 모드로 들어온 경우에만 판단한다(isSignup). "로그인"(이미
-    // 계정이 있어요) 탭은 사용자가 스스로 "나는 기존 계정이다"라고 명시적으로 선택한 것이므로,
-    // 그 경우엔 절대 온보딩을 다시 띄우면 안 된다 — hydrateFromSupabaseAndMigrate()가 네트워크
-    // 문제 등으로 실패/지연되면(위에서 catch만 하고 계속 진행함) settingsAfterHydration에
-    // onboardingCompleted가 아직 없을 수 있는데, 예전에는 이 값 하나만 보고 판단해서 그런
-    // 경우 이미 온보딩을 마친 기존 사용자가 재로그인할 때도 "신규 유저"로 오인되어 온보딩
-    // 마법사가 다시 나타나는 버그가 있었다(실제로 재현 가능한 경로로 확인됨). 로그인 탭으로
-    // 들어온 이상 hydrate 성공 여부와 무관하게 항상 기존 사용자로 취급한다.
-    const isNewUser = isSignup && !settingsAfterHydration.hasOwnProperty('onboardingCompleted');
+    settingsAfterHydration.accountType = currentSignupRole;
+    settingsAfterHydration.driverType = currentSignupRole;
+    // "신규 유저"는 hydrate 이후에도 onboardingCompleted가 전혀 없던 경우만이다 — 이 기기에
+    // 이미 온보딩을 마친 로컬 기록(예: 이 업데이트 이전부터 쓰던 기존 유저의 첫 클라우드
+    // 가입)이 있다면 온보딩을 다시 띄우지 않는다.
+    const isNewUser = !settingsAfterHydration.hasOwnProperty('onboardingCompleted');
 
     settingsAfterHydration.isLoggedIn = true;
     settingsAfterHydration.onboardingCompleted = true;
+    settingsAfterHydration.guestMode = false;
     setUserSettings(settingsAfterHydration);
 
     loadSettings();
     updateAccountRoleUI();
     renderSubCarMenu();
 
-    // 회원가입 + 소속기사 + 초대코드를 실제로 입력한 경우에만, 계정 생성이 끝난 뒤 "별도 단계"로
-    // 차주 연결을 시도한다(기존 connectEmployedDriver()가 쓰는 연결 로직을 그대로 재사용).
-    // 실패해도 토스트로만 안내하고, 이미 성공한 회원가입/로그인 자체는 절대 건드리지 않는다 —
-    // "연결 실패"와 "로그인 실패"는 완전히 다른 문제이기 때문이다.
-    if (isSignup && settingsAfterHydration.accountType === 'employed_driver' && /^\d{6}$/.test(inviteCode)) {
+    if (currentSignupRole === 'employed_driver' && /^\d{6}$/.test(inviteCode)) {
         try {
             await performEmployedDriverConnect(inviteCode);
             showToastMessage('가입 및 사장님 연결이 모두 완료되었습니다.');
@@ -812,16 +837,12 @@ async function completeLocalLogin() {
             showToastMessage(`${getDriverLinkErrorMessage(error)} 마이페이지 > 소속 연결에서 다시 시도할 수 있어요.`);
         }
     } else {
-        showToastMessage('로그인되었습니다.');
-        const finalSettings = getUserSettings();
-        if (!isNewUser && finalSettings.accountType === 'employed_driver' && finalSettings.employerLink?.status !== 'linked') {
-            // 신규 유저는 곧 온보딩 화면으로 이동하므로 여기서 겹쳐 띄우지 않는다.
-            setTimeout(() => showToastMessage('아직 소속 사장님과 연결되지 않았어요. 마이페이지 > 소속 연결에서 연결해 주세요.'), 1500);
-        }
+        showToastMessage('회원가입이 완료되었습니다.');
     }
 
     // 신규 유저는 3문항 온보딩 마법사를 먼저 보여주고, 마법사 완료 시점에 showMain()을 호출한다.
-    // 기존 유저(재로그인)는 마법사를 건너뛰고 바로 메인으로 이동한다.
+    // (드물게) 이미 온보딩을 마친 기존 로컬 데이터를 들고 처음 가입하는 경우는 마법사를
+    // 건너뛰고 바로 메인으로 이동한다.
     if (isNewUser) {
         openOnboardingWizard();
     } else {
@@ -838,7 +859,13 @@ function getOnboardingStepSequence(settings) {
     const hasMainCar = (settings.cars || []).some(c => c.type === 'main');
     const isEmployedDriver = settings.accountType === 'employed_driver';
     const seq = [1, 2, 3];
-    if (!hasMainCar) seq.push(4);
+    // 소속 기사는 메인 차량을 직접 입력하지 않는다 — openCarModal('main')과 동일한 이유로,
+    // 반드시 차주와의 연동(초대코드)을 통해서만 채워져야 한다. 연동에 성공하면
+    // applyEmployerAutoFilledInfo()가 이미 이 스텝이 열리기 전에 메인 차량을 채워 넣으므로
+    // hasMainCar가 true가 되어 자연히 건너뛴다 — 아직 연동 전(또는 연동 자동입력이
+    // 실패)이라도 이 스텝에서 임의의 차량번호를 직접 입력하게 두면, 나중에 실제로 연동됐을
+    // 때 그 차량과 별개인 "가짜" 차량이 남아 운행기록이 갈라지는 문제로 이어진다.
+    if (!hasMainCar && !isEmployedDriver) seq.push(4);
     if (!isEmployedDriver) seq.push(5);
     return seq;
 }
@@ -859,27 +886,26 @@ function getDefaultOnboardingWizardState() {
     };
 }
 
+// 풀스크린 온보딩 페이지(#onboardingPage)를 연다. 회원가입 직후에만 호출된다
+// (executeSignupAction 참고). 이전 실행에서 남은 active 표시가 있을 수 있으니 초기화한다 —
+// step4(차량 등록)의 카드는 토글이 아니라 항상 강조돼야 하는 단일 버튼이라 제외한다.
 function openOnboardingWizard() {
     onboardingWizardState = getDefaultOnboardingWizardState();
 
-    document.querySelectorAll('#onboardingStep1 .wizard-option, #onboardingStep2 .wizard-option, #onboardingStep5 .wizard-option').forEach(btn => btn.classList.remove('active'));
-
+    document.querySelectorAll('#onboardingStep1 .onboarding-card-btn, #onboardingStep2 .onboarding-card-btn, #onboardingStep3 .onboarding-card-btn, #onboardingStep5 .onboarding-card-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('onboardingPalletCard')?.classList.add('hidden');
     const palletToggle = document.getElementById('onboardingPalletToggle');
     if (palletToggle) palletToggle.checked = false;
-    document.getElementById('onboardingPalletSub')?.classList.add('hidden');
+    const carNumInput = document.getElementById('onboardingCarNumber');
+    const carTonInput = document.getElementById('onboardingCarTonnage');
+    if (carNumInput) carNumInput.value = '';
+    if (carTonInput) carTonInput.value = '';
 
-    ['onboardingTimeToggle', 'onboardingTonnageToggle', 'onboardingPlatformToggle', 'onboardingDistanceToggle'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.checked = false;
-    });
-
-    const step1Next = document.getElementById('onboardingStep1NextBtn');
-    if (step1Next) step1Next.disabled = true;
-    const step2Next = document.getElementById('onboardingStep2NextBtn');
-    if (step2Next) step2Next.disabled = true;
+    hideAllPages();
+    document.body.classList.add('account-flow-active');
+    document.getElementById('onboardingPage')?.classList.remove('hidden');
 
     showOnboardingWizardStep(onboardingWizardState.stepSequence[0]);
-    document.getElementById('onboardingWizardModal')?.classList.remove('hidden');
 }
 
 function showOnboardingWizardStep(step) {
@@ -892,103 +918,42 @@ function showOnboardingWizardStep(step) {
 
     const seq = onboardingWizardState.stepSequence;
     const idx = seq.indexOf(step);
-    const label = document.getElementById('onboardingStepLabel');
-    if (label) label.textContent = `${idx + 1}/${seq.length}`;
 
-    const backBtn = document.getElementById('onboardingBackBtn');
-    if (backBtn) backBtn.style.visibility = idx <= 0 ? 'hidden' : 'visible';
+    // 1단계(idx === 0)에서는 뒤로갈 곳이 없으니 숨기고, 2단계부터 노출한다.
+    document.getElementById('onboardingBackBtn')?.classList.toggle('hidden', idx <= 0);
 
-    if (step === 3) updateOnboardingStep3ButtonLabels();
-}
+    const counter = document.getElementById('onboardingStepCounter');
+    if (counter) counter.textContent = `${idx + 1}/${seq.length}`;
 
-// Step3(선택 항목)은 더 이상 항상 마지막 스텝이 아니므로, 뒤에 차량등록/정산방식 스텝이
-// 남아있는지에 따라 버튼 문구를 "다음"/"완료하기"로 동적으로 바꿔준다.
-function updateOnboardingStep3ButtonLabels() {
-    if (!onboardingWizardState) return;
-    const seq = onboardingWizardState.stepSequence;
-    const isLast = seq.indexOf(3) === seq.length - 1;
-    const confirmBtn = document.getElementById('onboardingStep3ConfirmBtn');
-    const skipBtn = document.getElementById('onboardingStep3SkipBtn');
-    if (confirmBtn) confirmBtn.textContent = isLast ? '완료하기' : '다음';
-    if (skipBtn) skipBtn.textContent = isLast ? '건너뛰기' : '건너뛰고 다음';
-}
-
-function goOnboardingStep(delta) {
-    if (!onboardingWizardState) return;
-    const seq = onboardingWizardState.stepSequence;
-    const idx = seq.indexOf(onboardingWizardState.step);
-    if (idx === -1) return;
-
-    if (delta > 0) {
-        if (onboardingWizardState.step === 1 && !onboardingWizardState.workStyle) return;
-        if (onboardingWizardState.step === 2 && onboardingWizardState.paymentOn === null) return;
+    const nextBtn = document.getElementById('onboardingNextBtn');
+    if (nextBtn) {
+        nextBtn.textContent = (idx === seq.length - 1) ? '완료하기' : '다음';
+        // Step1: 근무방식 선택 여부, Step2: 수금관리 선택 여부, Step4: 차량번호 2자 이상
+        // 입력 여부가 있어야 "다음"이 활성화된다(건너뛰기는 이 조건과 무관하게 항상 가능).
+        // 그 외 스텝(선택항목/정산방식)은 전부 선택 사항이라 항상 진행 가능하다.
+        if (step === 1) nextBtn.disabled = !onboardingWizardState.workStyle;
+        else if (step === 2) nextBtn.disabled = onboardingWizardState.paymentOn === null;
+        else if (step === 4) updateOnboardingStep4State();
+        else nextBtn.disabled = false;
     }
-
-    const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= seq.length) return;
-    showOnboardingWizardStep(seq[nextIdx]);
-}
-
-// 현재 스텝에서 다음 스텝으로 진행하거나, 더 이상 스텝이 없으면 마법사를 완료 처리한다.
-function advanceOnboardingOrFinish() {
-    if (!onboardingWizardState) return;
-    const seq = onboardingWizardState.stepSequence;
-    const idx = seq.indexOf(onboardingWizardState.step);
-    if (idx === -1 || idx >= seq.length - 1) {
-        finishOnboardingWizard(false);
-    } else {
-        showOnboardingWizardStep(seq[idx + 1]);
-    }
-}
-
-// Step4(차량 등록) - 기존 openCarModal('main')의 검증/저장 로직을 그대로 재사용한다.
-function startOnboardingCarRegistration() {
-    const settings = getUserSettings();
-    const hasMainCar = (settings.cars || []).some(c => c.type === 'main');
-    if (hasMainCar) {
-        // 방어적 처리: 이미 메인 차량이 등록되어 있다면 openCarModal이 열리지 않으므로 바로 다음 스텝으로.
-        advanceOnboardingOrFinish();
-        return;
-    }
-    document.getElementById('onboardingWizardModal')?.classList.add('hidden');
-    openCarModal('main');
-}
-
-function skipOnboardingCarStep() {
-    advanceOnboardingOrFinish();
-}
-
-// carModal이 저장/취소/배경클릭 등 어떤 방식으로든 닫힐 때 호출되는 closeCarModal()에서 훅으로 사용.
-function resumeOnboardingAfterCarModal() {
-    if (!onboardingWizardState || onboardingWizardState.step !== 4) return;
-    document.getElementById('onboardingWizardModal')?.classList.remove('hidden');
-    advanceOnboardingOrFinish();
-}
-
-// Step5(정산 방식, 차주 계정만 노출)
-function selectOnboardingSettlementMode(value, btnEl) {
-    if (!onboardingWizardState) return;
-    onboardingWizardState.settlementMode = value;
-    document.querySelectorAll('#onboardingStep5 .wizard-option').forEach(btn => btn.classList.toggle('active', btn === btnEl));
 }
 
 function selectOnboardingWorkStyle(value, btnEl) {
     if (!onboardingWizardState) return;
     onboardingWizardState.workStyle = value;
+    document.querySelectorAll('#onboardingStep1 .onboarding-card-btn').forEach(btn => btn.classList.toggle('active', btn === btnEl));
 
-    document.querySelectorAll('#onboardingStep1 .wizard-option').forEach(btn => btn.classList.toggle('active', btn === btnEl));
-
+    // 고정노선이 하나라도 포함된 방식(정해진 노선 / 둘 다)일 때만 파렛트 회수 여부를 물어본다.
     const showPallet = value === 'fixed' || value === 'both';
-    const palletSub = document.getElementById('onboardingPalletSub');
-    if (palletSub) palletSub.classList.toggle('hidden', !showPallet);
+    document.getElementById('onboardingPalletCard')?.classList.toggle('hidden', !showPallet);
     if (!showPallet) {
         onboardingWizardState.palletOn = false;
         const palletToggle = document.getElementById('onboardingPalletToggle');
         if (palletToggle) palletToggle.checked = false;
     }
 
-    const step1Next = document.getElementById('onboardingStep1NextBtn');
-    if (step1Next) step1Next.disabled = false;
+    const nextBtn = document.getElementById('onboardingNextBtn');
+    if (nextBtn) nextBtn.disabled = false;
 }
 
 function toggleOnboardingPallet(checked) {
@@ -996,46 +961,69 @@ function toggleOnboardingPallet(checked) {
     onboardingWizardState.palletOn = checked;
 }
 
+// 상단 뒤로가기(<) — 현재 스텝 시퀀스 기준으로 바로 이전 스텝으로 돌아간다. 1단계에서는
+// 버튼 자체가 숨겨져 있어 호출되지 않는다.
+function goBackOnboardingStep() {
+    if (!onboardingWizardState) return;
+    const seq = onboardingWizardState.stepSequence;
+    const idx = seq.indexOf(onboardingWizardState.step);
+    if (idx > 0) {
+        showOnboardingWizardStep(seq[idx - 1]);
+    }
+}
+
 function selectOnboardingPayment(value, btnEl) {
     if (!onboardingWizardState) return;
     onboardingWizardState.paymentOn = value;
-
-    document.querySelectorAll('#onboardingStep2 .wizard-option').forEach(btn => btn.classList.toggle('active', btn === btnEl));
-
-    const step2Next = document.getElementById('onboardingStep2NextBtn');
-    if (step2Next) step2Next.disabled = false;
+    document.querySelectorAll('#onboardingStep2 .onboarding-card-btn').forEach(btn => btn.classList.toggle('active', btn === btnEl));
+    const nextBtn = document.getElementById('onboardingNextBtn');
+    if (nextBtn) nextBtn.disabled = false;
 }
 
-function toggleOnboardingOption(field, checked) {
+// Step3(선택 항목)은 다중 선택 카드 — 클릭할 때마다 켜고 끈다.
+function toggleOnboardingOptionCard(field, btnEl) {
     if (!onboardingWizardState) return;
-    onboardingWizardState[field] = checked;
+    onboardingWizardState[field] = !onboardingWizardState[field];
+    btnEl.classList.toggle('active', onboardingWizardState[field]);
 }
 
-function finishOnboardingWizard(skip) {
+// Step4(차량 등록) - 모달을 띄우지 않고 화면 안 입력란에 바로 차량번호/톤수를 입력받는다.
+// 차량번호가 2글자 이상이어야 "다음"이 활성화된다(건너뛰기는 언제든 가능). 실제 저장은
+// finishOnboardingWizard()가 이 스텝을 지나갈 때(다음으로 진행하거나 마법사를 끝낼 때) 한
+// 번에 처리한다.
+function updateOnboardingStep4State() {
+    const carNum = document.getElementById('onboardingCarNumber')?.value.trim() || '';
+    const nextBtn = document.getElementById('onboardingNextBtn');
+    if (nextBtn) nextBtn.disabled = carNum.length < 2;
+}
+
+// Step5(정산 방식, 차주 계정만 노출)
+function selectOnboardingSettlementMode(value, btnEl) {
     if (!onboardingWizardState) return;
+    onboardingWizardState.settlementMode = value;
+    document.querySelectorAll('#onboardingStep5 .onboarding-card-btn').forEach(btn => btn.classList.toggle('active', btn === btnEl));
+}
 
-    const triggeringStep = onboardingWizardState.step;
+// 현재 스텝에서 다음 스텝으로 진행하거나, 더 이상 스텝이 없으면 마법사를 완료 처리한다.
+// "다음"과 "건너뛰기 >"가 공유하는 단일 진행 함수다 — 진행 가능 여부(다음 버튼 disabled)는
+// showOnboardingWizardStep()이 이미 걸러주므로, 여기서는 그냥 다음으로 넘어가기만 한다.
+function advanceOnboardingStep() {
+    if (!onboardingWizardState) return;
+    const seq = onboardingWizardState.stepSequence;
+    const idx = seq.indexOf(onboardingWizardState.step);
+    if (idx === -1 || idx >= seq.length - 1) {
+        finishOnboardingWizard();
+    } else {
+        showOnboardingWizardStep(seq[idx + 1]);
+    }
+}
 
-    // skip의 의미는 호출한 스텝에 따라 다르다 (Step3=선택항목 초기화, Step5=정산방식 미선택).
-    if (skip && triggeringStep === 3) {
-        onboardingWizardState.timeOn = false;
-        onboardingWizardState.cargoTonnageOn = false;
-        onboardingWizardState.platformOn = false;
-        onboardingWizardState.distanceOn = false;
-    }
-    if (skip && triggeringStep === 5) {
-        onboardingWizardState.settlementMode = null;
-    }
+function skipCurrentOnboardingStep() {
+    advanceOnboardingStep();
+}
 
-    // Step3 이후에도 진행할 스텝(차량등록/정산방식)이 남아있다면 아직 완료하지 않고 다음 스텝으로 이동.
-    if (triggeringStep === 3) {
-        const seq = onboardingWizardState.stepSequence;
-        const idx = seq.indexOf(3);
-        if (idx !== -1 && idx < seq.length - 1) {
-            showOnboardingWizardStep(seq[idx + 1]);
-            return;
-        }
-    }
+function finishOnboardingWizard() {
+    if (!onboardingWizardState) return;
 
     const isFixed = onboardingWizardState.workStyle === 'fixed' || onboardingWizardState.workStyle === 'both';
     const isCall = onboardingWizardState.workStyle === 'call' || onboardingWizardState.workStyle === 'both';
@@ -1052,10 +1040,27 @@ function finishOnboardingWizard(skip) {
     if (onboardingWizardState.settlementMode) {
         settings.defaultDriverSettlementMode = onboardingWizardState.settlementMode;
     }
+
+    // Step4(차량 등록) 인라인 입력값 저장. 이 스텝 자체가 "메인 차량이 아직 없을 때만"
+    // stepSequence에 포함되므로(getOnboardingStepSequence), 여기 도달했다는 것 자체가
+    // 마법사 시작 시점엔 메인 차량이 없었다는 뜻이다 — 그래도 saveCarFromModal()과 동일하게
+    // 기존 메인 차량이 있으면 새로 만들지 않고 그 차량을 갱신한다(방어적 처리).
+    const carNum = document.getElementById('onboardingCarNumber')?.value.trim();
+    const carTon = document.getElementById('onboardingCarTonnage')?.value.trim() || '';
+    if (carNum) {
+        if (!Array.isArray(settings.cars)) settings.cars = [];
+        const mainCar = settings.cars.find(c => c.type === 'main');
+        if (mainCar) {
+            mainCar.number = carNum;
+            mainCar.tonnage = carTon;
+        } else {
+            settings.cars.unshift({ type: 'main', number: carNum, tonnage: carTon });
+        }
+    }
+
     settings.onboardingCompleted = true;
     setUserSettings(settings);
 
-    document.getElementById('onboardingWizardModal')?.classList.add('hidden');
     onboardingWizardState = null;
 
     loadSettings();
@@ -1066,7 +1071,17 @@ function updateAccountRoleUI() {
     const settings = getUserSettings();
     const ownerRole = isOwnerAccountType(settings.accountType);
     document.getElementById('employedDriverLinkCard')?.classList.toggle('hidden', settings.accountType !== 'employed_driver');
-    document.getElementById('myPageDriverConnectionLink')?.classList.toggle('hidden', !ownerRole);
+    // 마이페이지의 "연결 관리" 바로가기 — 예전엔 차주에게만 보였고, 소속기사는 이 항목이
+    // 아예 없어서 개인정보 화면까지 들어가야만 소속 연결 카드를 찾을 수 있었다. 차주와
+    // 동일하게 마이페이지에서 바로 접근하도록 두 역할 모두에게 보여주고, 라벨만 역할에 맞게
+    // 바꾼다 — showDriverConnectionManagement()가 이미 역할에 따라 알맞은 화면(차주: 기사
+    // 연동 관리 페이지 / 소속기사: 개인정보의 소속 연결 카드)으로 안내해 준다.
+    const driverConnectionLink = document.getElementById('myPageDriverConnectionLink');
+    if (driverConnectionLink) {
+        driverConnectionLink.classList.remove('hidden');
+        const label = driverConnectionLink.querySelector('span');
+        if (label) label.textContent = ownerRole ? '기사연동관리' : '소속 연결 관리';
+    }
     // 소속 연결 카드가 사업자정보 카드 자리를 대신 채우면서(아래 applyPersonalInfoRoleUI)
     // 두 계정 종류 모두 카드 4개(정보1/정보2/연결또는사업자/계정)로 맞춰져 계정 카드 번호는
     // 이제 역할과 무관하게 항상 '04'다.
@@ -1322,8 +1337,11 @@ function showDriverConnectionManagement(returnPage = 'main') {
     if (!isOwnerAccountType(settings.accountType)) {
         // 소속 기사 계정은 이 화면(차주 전용 초대 관리)을 쓸 수 없다 — 경고 모달로 막고 끝내는
         // 대신, 본인이 차주와 연동된 상태를 그대로 볼 수 있는 개인정보 페이지의 "소속 연결"
-        // 카드로 데려간다.
-        showPersonalInfo(personalInfoReturnPage);
+        // 카드로 데려간다. 이 함수를 부른 곳이 알려준 returnPage를 그대로 넘겨야
+        // goBackFromPersonalInfo()가 원래 있던 화면(마이페이지 등)으로 정확히 되돌아간다 —
+        // personalInfoReturnPage(이전에 개인정보 화면에 마지막으로 들어왔을 때 남은 값)를
+        // 그대로 쓰면, 마이페이지에서 들어왔는데 엉뚱한 화면으로 튕겨 나갈 수 있었다.
+        showPersonalInfo(returnPage);
         requestAnimationFrame(() => {
             document.getElementById('employedDriverLinkCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
@@ -2013,7 +2031,7 @@ async function connectEmployedDriver() {
 // "기사 연결"의 실제 처리 로직만 담당한다(redeem → 차주 이름 조회 → employerLink 저장 →
 // 사업자/차량정보 자동반영 → 과거 기록 backfill). 인증(로그인/회원가입)과는 완전히 분리된
 // 별도 단계로, 마이페이지의 "소속 연결하기" 버튼(connectEmployedDriver)과 회원가입 직후
-// 자동 연결 시도(completeLocalLogin) 양쪽에서 이 함수 하나를 그대로 재사용한다.
+// 자동 연결 시도(executeSignupAction) 양쪽에서 이 함수 하나를 그대로 재사용한다.
 // 실패하면 예외를 던지기만 할 뿐 계정/로그인 상태에는 전혀 손대지 않는다 — 호출부가 각자
 // 상황에 맞는 안내만 보여주면 된다(연결 실패가 로그인/회원가입 성공을 무효화하지 않음).
 async function performEmployedDriverConnect(inviteCode, ownerPhone = '') {
@@ -2857,17 +2875,13 @@ function showMyPage(preserveReturnLog = false) {
     if (!preserveReturnLog) myPageReturnLogId = activeLogId;
     utilityReturnPage = 'main';
     const settings = getUserSettings();
-    const profileSummary = document.getElementById('myPageProfileSummary');
     const isEmployedDriver = settings.accountType === 'employed_driver';
-    // 소속기사는 회사 사업자정보를 직접 관리하지 않으므로, 요약 문구에 bizName(차주에게서
-    // 자동반영된 값)까지 끼워 넣지 않는다 — 본인 이름만 보여준다.
-    const summaryParts = isEmployedDriver ? [settings.userName].filter(Boolean) : [settings.userName, settings.bizName].filter(Boolean);
-    const fallbackSummary = isEmployedDriver ? '내 정보 및 정산 계좌 관리' : '대표자 및 사업자 정보 관리';
-    if (profileSummary) {
-        profileSummary.textContent = summaryParts.length
-            ? summaryParts.join(' · ')
-            : fallbackSummary;
-    }
+
+    // 개인정보 카드: [차주/소속 기사] 뱃지 + 이름
+    const roleBadge = document.getElementById('myPageRoleBadge');
+    const userNameText = document.getElementById('myPageUserNameText');
+    if (roleBadge) roleBadge.textContent = isEmployedDriver ? '소속 기사' : '차주';
+    if (userNameText) userNameText.textContent = settings.userName || (isEmployedDriver ? '기사' : '대표자');
 
     renderBackupStatus();
 
@@ -4238,6 +4252,15 @@ function openCarModal(mode = 'main') {
     const cars = settings.cars || [];
 
     if (mode === 'main') {
+        // 소속 기사는 메인 차량이 곧 "차주가 연동해 준 그 차량"이어야 한다(운행기록이 그
+        // 차량으로 올라가야 차주가 조회할 수 있다 — resolveVehicleIdForLogId 참고). 아직
+        // 차주와 연동 전인데 기사가 직접 메인 차량을 새로 등록해 버리면, 나중에 연동해도
+        // 이 임의의 차량과 실제 차주 차량이 서로 다른 두 대처럼 꼬여서 운행기록이 갈라지는
+        // 문제가 생긴다 — 그래서 연동 전에는 메인 차량 등록 자체를 막고 먼저 연동하게 한다.
+        if (settings.accountType === 'employed_driver' && settings.employerLink?.status !== 'linked' && editingCarIndex < 0) {
+            showConfirmModal('아직 소속 사장님과 연결되지 않았습니다.\n마이페이지 > 소속 연결에서 먼저 사장님과 연결한 뒤 차량 정보를 등록해 주세요.', null);
+            return;
+        }
         let hasMain = cars.some((c, idx) => idx !== editingCarIndex && c.type === 'main');
         if (hasMain && editingCarIndex < 0) {
             showConfirmModal('메인 차량이 이미 등록되어 있습니다.', null);
@@ -4265,7 +4288,6 @@ function openCarModal(mode = 'main') {
 function closeCarModal() {
     document.getElementById('carModal').classList.add('hidden');
     resetCarForm();
-    resumeOnboardingAfterCarModal();
 }
 
 function setCarCommType(type) {
@@ -4504,6 +4526,23 @@ function saveCarFromModal() {
         shareRevenueWithOwner: shareRevenueWithOwner
     };
 
+    // 기존 서브 차량의 번호를 수정한 경우(오타 정정 등), 그 번호를 키로 쓰는 로컬 운행기록
+    // 저장소(workData_<번호>)도 함께 옮겨준다 — 안 옮기면 번호만 바뀌고 실제 기록은 옛
+    // 번호 키에 그대로 남아, 새 번호로 들어가면 텅 빈 일지처럼 보이는 문제가 있었다.
+    if (carType === 'sub' && previousCar?.number && previousCar.number !== num) {
+        const oldKey = 'workData_' + previousCar.number;
+        const newKey = 'workData_' + num;
+        const oldData = localStorage.getItem(oldKey);
+        if (oldData && !localStorage.getItem(newKey)) {
+            localStorage.setItem(newKey, oldData);
+            localStorage.removeItem(oldKey);
+        }
+        // activeLogId가 지금 수정 중인 이전 차량번호를 가리키고 있었다면 새 번호로 갱신한다.
+        if (activeLogId === previousCar.number) {
+            activeLogId = num;
+        }
+    }
+
     const wasNew = editingCarIndex <= -1;
     let index;
     if (!wasNew) {
@@ -4682,8 +4721,10 @@ async function saveCarDriverInvitation() {
 function deleteCar(idx) {
     showConfirmModal('해당 차량을 삭제하시겠습니까? 이 차량으로 기록된 운행 내역도 함께 삭제되며 복구할 수 없습니다.', () => {
         const settings = getUserSettings();
-        const deletedCar = settings.cars[idx];
+        const deletedCar = settings.cars?.[idx];
+        if (!deletedCar) return;
         const deletedCarNum = deletedCar.number;
+        const deletedSupabaseId = deletedCar.supabaseId;
         const linkedDriver = (settings.driverLinks || []).find(link =>
             (deletedCar.driverLinkId && link.id === deletedCar.driverLinkId)
             || (!deletedCar.driverLinkId && link.vehicleNumber === deletedCarNum && link.status !== 'disconnected')
@@ -4691,6 +4732,15 @@ function deleteCar(idx) {
         if (linkedDriver) {
             linkedDriver.status = 'disconnected';
             linkedDriver.updatedAt = new Date().toISOString();
+            // disconnectLinkedDriver()/updateLinkedDriverStatus()와 동일하게, 로컬 상태 변경과
+            // 별개로 서버 driver_links 행에도 반영한다 — 안 하면 차량을 지워도 서버상으로는
+            // 계속 "연결됨"으로 남는다(syncSettingsToSupabase는 driver_links 테이블을 다루지
+            // 않는다).
+            if (linkedDriver.supabaseId && typeof updateDriverLinkStatusOnSupabase === 'function') {
+                updateDriverLinkStatusOnSupabase(linkedDriver.supabaseId, 'disconnected').catch(error => {
+                    console.error('기사 연동 상태 서버 반영 실패:', error);
+                });
+            }
         }
         settings.cars.splice(idx, 1);
         setUserSettings(settings);
@@ -4702,16 +4752,26 @@ function deleteCar(idx) {
             localStorage.removeItem('workData_' + deletedCarNum);
         }
 
+        // 로컬에서만 지우고 끝내면, 재로그인/하이드레이션 시 서버 vehicles 테이블에 남아있는
+        // 이 차량 행을 다시 읽어와 로컬에 되살려 놓는 문제가 있었다(실제로 재현됨) — 서버에서도
+        // 함께 삭제해서 "새로고침하면 삭제한 차량이 부활하는" 결함을 막는다.
+        if (deletedSupabaseId && typeof deleteVehicleFromSupabase === 'function') {
+            deleteVehicleFromSupabase(deletedSupabaseId).catch(error => {
+                console.error('서버 차량 삭제 실패(로컬 삭제는 반영됨, 다음 동기화 때 재확인 필요):', error);
+            });
+        }
+
         if (editingCarIndex === idx) resetCarForm();
         loadCarList();
-        renderSubCarMenu(); 
+        renderSubCarMenu();
         renderLinkedDriverList();
         updateAccountRoleUI();
-        updateTransportSettingsUI(); 
-        
+        updateTransportSettingsUI();
+
         if(activeLogId === deletedCarNum) {
             switchCarLog('main');
         }
+        showToastMessage('차량을 삭제했습니다.');
     });
 }
 
@@ -5545,6 +5605,11 @@ function goBackFromSettings() {
     loadSettings();
     if (previousPage === 'report') {
         showReport();
+    } else if (previousPage === 'myPage') {
+        // 마이페이지의 "앱 설정" 바로가기로 들어온 경우, 뒤로가기는 마이페이지로 돌아가야 한다.
+        // 이 분기가 없으면 previousPage가 'main'/'report' 둘 다 아니므로 else 분기(로그
+        // 홈으로 복귀)를 타서, 마이페이지에서 들어왔는데 엉뚱하게 달력 화면으로 나가버린다.
+        showMyPage(true);
     } else {
         returnToLogHome(settingsReturnLogId);
     }
@@ -6223,6 +6288,40 @@ function parseBackupStorageJson(key, value) {
     }
 }
 
+// 백업 파일의 userSettings 중, "이 기기에 지금 로그인돼 있는 계정이 누구인가"를 나타내는
+// 필드는 백업 내용으로 절대 덮어쓰지 않는다 — 백업은 운행기록/거래처/차량단가 같은 업무
+// 데이터를 복원하기 위한 것이지, 계정 자체를 바꾸는 수단이 아니다. 실제로 다른 계정(예:
+// 차주 A)이 내보낸 백업을 지금 로그인된 다른 계정(예: 소속기사 B)에서 불러오면 B의 이름/
+// 전화번호/사업자정보/계좌정보/연동상태까지 A의 것으로 조용히 바뀌는 사고가 있었다.
+//
+// 여기 나열한 필드는 크게 두 종류로 나뉜다:
+// - isLoggedIn/employerLink: 이 기기의 "지금 실제 인증/연결 상태"를 나타내는 값이라, 백업
+//   파일의 값으로 절대 대체하지 않는다(백업이 만들어질 당시 다른 계정의 로그인/연동 상태를
+//   그대로 가져오면 실제 세션과 어긋나는 상태가 된다 — 특히 employerLink는 다른 차주의
+//   vehicleId를 가리켜서, 이후 운행기록이 엉뚱한 차량으로 서버에 올라갈 위험까지 있다).
+// - 나머지(이름/연락처/계정유형/사업자정보/계좌정보): 이 기기에 이미 값이 있으면 그 값을
+//   우선하고, 이 기기가 아직 아무것도 설정되지 않은 새 상태라면(전부 빈 값) 백업의 값을
+//   그대로 채워 넣는다 — 내 백업을 새 기기에 처음 복원하는 정상적인 경우까지 막지 않기
+//   위함이다.
+const IMPORT_PROTECTED_IDENTITY_FIELDS = [
+    'userName', 'userPhone', 'accountType', 'driverType',
+    'bizName', 'bizNumber', 'bizAddress', 'bizType', 'bizItem', 'bizEmail',
+    'bankName', 'accountNumber', 'accountHolder'
+];
+
+function applyCurrentIdentityToImportedSettings(importedSettings) {
+    const current = getUserSettings();
+    const preserved = { ...importedSettings };
+    // isLoggedIn은 반드시 불리언으로 유지한다(백업의 값을 그대로 흡수하면 실제 Supabase
+    // 세션과 무관하게 "로그인됨"으로 착각하는 상태가 될 수 있다).
+    preserved.isLoggedIn = !!current.isLoggedIn;
+    preserved.employerLink = current.employerLink ?? null;
+    IMPORT_PROTECTED_IDENTITY_FIELDS.forEach(field => {
+        preserved[field] = current[field] || importedSettings[field];
+    });
+    return preserved;
+}
+
 function normalizeImportedBackup(imported) {
     if (!isBackupRecord(imported)) {
         throw new Error('백업 파일의 기본 구조를 확인할 수 없습니다.');
@@ -6238,11 +6337,11 @@ function normalizeImportedBackup(imported) {
     const storedWorkData = typeof storageData.workData === 'string'
         ? parseBackupStorageJson('메인 운행일지', storageData.workData)
         : null;
-    const userSettings = imported.userSettings ?? storedUserSettings;
+    const importedSettings = imported.userSettings ?? storedUserSettings;
     const mainWorkData = imported.workData ?? storedWorkData;
     const subWorkData = imported.subWorkData ?? {};
 
-    if (!isBackupRecord(userSettings)) {
+    if (!isBackupRecord(importedSettings)) {
         throw new Error('사용자 설정 정보가 없는 백업 파일입니다.');
     }
     if (!isBackupRecord(mainWorkData)) {
@@ -6252,12 +6351,17 @@ function normalizeImportedBackup(imported) {
         throw new Error('기사차량 운행일지 형식이 올바르지 않습니다.');
     }
 
+    const userSettings = applyCurrentIdentityToImportedSettings(importedSettings);
+
     const storageWrites = {};
     Object.entries(storageData).forEach(([key, value]) => {
         if (!isAppBackupStorageKey(key) || typeof value !== 'string') return;
         if (APP_BACKUP_JSON_KEYS.has(key) || key.startsWith('workData_') || key.startsWith('linkedDriverWorkData_')) {
             parseBackupStorageJson(key, value);
         }
+        // normalizedUserId는 이 기기 고유의 로컬 식별자다(getNormalizedUserId 참고) — 이미
+        // 값이 있다면 다른 사용자의 백업에 들어있던 값으로 바꿔치기하지 않는다.
+        if (key === 'normalizedUserId' && localStorage.getItem('normalizedUserId')) return;
         storageWrites[key] = value;
     });
 
@@ -7701,7 +7805,7 @@ function buildReportPage(isForExport = false) {
     let rptAccountHolder = savedSettings.accountHolder || '-';
 
     if (activeLogId !== 'main') {
-        const currentCar = savedSettings.cars.find(c => c.number === activeLogId);
+        const currentCar = (savedSettings.cars || []).find(c => c.number === activeLogId);
         if (currentCar) {
             document.getElementById('rptCarNumber').textContent = currentCar.number || '-';
             document.getElementById('rptCarTonnage').textContent = currentCar.tonnage || '-';
@@ -8485,17 +8589,18 @@ window.addEventListener('load', () => {
 
                 updateOverdueNotification(true);
 
-                if (!settings.accountType) showAccountTypePage('login');
-                else if (!settings.isLoggedIn) showLocalLoginPage();
+                // guestMode(비회원으로 시작하기)를 선택한 사용자는 isLoggedIn이 계속 false라도
+                // 새로고침할 때마다 로그인 화면으로 돌려보내지 않는다 — 그러면 "비회원으로
+                // 시작하기"가 사실상 매번 다시 눌러야 하는 무의미한 버튼이 된다.
+                if (!settings.isLoggedIn && !settings.guestMode) showLocalLoginPage();
+                else if (settings.guestMode) showMain(true);
             }, fadeMs);
         }, holdMs);
     })();
 });
 
 function handleLogin() {
-    const settings = getUserSettings();
-    if (!settings.accountType) showAccountTypePage('login');
-    else showLocalLoginPage();
+    showLocalLoginPage();
 }
 
 function handleLogout() {
@@ -9635,7 +9740,11 @@ function getMonthlyDriverTotals(data, monthKey, link = null) {
 
 function calculateDriverVehicleCommission(car, grossAmount, count) {
     if (!car?.commEnabled || !car.commission) return 0;
-    if (car.commType === 'direct') return parseCurrencyValue(car.commission) * Math.max(1, count || 0);
+    const tripCount = Number(count) || 0;
+    // 건당(direct) 수수료는 실제 운행 건수만큼만 청구한다. Math.max(1, count)로 최소 1건을
+    // 강제하면, 이번 달 운행이 0회인 기사차량도 건당 수수료 1건분이 그대로 청구돼 정산이
+    // 마이너스로 나오는 결함이 있었다(실제로 확인됨).
+    if (car.commType === 'direct') return tripCount > 0 ? parseCurrencyValue(car.commission) * tripCount : 0;
     return Math.floor(grossAmount * (parseFloat(car.commission) || 0) / 100);
 }
 

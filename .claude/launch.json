@@ -4,7 +4,7 @@
     {
       "name": "my-web-site",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["C:/Users/znlsl/AppData/Local/Temp/claude/C--Users-znlsl-OneDrive-------Plaintext/0b42bc1e-c955-4a48-a91b-7d55c3a3da03/scratchpad/static-server.js"],
+      "runtimeArgs": ["C:/Users/znlsl/AppData/Local/Temp/claude/C--Users-znlsl-OneDrive----GitHub-my-web-site/7313064d-d6bb-482e-9989-a19fe42212f2/scratchpad/static-server.js"],
       "port": 5500
     }
   ]

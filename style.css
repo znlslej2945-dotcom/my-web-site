@@ -1421,6 +1421,38 @@ body {
     white-space: nowrap;
 }
 
+/* 개인정보 카드의 [차주/소속 기사] 뱃지 + 이름 */
+.mypage-role-user-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mypage-role-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-height: 22px;
+    padding: 2px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-size: var(--fs-floor);
+    font-weight: 800;
+    line-height: 1;
+}
+
+.mypage-user-name {
+    overflow: hidden;
+    color: var(--sub-text-color);
+    font-size: var(--fs-3);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .mypage-link-arrow {
     width: 20px;
     height: 20px;
@@ -1743,14 +1775,135 @@ body.account-flow-active #sideMenuOverlay {
     text-align: left;
 }
 
-.account-flow-shell {
-    position: relative;
+/* ========== 로그인/회원가입 3뷰(authIntroView/authLoginView/authSignupView) ========== */
+.auth-view {
     display: flex;
     flex-direction: column;
     min-height: calc(100dvh - 84px);
+    text-align: left;
 }
 
-.account-flow-back {
+.auth-view.hidden { display: none !important; }
+
+.auth-brand-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 0 42px;
+    color: var(--primary-color);
+    font-size: var(--fs-6);
+    font-weight: 900;
+    letter-spacing: -.03em;
+}
+
+.auth-logo-img { width: 39px; height: 30px; object-fit: contain; }
+/* 메인 화면 배너(.banner-text)와 동일한 Jua 폰트로 통일 */
+.auth-logo-text { color: var(--primary-color); font-family: 'Jua', sans-serif; font-weight: 400; letter-spacing: -.5px; }
+
+.auth-intro-bottom {
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+    padding-bottom: 4px;
+}
+
+.auth-question-text {
+    margin: 0 0 14px;
+    color: var(--sub-text-color);
+    font-size: var(--fs-3);
+    font-weight: 700;
+}
+
+.auth-btn-stack {
+    display: grid;
+    gap: 12px;
+}
+
+.auth-primary-btn {
+    width: 100%;
+    min-height: 60px;
+    border: 1px solid var(--primary-color);
+    border-radius: 18px;
+    background: var(--primary-color);
+    color: #fff;
+    font: inherit;
+    font-size: var(--fs-5);
+    font-weight: 850;
+    cursor: pointer;
+}
+
+.auth-primary-btn:disabled {
+    border-color: var(--border-color);
+    background: var(--input-bg);
+    color: var(--sub-text-color);
+    cursor: default;
+}
+
+.auth-secondary-btn {
+    width: 100%;
+    min-height: 60px;
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    font: inherit;
+    font-size: var(--fs-5);
+    font-weight: 850;
+    cursor: pointer;
+}
+
+.auth-guest-btn {
+    width: max-content;
+    margin: 18px 0 0;
+    padding: 8px 2px;
+    border: none;
+    background: none;
+    color: var(--sub-text-color);
+    font: inherit;
+    font-size: var(--fs-2);
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* 첫 진입 선택 화면(#authIntroView)만 화면 정중앙에 로고+버튼 묶음을 배치하고 로고를 크게
+   보여준다 — authLoginView/authSignupView(뒤로가기 있는 폼 화면)는 기존처럼 상단 정렬을
+   유지한다. 색은 여기서 새로 정하지 않는다 — .account-flow-page가 이미 이 영역 전체의
+   var(--card-bg)/var(--border-color)/var(--primary-color)/var(--sub-text-color)를 정해주므로
+   레이아웃(정렬)과 크기만 바꾸면 나머지 색은 그대로 따라온다. */
+#authIntroView {
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+    text-align: center;
+}
+
+#authIntroView .auth-brand-head { justify-content: center; margin: 0; }
+#authIntroView .auth-logo-img { height: 54px; width: auto; }
+#authIntroView .auth-logo-text { font-size: 2.2rem; line-height: 1; }
+
+#authIntroView .auth-intro-bottom {
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+    align-items: center;
+}
+
+#authIntroView .auth-question-text { text-align: center; }
+
+#authIntroView .auth-btn-stack { width: 100%; }
+
+/* authLoginView / authSignupView 공통 상단 바 */
+.auth-topbar {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.auth-topbar::after { content: ''; }
+
+.auth-back-icon-btn {
     display: grid;
     place-items: center;
     width: 48px;
@@ -1764,7 +1917,7 @@ body.account-flow-active #sideMenuOverlay {
     cursor: pointer;
 }
 
-.account-flow-back svg {
+.auth-back-icon-btn svg {
     width: 20px;
     height: 20px;
     fill: none;
@@ -1774,100 +1927,89 @@ body.account-flow-active #sideMenuOverlay {
     stroke-linejoin: round;
 }
 
-.account-flow-brand {
+.auth-brand-sm {
     display: flex;
     align-items: center;
-    gap: 9px;
-    width: max-content;
-    margin: 0 0 42px;
+    gap: 6px;
+    justify-self: center;
     color: var(--primary-color);
-    font-size: var(--fs-6);
-    font-weight: 900;
-    letter-spacing: -.03em;
+    font-size: var(--fs-4);
+    font-weight: 850;
 }
 
-.account-flow-brand img {
-    width: 39px;
-    height: 30px;
-    object-fit: contain;
-}
+/* 메인 화면 배너(.banner-text)와 동일한 Jua 폰트로 통일 */
+.auth-brand-sm span { font-family: 'Jua', sans-serif; font-weight: 400; letter-spacing: -.5px; }
 
-.account-flow-topbar {
-    display: grid;
-    grid-template-columns: 48px minmax(0, 1fr) 48px;
-    align-items: center;
-    margin-bottom: 40px;
-}
+.auth-logo-sm { height: 26px; object-fit: contain; }
 
-.account-flow-topbar::after { content: ''; }
-.account-flow-topbar .account-flow-brand { justify-self: center; margin: 0; }
+.auth-heading-box { margin-bottom: 28px; }
 
-.account-flow-heading > span {
+.auth-kicker {
     color: var(--primary-color);
     font-size: var(--fs-floor);
     font-weight: 900;
     letter-spacing: .15em;
 }
 
-.account-flow-heading h1 {
-    margin: 14px 0 16px;
+.auth-heading-box h1 {
+    margin: 14px 0 0;
     color: var(--text-color);
-    font-size: clamp(2rem, 8.8vw, 2.5rem);
-    line-height: 1.16;
-    letter-spacing: -.055em;
+    font-size: clamp(1.9rem, 8vw, 2.3rem);
+    line-height: 1.2;
+    letter-spacing: -.05em;
 }
 
-.account-flow-heading p {
-    margin: 0;
+.auth-desc-text {
+    margin: 12px 0 0;
     color: var(--sub-text-color);
-    font-size: var(--fs-3);
+    font-size: var(--fs-2);
     line-height: 1.6;
 }
 
-.account-type-options {
+/* 회원가입: 차주 / 소속 기사 탭 */
+.auth-role-tabs {
     display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 12px;
-    margin: 48px 0 20px;
+    margin-bottom: 8px;
 }
 
-.account-type-option {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr);
+.auth-role-tab {
+    display: flex;
     align-items: center;
-    gap: 16px;
-    width: 100%;
-    min-height: 104px;
-    padding: 18px;
+    justify-content: center;
+    gap: 10px;
+    min-height: 68px;
     border: 1px solid var(--border-color);
-    border-radius: 22px;
+    border-radius: 20px;
     background: var(--card-bg);
     color: var(--text-color);
-    box-shadow: var(--shadow-md);
     font: inherit;
-    text-align: left;
+    font-size: var(--fs-4);
+    font-weight: 800;
     cursor: pointer;
 }
 
-.account-type-option.active {
-    border-color: color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
+.auth-role-tab.active {
+    border-color: color-mix(in srgb, var(--primary-color) 40%, var(--border-color));
     background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color) 13%, var(--card-bg)), var(--card-bg) 72%);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 14%, transparent), var(--shadow-md);
+    color: var(--text-color);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 20%, transparent);
 }
 
-.account-type-icon {
+.auth-role-tab-icon {
     display: grid;
     place-items: center;
-    width: 58px;
-    height: 58px;
-    border-radius: 18px;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
     background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
     color: var(--primary-color);
 }
 
-.account-type-icon svg,
-.login-selected-account-type svg {
-    width: 24px;
-    height: 24px;
+.auth-role-tab-icon svg {
+    width: 20px;
+    height: 20px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -1875,140 +2017,76 @@ body.account-flow-active #sideMenuOverlay {
     stroke-linejoin: round;
 }
 
-.account-type-option > span:last-child,
-.login-selected-account-type > span:last-child {
+.auth-role-subtitle {
+    margin: 0 0 20px 4px;
+    color: var(--sub-text-color);
+    font-size: var(--fs-floor);
+    font-weight: 600;
+}
+
+.auth-form-fields {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.account-type-option strong { color: var(--text-color); font-size: var(--fs-5); font-weight: 850; }
-.account-type-option small { color: var(--sub-text-color); font-size: var(--fs-2); line-height: 1.45; }
-
-.account-flow-primary {
-    width: 100%;
-    min-height: 60px;
-    margin-top: auto;
-    border: 1px solid var(--primary-color);
-    border-radius: 18px;
-    background: var(--primary-color);
-    color: #fff;
-    font: inherit;
-    font-size: var(--fs-5);
-    font-weight: 850;
-    cursor: pointer;
-}
-
-.account-flow-primary:disabled {
-    border-color: var(--border-color);
-    background: var(--input-bg);
-    color: var(--sub-text-color);
-    cursor: default;
-}
-
-.login-flow-shell .account-flow-heading { margin-bottom: 42px; }
-
-.login-selected-account-type {
-    display: grid;
-    grid-template-columns: 54px minmax(0, 1fr);
-    align-items: center;
-    gap: 14px;
-    min-height: 94px;
-    margin-bottom: 32px;
-    padding: 14px 16px;
-    border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
-    border-radius: 21px;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color) 13%, var(--card-bg)), var(--card-bg) 72%);
-    color: var(--primary-color);
-}
-
-.login-selected-account-type > span:first-child {
-    display: grid;
-    place-items: center;
-    width: 54px;
-    height: 54px;
-    border-radius: 17px;
-    background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
-}
-
-.login-selected-account-type strong { color: var(--text-color); font-size: var(--fs-4); }
-.login-selected-account-type small { color: var(--sub-text-color); font-size: var(--fs-floor); line-height: 1.45; }
-
-.login-local-form {
-    display: grid;
-    gap: 10px;
+    gap: 16px;
     margin-bottom: 24px;
 }
 
-.login-local-form label {
-    margin: 7px 0 2px;
-    color: var(--text-color);
-    font-size: var(--fs-2);
-    font-weight: 850;
-}
+.auth-field { display: flex; flex-direction: column; gap: 8px; }
+.auth-field label { color: var(--text-color); font-size: var(--fs-2); font-weight: 850; }
 
-.login-local-form .input-box {
+.auth-input-box {
     width: 100%;
-    min-height: 58px;
-    margin: 0;
-    padding: 0 20px;
+    min-height: 56px;
+    padding: 0 18px;
     box-sizing: border-box;
     border: 1px solid var(--border-color);
-    border-radius: 22px;
+    border-radius: 18px;
     background: var(--input-bg);
     color: var(--text-color);
     font-size: var(--fs-4);
+    font-weight: 600;
+    outline: none;
 }
 
-.login-local-form .input-box::placeholder { color: var(--sub-text-color); }
-.login-local-form .input-box:focus { border-color: var(--primary-color); outline: 2px solid color-mix(in srgb, var(--primary-color) 12%, transparent); }
+.auth-input-box::placeholder { color: var(--sub-text-color); }
+.auth-input-box:focus { border-color: var(--primary-color); outline: 2px solid color-mix(in srgb, var(--primary-color) 12%, transparent); }
 
-.login-invite-field {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 132px;
-    align-items: center;
-    gap: 14px;
-    margin-top: 9px;
+.auth-field-extra {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 4px;
 }
 
-.login-invite-field.hidden { display: none !important; }
-.login-invite-field > span { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.login-invite-field strong { color: var(--text-color); font-size: var(--fs-2); font-weight: 850; }
-.login-invite-field small { color: var(--sub-text-color); font-size: var(--fs-floor); line-height: 1.45; }
-.login-invite-field .input-box { min-width: 0; text-align: center; letter-spacing: .16em; }
-
-.auth-mode-toggle {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 20px;
-    padding: 5px;
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    background: var(--input-bg);
-}
-
-.auth-mode-btn {
-    min-height: 46px;
+.auth-link-text {
+    padding: 4px 0;
     border: none;
-    border-radius: 12px;
-    background: transparent;
+    background: none;
     color: var(--sub-text-color);
     font: inherit;
-    font-size: var(--fs-2);
-    font-weight: 800;
+    font-size: var(--fs-floor);
+    font-weight: 700;
+    text-decoration: underline;
     cursor: pointer;
 }
 
-.auth-mode-btn.active {
-    background: var(--card-bg);
-    color: var(--primary-color);
-    box-shadow: var(--shadow-sm, 0 1px 4px rgba(0, 0, 0, .08));
+.auth-invite-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
 }
 
-.login-password-confirm-field { display: contents; }
-.login-password-confirm-field.hidden { display: none; }
+.auth-invite-row.hidden { display: none !important; }
+.auth-invite-text strong { display: block; color: var(--text-color); font-size: var(--fs-2); font-weight: 850; }
+.auth-invite-text p { margin: 4px 0 0; color: var(--sub-text-color); font-size: var(--fs-floor); line-height: 1.45; }
+.auth-code-box { min-width: 0; text-align: center; letter-spacing: .16em; }
+
+.auth-bottom-sticky {
+    margin-top: auto;
+    padding-top: 24px;
+}
+
 .personal-role-change-btn {
     width: 100%;
     min-height: 44px;
@@ -6637,7 +6715,7 @@ button.save-action-loading::after {
 }
 
 :is(
-    .account-flow-primary,
+    .auth-primary-btn,
     .message-settings-save,
     .personal-role-change-btn.primary,
     .driver-form-save,
@@ -6648,7 +6726,7 @@ button.save-action-loading::after {
     --save-spinner-color:#fff;
 }
 
-.account-flow-primary.save-action-loading:disabled {
+.auth-primary-btn.save-action-loading:disabled {
     border-color:var(--primary-color);
     background:var(--primary-color);
 }
@@ -6656,107 +6734,184 @@ button.save-action-loading::after {
 @keyframes save-action-spin {
     to { transform:rotate(360deg); }
 }
-/* ========== 신규 유저 온보딩 마법사 ========== */
-.onboarding-wizard-content {
-    max-width: 380px;
-    /* 로그인 완료 직후(계정 흐름 페이지 위)에 떠도 배경색과 대비되는 고유 글자색을 갖도록 명시 */
-    color: var(--text-color);
+/* ========== 신규 유저 풀스크린 온보딩 페이지 ========== */
+.onboarding-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - 84px);
+    text-align: left;
 }
 
-.onboarding-step.hidden,
-.onboarding-sub-question.hidden {
-    display: none;
-}
+.onboarding-step-view { display: flex; flex-direction: column; }
+.onboarding-step-view.hidden { display: none !important; }
 
-.onboarding-wizard-header {
+/* .auth-topbar(로그인 화면과 공유) 안에 들어가므로 자체 하단 여백은 없앤다 —
+   상단 여백은 .auth-topbar가 이미 갖고 있다. */
+.onboarding-brand-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-
-.onboarding-step-label {
-    font-size: var(--fs-3);
-    font-weight: 700;
-    color: var(--sub-text-color);
-}
-
-.onboarding-step-desc {
-    margin: -10px 0 18px;
-    text-align: center;
-    color: var(--sub-text-color);
-    font-size: var(--fs-3);
-}
-
-.onboarding-option-group {
-    margin-bottom: 8px;
-}
-
-.wizard-option {
-    display: block;
-    width: 100%;
-    min-height: 44px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    background-color: var(--input-bg);
-    color: var(--text-color);
-    font: inherit;
-    font-size: var(--fs-4);
-    font-weight: 600;
-    line-height: 1.4;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-}
-
-.wizard-option:last-child {
-    margin-bottom: 0;
-}
-
-.wizard-option.active {
-    border-color: var(--primary-color);
-    background-color: var(--hover-bg);
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
     color: var(--primary-color);
 }
 
-.wizard-option strong {
-    display: block;
+.onboarding-logo-img { height: 38px; object-fit: contain; }
+/* 메인 화면 배너(.banner-text)와 동일한 Jua 폰트로 통일 */
+.onboarding-logo-text { color: var(--primary-color); font-size: var(--fs-6); font-family: 'Jua', sans-serif; font-weight: 400; letter-spacing: -.5px; }
+
+.onboarding-heading h1 {
+    margin: 0 0 14px;
+    color: var(--text-color);
+    font-size: clamp(1.7rem, 7.5vw, 2.15rem);
+    font-weight: 850;
+    line-height: 1.24;
+    letter-spacing: -.035em;
+}
+
+.onboarding-heading p {
+    margin: 0 0 34px;
+    color: var(--sub-text-color);
+    font-size: var(--fs-2);
+    line-height: 1.55;
+}
+
+.onboarding-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.onboarding-card-btn {
+    width: 100%;
+    min-height: 62px;
+    padding: 18px 22px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    font: inherit;
     font-size: var(--fs-4);
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.onboarding-card-btn.active {
+    border-color: var(--primary-color);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color) 13%, var(--card-bg)), var(--card-bg) 72%);
+    color: var(--text-color);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 20%, transparent);
+}
+
+/* 파렛트 회수 서브 토글 카드 (Step1 — 고정노선/둘다 선택 시에만 노출) */
+.onboarding-sub-toggle-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
+    padding: 16px 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background: var(--input-bg);
+    box-sizing: border-box;
+}
+
+.onboarding-sub-toggle-card.hidden { display: none !important; }
+
+.onboarding-sub-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+}
+
+.onboarding-sub-copy strong { color: var(--text-color); font-size: var(--fs-4); font-weight: 750; }
+.onboarding-sub-copy span { color: var(--sub-text-color); font-size: var(--fs-floor); }
+
+.onboarding-bottom-group {
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+    padding-top: 24px;
+}
+
+.onboarding-skip-link {
+    align-self: flex-end;
+    margin-bottom: 20px;
+    border: 0;
+    background: transparent;
+    color: var(--sub-text-color);
+    font: inherit;
+    font-size: var(--fs-2);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+.onboarding-step-counter {
+    align-self: center;
+    margin-bottom: 12px;
+    color: var(--sub-text-color);
+    font-size: var(--fs-2);
     font-weight: 700;
 }
 
-.wizard-option small {
-    display: block;
-    margin-top: 4px;
-    font-size: var(--fs-2);
-    font-weight: 500;
-    line-height: 1.4;
-    opacity: 0.72;
+.onboarding-btn-primary {
+    width: 100%;
+    min-height: 56px;
+    border: none;
+    border-radius: 18px;
+    background: var(--primary-color);
+    color: #fff;
+    font: inherit;
+    font-size: var(--fs-5);
+    font-weight: 800;
+    cursor: pointer;
 }
 
-.onboarding-sub-question {
-    margin: 4px 0 18px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    background-color: var(--input-bg);
-    border: 1px solid var(--border-color);
-}
-
-.onboarding-checklist .setting-item {
-    margin-bottom: 16px;
-}
-
-.onboarding-checklist .setting-item label {
-    padding-right: 12px;
-}
-
-.onboarding-hint {
-    margin-top: 4px;
+.onboarding-btn-primary:disabled {
+    background: var(--input-bg);
     color: var(--sub-text-color);
-    font-size: var(--fs-2);
-    line-height: 1.5;
+    box-shadow: none;
+    cursor: default;
+}
+
+.onboarding-section-title {
+    margin: 8px 0 16px;
+    color: var(--text-color);
+    font-size: var(--fs-5);
+    font-weight: 800;
+    text-align: center;
+}
+
+.onboarding-form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 로그인/회원가입/온보딩(.account-flow-page 하위 전체) 전용 다크 그레이 테마.
+   이 영역의 카드/입력창/테두리 등은 전부 var(--card-bg)/var(--input-bg)/var(--border-color)/
+   var(--text-color)/var(--sub-text-color)를 통해서만 색을 가져오므로(개별 컴포넌트 CSS 참고),
+   여기서 그 변수들의 "값"만 다시 정의해 주면 하위 모든 요소에 자동으로 적용된다 — 컴포넌트마다
+   색을 따로 덮어쓸 필요가 없고, 나중에 이 영역에 새 컴포넌트가 추가돼도 기존 변수를 쓰는 한
+   자동으로 같은 톤을 따라간다. 시스템 라이트/다크 설정과 무관하게 이 영역만 항상 이 톤으로
+   고정한다("칠흑 같은 블랙" 대신 부드러운 다크 그레이로 통일하려는 의도).
+   accent color(--primary-color)는 앱 전체와 동일한 값을 그대로 쓴다 — 이 영역만 다른 파란색을
+   쓰면 오히려 "일원화"라는 목적에 어긋난다. */
+.account-flow-page {
+    --bg-color: #1e1e1e;
+    --card-bg: #393939;
+    --input-bg: #393939;
+    --border-color: #4a4a4a;
+    --text-color: #ffffff;
+    --sub-text-color: #a0a0a0;
+    background: var(--bg-color);
+    color: var(--text-color);
 }
 
 /* ==========================================================================
@@ -6781,14 +6936,11 @@ button.save-action-loading::after {
 
 @media (max-width: 360px) {
     .account-flow-page { padding-inline: 0; }
-    .account-flow-heading h1 { font-size: 1.88rem; }
-    .account-flow-heading p { font-size: var(--fs-2); }
-    .account-type-options { margin-top: 36px; }
-    .account-type-option { grid-template-columns: 52px minmax(0, 1fr); min-height: 94px; padding: 15px; }
-    .account-type-icon { width: 52px; height: 52px; }
-    .login-flow-shell .account-flow-heading { margin-bottom: 32px; }
-    .login-selected-account-type { margin-bottom: 24px; }
-    .login-invite-field { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
+    .auth-heading-box h1 { font-size: 1.78rem; }
+    .auth-desc-text { font-size: var(--fs-floor); }
+    .auth-role-tab { min-height: 60px; font-size: var(--fs-3); }
+    .auth-role-tab-icon { width: 32px; height: 32px; }
+    .auth-invite-row { grid-template-columns: minmax(0, 1fr) 112px; gap: 10px; }
 
     .maint-fuel-info { align-items: flex-start; }
     .maint-fuel-info > strong { font-size: var(--fs-4); }

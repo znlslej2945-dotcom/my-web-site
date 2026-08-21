@@ -102,14 +102,6 @@ async function ensureProfileRow(userId, accountType, name, phone) {
     }
 }
 
-// 로그인 화면에 처음 보여줄 탭(로그인/회원가입)을 추정한다.
-// - 이 기기에서 Supabase 인증에 성공한 적이 한 번도 없는데 예전 로컬 로그인 흔적(휴대전화번호)만
-//   남아있다면 "이 업데이트 이전부터 쓰던 기존 유저"일 가능성이 높으므로 회원가입을 기본값으로 둔다.
-function getDefaultAuthMode(settings) {
-    const everAuthenticated = localStorage.getItem('supabaseAccountEverCreated') === 'true';
-    return (settings.userPhone && everAuthenticated) ? 'login' : 'signup';
-}
-
 function markSupabaseAccountEverCreated() {
     localStorage.setItem('supabaseAccountEverCreated', 'true');
 }
@@ -370,6 +362,36 @@ async function ensureVehicleSyncedToSupabase(car, index) {
     if (error) throw error;
     car.supabaseId = data.id;
     return data.id;
+}
+
+// 차량(vehicles) 행을 서버에서 완전히 삭제한다. deleteCar()가 로컬 삭제 직후 호출한다 —
+// 로컬에서만 지우면 재로그인/하이드레이션 시 서버에 남아있는 이 vehicle_id 행을 다시 읽어와
+// 로컬에 되살려 놓는 문제가 있었다(initSettingsFromSupabase는 supabaseId가 있던 차량이
+// 서버 목록에 없으면 "삭제됐다"가 아니라 "일시적 조회 실패"로 간주해서 원래는 안전장치인데,
+// 반대로 여기서는 서버 행이 실제로 남아있으니 그 안전장치가 오히려 삭제를 되돌린다).
+//
+// daily_logs/transport_details 등 하위 운행기록 테이블에 vehicle_id 외래키가 DB 제약조건상
+// CASCADE로 걸려있는지 이 저장소만으로는 확인할 수 없어서(스키마 파일이 없음), 그 여부와
+// 무관하게 항상 성공하도록 하위 테이블을 먼저 명시적으로 지운 뒤 vehicles 행을 지운다 —
+// upsertDailyLogRecordToSupabase()가 이미 쓰는 것과 같은 "앱 레벨에서 직접 지우는" 방식이다.
+// tax_invoices는 세금계산서라는 별도 성격의 기록이라 차량 삭제에 함께 지우지 않는다 — 만약
+// DB에 tax_invoices → vehicles CASCADE가 없는 RESTRICT 제약이 걸려 있다면, 세금계산서 이력이
+// 남은 차량의 삭제는 이 함수가 던지는 에러로 막힐 수 있다(의도된 동작에 가깝다).
+async function deleteVehicleFromSupabase(vehicleSupabaseId) {
+    if (!vehicleSupabaseId) return;
+    const client = await getSupabaseClient();
+
+    await Promise.all([
+        client.from('transport_details').delete().eq('vehicle_id', vehicleSupabaseId),
+        client.from('maintenance_records').delete().eq('vehicle_id', vehicleSupabaseId),
+        client.from('fuel_records').delete().eq('vehicle_id', vehicleSupabaseId),
+        client.from('misc_expense_records').delete().eq('vehicle_id', vehicleSupabaseId)
+    ]);
+    const { error: dailyLogsError } = await client.from('daily_logs').delete().eq('vehicle_id', vehicleSupabaseId);
+    if (dailyLogsError) throw dailyLogsError;
+
+    const { error } = await client.from('vehicles').delete().eq('id', vehicleSupabaseId);
+    if (error) throw error;
 }
 
 // Supabase(profiles+vehicles+clients)에서 읽어와 기존 getUserSettings()가 반환하던 것과
@@ -877,7 +899,7 @@ async function migrateLocalDataToSupabase(userId) {
 
 // ---------- 로그인 성공 직후 실행되는 전체 orchestration ----------
 
-// completeLocalLogin()과 앱 부팅(세션 복원) 양쪽에서 공통으로 호출한다.
+// executeLoginAction()/executeSignupAction()과 앱 부팅(세션 복원) 양쪽에서 공통으로 호출한다.
 // 1) (기존 로컬 데이터가 있고 아직 마이그레이션 전이면) 로컬 → Supabase 1회 업로드
 // 2) Supabase → 로컬(localStorage) 최신화
 // 3) 화면 다시 그리기

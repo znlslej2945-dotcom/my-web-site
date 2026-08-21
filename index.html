@@ -180,64 +180,226 @@
             </div>
         </div>
 
-        <!-- [첫 시작 사용자 유형 선택] -->
-        <div id="accountTypePage" class="page hidden account-flow-page">
-            <div class="account-flow-shell">
-                <button id="accountTypeBackBtn" type="button" class="account-flow-back hidden" onclick="cancelAccountTypeSelection()" aria-label="뒤로가기"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-                <div class="account-flow-brand"><img src="images/banner_image.png" alt=""><span>운행 일지</span></div>
-                <div class="account-flow-heading">
-                    <span>ACCOUNT TYPE</span>
-                    <h1>어떤 방식으로<br>이용하시나요?</h1>
-                    <p>선택한 유형에 맞춰 필요한 연결과 관리 기능을 준비합니다.</p>
+        <!-- [로그인 / 회원가입 통합 페이지] -->
+        <div id="loginPage" class="page hidden account-flow-page">
+
+            <!-- 뷰 1: 첫 진입 선택 화면 -->
+            <div id="authIntroView" class="auth-view">
+                <div class="auth-brand-head">
+                    <img src="images/banner_image.png" alt="" class="auth-logo-img">
+                    <span class="auth-logo-text">운행 일지</span>
                 </div>
-                <div class="account-type-options" role="radiogroup" aria-label="사용자 유형">
-                    <button type="button" class="account-type-option" data-account-type="owner_driver" onclick="selectAccountType('owner_driver')" role="radio" aria-checked="false">
-                        <span class="account-type-icon"><svg viewBox="0 0 24 24"><path d="M3 14.5v-2l2.5-1.4 1.6-3.7A2.3 2.3 0 0 1 9.2 6h5.6a2.3 2.3 0 0 1 2.1 1.4l1.6 3.7 2.5 1.4v4.2"></path><path d="M5 18h14M6 11h12"></path><circle cx="6.8" cy="17.5" r="2.5"></circle><circle cx="17.2" cy="17.5" r="2.5"></circle></svg></span>
-                        <span><strong>차주</strong><small>본인 차량 일지 및 기사를 관리해요.</small></span>
+                <div class="auth-intro-bottom">
+                    <p class="auth-question-text">계정이 있으신가요?</p>
+                    <div class="auth-btn-stack">
+                        <button type="button" class="auth-primary-btn" onclick="showAuthSubView('login')">로그인</button>
+                        <button type="button" class="auth-secondary-btn" onclick="showAuthSubView('signup')">회원가입</button>
+                    </div>
+                    <button type="button" class="auth-guest-btn" onclick="startGuestMode()">비회원으로 시작하기</button>
+                </div>
+            </div>
+
+            <!-- 뷰 2: 로그인 화면 -->
+            <div id="authLoginView" class="auth-view hidden">
+                <div class="auth-topbar">
+                    <button type="button" class="auth-back-icon-btn" onclick="showAuthSubView('intro')" aria-label="뒤로가기">
+                        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     </button>
-                    <button type="button" class="account-type-option" data-account-type="employed_driver" onclick="selectAccountType('employed_driver')" role="radio" aria-checked="false">
-                        <span class="account-type-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"></circle><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"></path><path d="M9 21v-4h6v4"></path></svg></span>
-                        <span><strong>소속 기사</strong><small>초대 코드나 전화번호로 사장님과 연결해요.</small></span>
+                    <div class="auth-brand-sm">
+                        <img src="images/banner_image.png" alt="" class="auth-logo-sm">
+                        <span>운행 일지</span>
+                    </div>
+                </div>
+                <div class="auth-heading-box">
+                    <span class="auth-kicker">WELCOME</span>
+                    <h1>정보를<br>입력해 주세요.</h1>
+                </div>
+                <div class="auth-form-fields">
+                    <div class="auth-field">
+                        <label for="loginUserName">이름</label>
+                        <input type="text" id="loginUserName" class="auth-input-box" placeholder="이름을 입력하세요" autocomplete="name" oninput="updateLoginButtonState()">
+                    </div>
+                    <div class="auth-field">
+                        <label for="loginUserPhone">휴대전화 번호</label>
+                        <input type="tel" id="loginUserPhone" class="auth-input-box" placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhoneNumber(this); updateLoginButtonState()">
+                    </div>
+                    <div class="auth-field">
+                        <label for="loginPassword">비밀번호</label>
+                        <input type="password" id="loginPassword" class="auth-input-box" placeholder="6자 이상 입력해 주세요" autocomplete="current-password" oninput="updateLoginButtonState()">
+                        <div class="auth-field-extra">
+                            <button type="button" class="auth-link-text" onclick="openForgotPwModal()">비밀번호 찾기</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="auth-bottom-sticky">
+                    <button id="loginSubmitBtn" type="button" class="auth-primary-btn" onclick="runSaveAction(this, 'local-login', executeLoginAction)" disabled>다음</button>
+                </div>
+            </div>
+
+            <!-- 뷰 3: 회원가입 화면 -->
+            <div id="authSignupView" class="auth-view hidden">
+                <div class="auth-topbar">
+                    <button type="button" class="auth-back-icon-btn" onclick="showAuthSubView('intro')" aria-label="뒤로가기">
+                        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <div class="auth-brand-sm">
+                        <img src="images/banner_image.png" alt="" class="auth-logo-sm">
+                        <span>운행 일지</span>
+                    </div>
+                </div>
+                <div class="auth-heading-box">
+                    <span class="auth-kicker">WELCOME</span>
+                    <h1>회원가입</h1>
+                    <p class="auth-desc-text">운행 기록은 클라우드에 안전하게 백업되어 다른 기기에서 로그인해도 그대로 이어집니다. 그래도 만약을 대비해 설정 메뉴의 로컬 백업 기능도 함께 이용해 주세요.</p>
+                </div>
+
+                <!-- 차주 / 소속 기사 선택 탭 -->
+                <div class="auth-role-tabs" role="radiogroup" aria-label="사용자 유형">
+                    <button type="button" class="auth-role-tab active" data-role="owner_driver" onclick="switchSignupRole('owner_driver')" role="radio" aria-checked="true">
+                        <div class="auth-role-tab-icon"><svg viewBox="0 0 24 24"><path d="M3 14.5v-2l2.5-1.4 1.6-3.7A2.3 2.3 0 0 1 9.2 6h5.6a2.3 2.3 0 0 1 2.1 1.4l1.6 3.7 2.5 1.4v4.2"></path><path d="M5 18h14M6 11h12"></path><circle cx="6.8" cy="17.5" r="2.5"></circle><circle cx="17.2" cy="17.5" r="2.5"></circle></svg></div>
+                        <span>차주</span>
+                    </button>
+                    <button type="button" class="auth-role-tab" data-role="employed_driver" onclick="switchSignupRole('employed_driver')" role="radio" aria-checked="false">
+                        <div class="auth-role-tab-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"></circle><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"></path><path d="M9 21v-4h6v4"></path></svg></div>
+                        <span>소속 기사</span>
                     </button>
                 </div>
-                <button id="accountTypeContinueBtn" type="button" class="account-flow-primary" onclick="runSaveAction(this, 'account-type', continueAccountTypeSelection)" disabled>다음</button>
+                <p id="signupRoleSubtitle" class="auth-role-subtitle">본인 차량 일지 및 기사를 관리해요.</p>
+
+                <div class="auth-form-fields">
+                    <div class="auth-field">
+                        <label for="signupName">이름</label>
+                        <input type="text" id="signupName" class="auth-input-box" placeholder="이름을 입력하세요" autocomplete="name" oninput="updateSignupButtonState()">
+                    </div>
+                    <div class="auth-field">
+                        <label for="signupPhone">휴대전화 번호</label>
+                        <input type="tel" id="signupPhone" class="auth-input-box" placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhoneNumber(this); updateSignupButtonState()">
+                    </div>
+                    <div class="auth-field">
+                        <label for="signupPw">비밀번호</label>
+                        <input type="password" id="signupPw" class="auth-input-box" placeholder="6자 이상 입력해 주세요" autocomplete="new-password" oninput="updateSignupButtonState()">
+                    </div>
+                    <div class="auth-field">
+                        <label for="signupPwConfirm">비밀번호 확인</label>
+                        <input type="password" id="signupPwConfirm" class="auth-input-box" placeholder="비밀번호를 한 번 더 입력해 주세요" autocomplete="new-password" oninput="updateSignupButtonState()">
+                    </div>
+                    <div id="signupInviteBlock" class="auth-invite-row hidden">
+                        <div class="auth-invite-text">
+                            <strong>기사 초대코드 (선택)</strong>
+                            <p>사장님에게 받은 6자리 코드가 있으면 입력해 주세요. 나중에 마이페이지에서도 연결할 수 있습니다.</p>
+                        </div>
+                        <input type="text" id="signupInviteCode" class="auth-input-box auth-code-box" inputmode="numeric" maxlength="6" placeholder="000000" oninput="this.value=this.value.replace(/\D/g, '').slice(0, 6); updateSignupButtonState()">
+                    </div>
+                </div>
+                <div class="auth-bottom-sticky">
+                    <button id="signupSubmitBtn" type="button" class="auth-primary-btn" onclick="runSaveAction(this, 'local-signup', executeSignupAction)" disabled>가입하고 시작하기</button>
+                </div>
             </div>
         </div>
 
-        <!-- [로컬 로그인] -->
-        <div id="loginPage" class="page hidden account-flow-page">
-            <div class="account-flow-shell login-flow-shell">
-                <div class="account-flow-topbar">
-                    <button type="button" class="account-flow-back" onclick="showAccountTypePage('login')" aria-label="사용자 유형 다시 선택"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-                    <div class="account-flow-brand"><img src="images/banner_image.png" alt=""><span>운행 일지</span></div>
-                </div>
-                <div class="account-flow-heading">
-                    <span>WELCOME</span>
-                    <h1>기본 정보를<br>입력해 주세요.</h1>
-                    <p>운행 기록은 클라우드(Supabase)에 안전하게 백업되어 다른 기기에서 로그인해도 그대로 이어집니다. 그래도 만약을 대비해 설정 메뉴의 로컬 백업 기능도 함께 이용해 주세요.</p>
-                </div>
-                <div id="loginSelectedAccountType" class="login-selected-account-type"></div>
-                <div class="auth-mode-toggle" role="tablist" aria-label="로그인/회원가입 선택">
-                    <button type="button" class="auth-mode-btn" data-auth-mode="signup" role="tab" onclick="setLoginAuthMode('signup')">처음이에요 (회원가입)</button>
-                    <button type="button" class="auth-mode-btn" data-auth-mode="login" role="tab" onclick="setLoginAuthMode('login')">이미 계정이 있어요 (로그인)</button>
-                </div>
-                <div class="login-local-form">
-                    <label for="loginUserName">이름</label>
-                    <input type="text" id="loginUserName" class="input-box" placeholder="이름을 입력하세요" autocomplete="name" oninput="updateLoginContinueState()">
-                    <label for="loginUserPhone">휴대전화 번호</label>
-                    <input type="tel" id="loginUserPhone" class="input-box" placeholder="010-0000-0000" autocomplete="tel" oninput="formatPhoneNumber(this); updateLoginContinueState()">
-                    <label for="loginPassword">비밀번호</label>
-                    <input type="password" id="loginPassword" class="input-box" placeholder="6자 이상 입력해 주세요" autocomplete="new-password" oninput="updateLoginContinueState()">
-                    <div id="loginPasswordConfirmField" class="login-password-confirm-field">
-                        <label for="loginPasswordConfirm">비밀번호 확인</label>
-                        <input type="password" id="loginPasswordConfirm" class="input-box" placeholder="비밀번호를 한 번 더 입력해 주세요" autocomplete="new-password" oninput="updateLoginContinueState()">
-                    </div>
-                    <div id="loginInviteField" class="login-invite-field hidden">
-                        <span><strong>기사 초대코드 (선택)</strong><small>사장님에게 받은 6자리 코드가 있으면 입력해 주세요. 나중에 마이페이지에서도 연결할 수 있습니다.</small></span>
-                        <input type="text" id="loginInviteCode" class="input-box" inputmode="numeric" maxlength="6" aria-label="초대코드" placeholder="000000" oninput="this.value=this.value.replace(/\D/g, '').slice(0, 6); updateLoginContinueState()">
+        <!-- [신규 유저 풀스크린 온보딩 페이지] -->
+        <div id="onboardingPage" class="page hidden account-flow-page">
+            <div class="onboarding-shell">
+                <div class="auth-topbar">
+                    <button type="button" id="onboardingBackBtn" class="auth-back-icon-btn hidden" onclick="goBackOnboardingStep()" aria-label="이전 단계">
+                        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <div class="onboarding-brand-head">
+                        <img src="images/banner_image.png" alt="" class="onboarding-logo-img">
+                        <span class="onboarding-logo-text">운행 일지</span>
                     </div>
                 </div>
-                <button id="loginContinueBtn" type="button" class="account-flow-primary" onclick="runSaveAction(this, 'local-login', completeLocalLogin)" disabled>가입하고 시작하기</button>
+
+                <!-- Step 1: 근무 방식 -->
+                <div id="onboardingStep1" class="onboarding-step-view">
+                    <div class="onboarding-heading">
+                        <h1>주로 어떤 방식으로<br>일하시나요?</h1>
+                        <p>선택 사항이에요.<br>이 항목들은 나중에 설정 화면에서 언제든 켜고 끌 수 있어요.</p>
+                    </div>
+                    <div class="onboarding-options-list">
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingWorkStyle('fixed', this)">정해진 노선을 반복해서 다녀요</button>
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingWorkStyle('call', this)">그때그때 다른 화물을 배차받아요</button>
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingWorkStyle('both', this)">둘 다 섞어서 해요</button>
+                    </div>
+
+                    <!-- 파렛트 회수 선택 서브 카드 (고정노선/둘다 선택 시 노출) -->
+                    <div id="onboardingPalletCard" class="onboarding-sub-toggle-card hidden">
+                        <div class="onboarding-sub-copy">
+                            <strong>파렛트 회수</strong>
+                            <span>파렛트도 회수해서 청구하시나요?</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="onboardingPalletToggle" onchange="toggleOnboardingPallet(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Step 2: 수금 관리 -->
+                <div id="onboardingStep2" class="onboarding-step-view hidden">
+                    <div class="onboarding-heading">
+                        <h1>수금 관리까지<br>하시겠어요?</h1>
+                        <p>선택 사항이에요.<br>나중에 설정 화면에서 언제든 바꿀 수 있어요.</p>
+                    </div>
+                    <div class="onboarding-options-list">
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingPayment(true, this)">네, 입금 안 된 것까지 챙기고 싶어요</button>
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingPayment(false, this)">아니요, 기록만 남길게요</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: 선택 항목 (다중 선택) -->
+                <div id="onboardingStep3" class="onboarding-step-view hidden">
+                    <div class="onboarding-heading">
+                        <h1>필요한 기록 항목을<br>선택해 주세요</h1>
+                        <p>선택 사항이에요.<br>건너뛰어도 괜찮아요.</p>
+                    </div>
+                    <div class="onboarding-options-list">
+                        <button type="button" class="onboarding-card-btn" data-field="timeOn" onclick="toggleOnboardingOptionCard('timeOn', this)">운행 시간도 기록할래요</button>
+                        <button type="button" class="onboarding-card-btn" data-field="cargoTonnageOn" onclick="toggleOnboardingOptionCard('cargoTonnageOn', this)">화물 톤수도 기록할래요</button>
+                        <button type="button" class="onboarding-card-btn" data-field="platformOn" onclick="toggleOnboardingOptionCard('platformOn', this)">배차 플랫폼(콜앱 등)도 기록할래요</button>
+                        <button type="button" class="onboarding-card-btn" data-field="distanceOn" onclick="toggleOnboardingOptionCard('distanceOn', this)">계기판 거리도 기록할래요</button>
+                    </div>
+                </div>
+
+                <!-- Step 4: 차량 등록 (인라인 입력) -->
+                <div id="onboardingStep4" class="onboarding-step-view hidden">
+                    <div class="onboarding-heading">
+                        <h1>차량 정보를<br>등록해 주세요</h1>
+                        <p>차량번호를 등록하면 운행 일지와 정산에 자동으로 연결돼요.</p>
+                    </div>
+                    <div class="onboarding-section-title">차량 등록</div>
+                    <div class="onboarding-form-fields">
+                        <div class="auth-field">
+                            <label for="onboardingCarNumber">차량번호</label>
+                            <input type="text" id="onboardingCarNumber" class="auth-input-box" placeholder="12가 3456" oninput="updateOnboardingStep4State()">
+                        </div>
+                        <div class="auth-field">
+                            <label for="onboardingCarTonnage">차량 톤수</label>
+                            <input type="text" id="onboardingCarTonnage" class="auth-input-box" placeholder="예: 5톤, 11톤, 25톤">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5: 정산 방식 (차주 계정만) -->
+                <div id="onboardingStep5" class="onboarding-step-view hidden">
+                    <div class="onboarding-heading">
+                        <h1>정산은 어떤 방식으로<br>하시나요?</h1>
+                        <p>기본 정산 방식을 정해두면 차량마다 다시 고르지 않아도 돼요.</p>
+                    </div>
+                    <div class="onboarding-options-list">
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingSettlementMode('company', this)">회사 정산</button>
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingSettlementMode('driver_direct', this)">기사 직접 정산</button>
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingSettlementMode('employee', this)">직원 기사</button>
+                        <button type="button" class="onboarding-card-btn" onclick="selectOnboardingSettlementMode('none', this)">계산서 미사용</button>
+                    </div>
+                </div>
+
+                <!-- 하단 네비게이션 영역 -->
+                <div class="onboarding-bottom-group">
+                    <button type="button" class="onboarding-skip-link" onclick="skipCurrentOnboardingStep()">건너뛰기 &gt;</button>
+                    <div class="onboarding-step-counter" id="onboardingStepCounter">1/5</div>
+                    <button type="button" id="onboardingNextBtn" class="onboarding-btn-primary" onclick="advanceOnboardingStep()" disabled>다음</button>
+                </div>
             </div>
         </div>
 
@@ -463,7 +625,10 @@
                 </span>
                 <span class="mypage-profile-copy">
                     <strong>개인정보</strong>
-                    <span id="myPageProfileSummary">대표자 및 사업자 정보 관리</span>
+                    <span class="mypage-role-user-row">
+                        <span id="myPageRoleBadge" class="mypage-role-pill">차주</span>
+                        <span id="myPageUserNameText" class="mypage-user-name">이름</span>
+                    </span>
                 </span>
                 <svg class="mypage-link-arrow" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
@@ -502,6 +667,10 @@
             </section>
 
             <div class="mypage-notice-area">
+                <button type="button" class="mypage-notice-link" onclick="showSettings('myPage')">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    <span>앱 설정</span>
+                </button>
                 <button id="myPageDriverConnectionLink" type="button" class="mypage-notice-link hidden" onclick="showDriverConnectionManagement('myPage')">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M16 11h6"></path></svg>
                     <span>기사연동관리</span>
@@ -2107,119 +2276,6 @@
             <div class="modal-btns">
                 <button class="modal-btn cancel" onclick="closeTaxInvoiceModal()">취소</button>
                 <button class="modal-btn confirm" onclick="runSaveAction(this, 'tax-invoice-draft', saveTaxInvoiceDraft)">저장</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 신규 유저 온보딩 마법사 (완전 신규 유저의 로그인 완료 직후에만 노출) -->
-    <div id="onboardingWizardModal" class="modal-overlay hidden">
-        <div class="modal-content onboarding-wizard-content">
-            <div class="onboarding-wizard-header">
-                <button type="button" id="onboardingBackBtn" class="icon-btn" onclick="goOnboardingStep(-1)" title="이전" style="visibility: hidden;">
-                    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                </button>
-                <span id="onboardingStepLabel" class="onboarding-step-label">1/3</span>
-                <div style="width: 36px;"></div>
-            </div>
-
-            <!-- Step 1: 근무 방식 -->
-            <div id="onboardingStep1" class="onboarding-step">
-                <div class="modal-title">주로 어떤 방식으로<br>일하시나요?</div>
-                <div class="onboarding-option-group">
-                    <button type="button" class="wizard-option" onclick="selectOnboardingWorkStyle('fixed', this)">정해진 노선을 반복해서 다녀요</button>
-                    <button type="button" class="wizard-option" onclick="selectOnboardingWorkStyle('call', this)">그때그때 다른 화물을 배차받아요</button>
-                    <button type="button" class="wizard-option" onclick="selectOnboardingWorkStyle('both', this)">둘 다 섞어서 해요</button>
-                </div>
-                <div id="onboardingPalletSub" class="onboarding-sub-question hidden">
-                    <div class="setting-item">
-                        <label for="onboardingPalletToggle">파렛트도 회수해서 청구하시나요?</label>
-                        <label class="switch">
-                            <input type="checkbox" id="onboardingPalletToggle" onchange="toggleOnboardingPallet(this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-                <div class="modal-btns">
-                    <button type="button" id="onboardingStep1NextBtn" class="modal-btn confirm" disabled onclick="goOnboardingStep(1)">다음</button>
-                </div>
-            </div>
-
-            <!-- Step 2: 수금 관리 -->
-            <div id="onboardingStep2" class="onboarding-step hidden">
-                <div class="modal-title">수금 관리까지<br>하시겠어요?</div>
-                <div class="onboarding-option-group">
-                    <button type="button" class="wizard-option" onclick="selectOnboardingPayment(true, this)">네, 입금 안 된 것까지 챙기고 싶어요</button>
-                    <button type="button" class="wizard-option" onclick="selectOnboardingPayment(false, this)">아니요, 기록만 남길게요</button>
-                </div>
-                <div class="modal-btns">
-                    <button type="button" id="onboardingStep2NextBtn" class="modal-btn confirm" disabled onclick="goOnboardingStep(1)">다음</button>
-                </div>
-            </div>
-
-            <!-- Step 3: 선택 항목 -->
-            <div id="onboardingStep3" class="onboarding-step hidden">
-                <div class="modal-title">필요하면 켜세요</div>
-                <p class="onboarding-step-desc">선택 사항이에요. 건너뛰어도 괜찮아요.</p>
-                <div class="onboarding-checklist">
-                    <div class="setting-item">
-                        <label for="onboardingTimeToggle">운행 시간도 기록할래요</label>
-                        <label class="switch">
-                            <input type="checkbox" id="onboardingTimeToggle" onchange="toggleOnboardingOption('timeOn', this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label for="onboardingTonnageToggle">화물 톤수도 기록할래요</label>
-                        <label class="switch">
-                            <input type="checkbox" id="onboardingTonnageToggle" onchange="toggleOnboardingOption('cargoTonnageOn', this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label for="onboardingPlatformToggle">배차 플랫폼(콜앱 등)도 기록할래요</label>
-                        <label class="switch">
-                            <input type="checkbox" id="onboardingPlatformToggle" onchange="toggleOnboardingOption('platformOn', this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label for="onboardingDistanceToggle">계기판 거리도 기록할래요</label>
-                        <label class="switch">
-                            <input type="checkbox" id="onboardingDistanceToggle" onchange="toggleOnboardingOption('distanceOn', this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-                <p class="onboarding-hint">이 항목들은 나중에 설정 화면에서 언제든 켜고 끌 수 있어요.</p>
-                <div class="modal-btns">
-                    <button type="button" id="onboardingStep3SkipBtn" class="modal-btn cancel" onclick="finishOnboardingWizard(true)">건너뛰기</button>
-                    <button type="button" id="onboardingStep3ConfirmBtn" class="modal-btn confirm" onclick="finishOnboardingWizard(false)">완료하기</button>
-                </div>
-            </div>
-            <!-- Step 4: 차량 등록 -->
-            <div id="onboardingStep4" class="onboarding-step hidden">
-                <div class="modal-title">차량 정보를<br>등록해 주세요</div>
-                <p class="onboarding-step-desc">차량번호를 등록하면 운행 일지와 정산에 자동으로 연결돼요.</p>
-                <div class="modal-btns">
-                    <button type="button" class="modal-btn cancel" onclick="skipOnboardingCarStep()">나중에 등록할게요</button>
-                    <button type="button" class="modal-btn confirm" onclick="startOnboardingCarRegistration()">차량 등록하기</button>
-                </div>
-            </div>
-            <!-- Step 5: 정산 방식 (차주 계정만) -->
-            <div id="onboardingStep5" class="onboarding-step hidden">
-                <div class="modal-title">정산은 어떤 방식으로<br>하시나요?</div>
-                <p class="onboarding-step-desc">기본 정산 방식을 정해두면 차량마다 다시 고르지 않아도 돼요.</p>
-                <div class="onboarding-option-group">
-                    <button type="button" class="wizard-option" onclick="selectOnboardingSettlementMode('company', this)"><strong>회사 정산</strong><small>회사가 거래처에 매출 계산서를 발행하고 기사 계산서를 수취해요.</small></button>
-                    <button type="button" class="wizard-option" onclick="selectOnboardingSettlementMode('driver_direct', this)"><strong>기사 직접 정산</strong><small>기사가 거래처에 직접 발행하고 회사는 기사에게 수수료 계산서를 발행해요.</small></button>
-                    <button type="button" class="wizard-option" onclick="selectOnboardingSettlementMode('employee', this)"><strong>직원 기사</strong><small>회사가 거래처에 발행하고 기사 계산서는 만들지 않아요.</small></button>
-                    <button type="button" class="wizard-option" onclick="selectOnboardingSettlementMode('none', this)"><strong>계산서 미사용</strong><small>이 차량 운행분은 계산서 자동 생성에서 제외해요.</small></button>
-                </div>
-                <p class="onboarding-hint">나중에 설정 화면에서 언제든 바꿀 수 있어요.</p>
-                <div class="modal-btns">
-                    <button type="button" class="modal-btn cancel" onclick="finishOnboardingWizard(true)">건너뛰기</button>
-                    <button type="button" class="modal-btn confirm" onclick="finishOnboardingWizard(false)">완료하기</button>
-                </div>
             </div>
         </div>
     </div>
