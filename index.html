@@ -1297,6 +1297,26 @@
                         <input type="text" id="unitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
                     </div>
                     <div class="setting-item">
+                        <label for="fixedRouteToggle">상하차지 사용</label>
+                        <label class="switch">
+                            <input type="checkbox" id="fixedRouteToggle" onchange="toggleFixedRoutePresetSettings('main'); saveSettings();">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div id="fixedRoutePresetSettings" class="setting-item fixed-route-preset-setting" style="display: none;">
+                        <div class="run-count-preset-copy">
+                            <label>자주 다니는 노선 등록</label>
+                            <p>부산→대구처럼 항상 같은 구간만 오간다면, 노선을 등록해 두고 일일운행에서 원탭으로 횟수를 기록하세요.</p>
+                        </div>
+                        <div id="fixedRoutePresetList" class="fixed-route-preset-list"></div>
+                        <div class="fixed-route-preset-add-row">
+                            <input type="text" id="fixedRoutePresetLoadInput" class="input-box" placeholder="상차지">
+                            <span class="fixed-route-preset-arrow">→</span>
+                            <input type="text" id="fixedRoutePresetUnloadInput" class="input-box" placeholder="하차지">
+                            <button type="button" onclick="addFixedRoutePreset('main');">추가</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
                         <label for="runCountToggle">운행 횟수 버튼 사용</label>
                         <label class="switch">
                             <input type="checkbox" id="runCountToggle" onchange="toggleRunCountPresetSettings(); saveSettingsSmoothly();">
@@ -1306,15 +1326,12 @@
                     <div id="runCountPresetSettings" class="setting-item run-count-preset-setting" style="display: none;">
                         <div class="run-count-preset-copy">
                             <label>횟수 버튼 설정</label>
-                            <p>각 버튼은 운행일지의 고정노선 횟수 버튼과 순서대로 연동됩니다.</p>
+                            <p>각 버튼은 운행일지의 고정노선 횟수 버튼과 순서대로 연동됩니다. "+"로 버튼을 더 추가할 수 있습니다.</p>
                         </div>
-                        <div id="runCountPresetChips" class="run-count-preset-chips" aria-label="고정노선 횟수 버튼 5개 설정">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="첫 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="두 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="세 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="네 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="다섯 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeRunCountPresetInput(); saveSettings();">
-                        </div>
+                        <!-- 버튼들은 JS(setRunCountPresetChipValues)가 저장된 개수만큼 직접 그린다 —
+                             예전엔 5개로 고정이었지만, 이제 "+ 추가"로 더 늘릴 수 있다. -->
+                        <div id="runCountPresetChips" class="run-count-preset-chips" aria-label="고정노선 횟수 버튼 설정"></div>
+                        <button type="button" id="runCountPresetAddBtn" class="run-count-preset-add-btn" onclick="addRunCountPresetChip('main');">+ 버튼 추가</button>
                     </div>
                     <div class="setting-item">
                         <label for="palletToggle">파렛트 회수 사용</label>
@@ -1427,21 +1444,36 @@
                         <input type="text" id="subUnitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
                     </div>
                     <div class="setting-item">
+                        <label for="subFixedRouteToggle">상하차지 사용</label>
+                        <label class="switch">
+                            <input type="checkbox" id="subFixedRouteToggle" onchange="toggleFixedRoutePresetSettings('sub'); saveSettings();">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div id="subFixedRoutePresetSettings" class="setting-item fixed-route-preset-setting" style="display: none;">
+                        <div class="run-count-preset-copy">
+                            <label>자주 다니는 노선 등록</label>
+                            <p>부산→대구처럼 항상 같은 구간만 오간다면, 노선을 등록해 두고 일일운행에서 원탭으로 횟수를 기록하세요.</p>
+                        </div>
+                        <div id="subFixedRoutePresetList" class="fixed-route-preset-list"></div>
+                        <div class="fixed-route-preset-add-row">
+                            <input type="text" id="subFixedRoutePresetLoadInput" class="input-box" placeholder="상차지">
+                            <span class="fixed-route-preset-arrow">→</span>
+                            <input type="text" id="subFixedRoutePresetUnloadInput" class="input-box" placeholder="하차지">
+                            <button type="button" onclick="addFixedRoutePreset('sub');">추가</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
                         <label for="subRunCountToggle">운행 횟수 버튼 사용</label>
                         <label class="switch"><input type="checkbox" id="subRunCountToggle" onchange="toggleSubRunCountPresetSettings(); saveSettingsSmoothly();"><span class="slider"></span></label>
                     </div>
                     <div id="subRunCountPresetSettings" class="setting-item run-count-preset-setting" style="display: none;">
                         <div class="run-count-preset-copy">
                             <label>횟수 버튼 설정</label>
-                            <p>각 버튼은 운행일지의 고정노선 횟수 버튼과 순서대로 연동됩니다.</p>
+                            <p>각 버튼은 운행일지의 고정노선 횟수 버튼과 순서대로 연동됩니다. "+"로 버튼을 더 추가할 수 있습니다.</p>
                         </div>
-                        <div id="subRunCountPresetChips" class="run-count-preset-chips" aria-label="기사차량 고정노선 횟수 버튼 5개 설정">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="첫 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeSubRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="두 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeSubRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="세 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeSubRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="네 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeSubRunCountPresetInput(); saveSettings();">
-                            <input type="number" class="run-count-preset-chip" inputmode="numeric" min="1" aria-label="다섯 번째 횟수 버튼" oninput="saveSettings()" onblur="normalizeSubRunCountPresetInput(); saveSettings();">
-                        </div>
+                        <div id="subRunCountPresetChips" class="run-count-preset-chips" aria-label="기사차량 고정노선 횟수 버튼 설정"></div>
+                        <button type="button" id="subRunCountPresetAddBtn" class="run-count-preset-add-btn" onclick="addRunCountPresetChip('sub');">+ 버튼 추가</button>
                     </div>
                     <div class="setting-item">
                         <label for="subPalletToggle">파렛트 회수 사용</label>
@@ -1515,6 +1547,10 @@
                                 <span class="fixed-route-unit">회 운행</span>
                             </div>
                             <div id="fixedCountQuickButtons" class="fixed-count-quick-buttons" aria-label="운행 횟수 빠른 선택"></div>
+                            <!-- 앱설정에서 "상하차지 사용"을 켜고 노선을 등록해둔 경우에만 보인다.
+                                 노선 칩을 누를 때마다 그 노선 운행이 1회 늘어나고, 위 총 횟수에도
+                                 그대로 합산된다(원탭으로 오늘 몇 번째 운행인지 기록). -->
+                            <div id="fixedRouteQuickButtons" class="fixed-route-quick-buttons" aria-label="자주 다니는 노선 원탭 기록" style="display:none;"></div>
                         </div>
                         <div id="modalPalletSection" class="form-group fixed-route-group pallet-route-group" style="display: none;">
                             <label for="modalPalletCount">파렛트 회수</label>
@@ -1574,19 +1610,25 @@
                 운행 일지 세부 입력
             </div>
 
+            <!-- 새 항목을 추가할 때만 보임(수정 중일 땐 의미 없음). 직전에 입력한 항목(오늘
+                 먼저 넣은 게 있으면 그것, 없으면 가장 최근 날짜의 마지막 항목) 내용을 그대로
+                 채워서, 매번 거래처/상하차지를 처음부터 입력하지 않아도 되게 한다. -->
+            <button type="button" id="callDetailCopyPrevBtn" class="call-detail-copy-prev-btn" onclick="copyPreviousCallDetail();" hidden>↺ 직전 항목과 동일하게 채우기</button>
+
             <div class="call-detail-panel call-route-panel">
                 <div class="form-group">
                     <label class="load-label">상차지</label>
-                    <input type="text" id="callLoadLoc" class="input-box" data-app-autocomplete="load" placeholder="상차지 입력" oninput="clearCallDetailRequiredError(this);">
+                    <input type="text" id="callLoadLoc" class="input-box" data-app-autocomplete="load" placeholder="상차지 입력" oninput="clearCallDetailRequiredError(this);" onfocus="setActiveLocationShortcutTarget('load');">
                     <datalist id="loadLocList"></datalist>
-                    <div id="callLoadLocShortcuts" class="location-shortcuts"></div>
                 </div>
                 <div class="form-group">
                     <label class="unload-label">하차지</label>
-                    <input type="text" id="callUnloadLoc" class="input-box" data-app-autocomplete="unload" placeholder="하차지 입력" oninput="clearCallDetailRequiredError(this);">
+                    <input type="text" id="callUnloadLoc" class="input-box" data-app-autocomplete="unload" placeholder="하차지 입력" oninput="clearCallDetailRequiredError(this);" onfocus="setActiveLocationShortcutTarget('unload');">
                     <datalist id="unloadLocList"></datalist>
-                    <div id="callUnloadLocShortcuts" class="location-shortcuts"></div>
                 </div>
+                <!-- 상차지/하차지 즐겨찾기+최근 장소를 하나로 합친 칩. 지금 포커스가 있는
+                     입력란(상차지/하차지)에 채워진다 -->
+                <div id="callLocShortcuts" class="location-shortcuts"></div>
             </div>
 
             <div class="call-detail-panel call-money-panel">

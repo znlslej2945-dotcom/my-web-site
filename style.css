@@ -3215,18 +3215,23 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     box-shadow: var(--shadow-sm);
 }
 .call-detail-modal-title { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid var(--border-color); color: var(--primary-color); font-size: var(--fs-8); font-weight: 800; }
+.call-detail-copy-prev-btn { display: block; width: 100%; margin-bottom: 9px; padding: 10px; border: 1px dashed var(--primary-color); border-radius: 14px; background: transparent; color: var(--primary-color); font-size: var(--fs-3); font-weight: 700; cursor: pointer; }
+.call-detail-copy-prev-btn[hidden] { display: none; }
 .call-detail-panel { margin-bottom: 9px; padding: 12px; border-radius: 22px; background: var(--card-bg); box-shadow: 0 3px 7px rgba(0, 0, 0, .32); text-align: left; }
 .call-detail-panel > label, .call-detail-panel .form-group > label, .call-inline-field > label { color: var(--sub-text-color); font-size: var(--fs-3); font-weight: 750; }
 .call-route-panel, .call-two-column-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .call-route-panel .form-group, .call-two-column-panel .form-group { min-width: 0; margin: 0; }
 .call-route-panel .load-label { color: var(--primary-color); }
 .call-route-panel .unload-label { color: var(--sunday-color); }
-.location-shortcuts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
+/* 상차지+하차지 즐겨찾기를 한 줄로 합쳐서(예전엔 각 입력란 아래 따로 있어 2줄을 차지했다)
+   세로 공간을 아끼는 대신, 칩 안 버튼의 최소 높이도 44px→36px로 살짝 줄였다(탭은 여전히
+   충분히 가능한 크기). grid-column으로 두 입력란 아래 전체 폭을 차지하게 한다. */
+.location-shortcuts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .location-chip { display: inline-flex; align-items: stretch; max-width: 100%; overflow: hidden; border: 1px solid var(--border-color); border-radius: 999px; background: var(--input-bg); }
 .location-chip.pinned { border-color: var(--primary-color); }
-.location-chip button { min-height: 44px; border: 0; background: transparent; color: var(--sub-text-color); cursor: pointer; }
-.location-chip-select { max-width: 112px; padding: 5px 4px 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2); }
-.location-chip-pin { width: 28px; padding: 4px 7px 4px 3px; color: var(--primary-color) !important; font-size: var(--fs-3); }
+.location-chip button { min-height: 36px; border: 0; background: transparent; color: var(--sub-text-color); cursor: pointer; }
+.location-chip-select { max-width: 100px; padding: 4px 4px 4px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2); }
+.location-chip-pin { width: 26px; padding: 3px 6px 3px 2px; color: var(--primary-color) !important; font-size: var(--fs-2); }
 .call-detail-panel .input-box { min-width: 0; min-height: 44px; padding: 10px 13px; border-color: var(--border-color); background: var(--input-bg); text-align: center; }
 .call-inline-field { display: grid; grid-template-columns: minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 10px; }
 .call-inline-field:last-child { margin-bottom: 0; }
@@ -4043,13 +4048,22 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     line-height: 1.45;
 }
 
+/* 예전엔 정확히 5개로 고정된 grid였지만, "+ 버튼 추가"로 개수가 늘어날 수 있어서 flex-wrap으로
+   바꿨다 — 5개일 땐 한 줄(20%씩), 더 늘어나면 자연스럽게 다음 줄로 넘어간다. */
 .run-count-preset-chips {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
     width: 100%;
     padding-inline: 2px;
     box-sizing: border-box;
+}
+
+.run-count-preset-chip-wrap {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(20% - 5px);
+    min-width: 50px;
 }
 
 .run-count-preset-chip {
@@ -4075,6 +4089,76 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     margin: 0;
     appearance: none;
 }
+
+.run-count-preset-chip-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: var(--card-bg);
+    color: var(--sub-text-color);
+    font-size: 11px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.run-count-preset-add-btn {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px;
+    border: 1px dashed var(--primary-color);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--primary-color);
+    font-size: var(--fs-2);
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.run-count-preset-add-btn:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+
+/* --- 고정노선 상하차지(노선) 등록: 앱 설정 --- */
+.fixed-route-preset-setting { align-items: stretch; flex-direction: column; gap: 7px; padding: 6px 0 8px; }
+.fixed-route-preset-list { display: flex; flex-direction: column; gap: 6px; }
+.fixed-route-preset-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--input-bg);
+}
+.fixed-route-preset-row span { font-size: var(--fs-2); font-weight: 700; color: var(--text-color); }
+.fixed-route-preset-row button {
+    flex-shrink: 0; width: 26px; height: 26px; border: 1px solid var(--border-color); border-radius: 50%;
+    background: var(--card-bg); color: var(--sub-text-color); font-size: 13px; cursor: pointer;
+}
+.fixed-route-preset-empty { color: var(--sub-text-color); font-size: var(--fs-2); padding: 4px 2px; }
+.fixed-route-preset-add-row { display: grid; grid-template-columns: 1fr auto 1fr auto; align-items: center; gap: 6px; }
+.fixed-route-preset-add-row .input-box { min-height: 40px; padding: 8px 10px; font-size: var(--fs-2); }
+.fixed-route-preset-arrow { color: var(--sub-text-color); font-weight: 700; }
+.fixed-route-preset-add-row button {
+    min-height: 40px; padding: 0 12px; border: none; border-radius: 10px;
+    background: var(--primary-color); color: #fff; font-weight: 750; font-size: var(--fs-2); cursor: pointer;
+}
+
+/* --- 고정노선 상하차지(노선) 원탭 기록: 일일운행 입력 화면 --- */
+.fixed-route-quick-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.fixed-route-chip {
+    display: inline-flex; align-items: stretch; overflow: hidden;
+    border: 1px solid var(--border-color); border-radius: 999px; background: var(--input-bg);
+}
+.fixed-route-chip button { border: 0; background: transparent; cursor: pointer; min-height: 40px; }
+.fixed-route-chip-select { padding: 6px 12px; color: var(--text-color); font-size: var(--fs-2); font-weight: 700; }
+.fixed-route-chip-select .fixed-route-chip-count { color: var(--primary-color); font-weight: 800; margin-left: 4px; }
+.fixed-route-chip-minus { padding: 6px 10px 6px 4px; color: var(--sub-text-color); font-size: var(--fs-3); border-left: 1px solid var(--border-color); }
 
 :is(#settingsPage, #subCarSettingsPage) .settings-backup-card {
     padding: 12px 14px;
@@ -5642,7 +5726,7 @@ body.pdf-export-mode .summary-row.total {
 }
 
 #workModal .location-chip button {
-    min-height: 44px;
+    min-height: 36px;
 }
 
 #workModal .call-detail-form-actions {

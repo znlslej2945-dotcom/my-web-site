@@ -32,6 +32,10 @@ let currentTempMaintItems = appState.currentTempMaintItems;
 let currentTempCallDetails = appState.currentTempCallDetails;
 let currentTempFuelItems = appState.currentTempFuelItems;
 let currentTempMiscItems = appState.currentTempMiscItems;
+// 고정노선 "상하차지 사용" 켰을 때, 오늘 이 날짜에 노선별로 몇 번 눌렀는지(routeId -> count)
+// 임시로 들고 있다가 autoSaveWorkRecord()가 workData[selectedDateKey].fixedRouteCounts로
+// 반영한다. currentTempCallDetails 등과 같은 패턴이다.
+let currentTempFixedRouteCounts = {};
 let isDetailReportView = appState.isDetailReportView;
 let currentDetailClientFilter = appState.currentDetailClientFilter;
 const calendarCells = appState.calendarCells;
@@ -4193,34 +4197,70 @@ function populateLocationDataLists() {
     }
 }
 
-function getRecentLocations(type) {
-    const field = type === 'load' ? 'loadLoc' : 'unloadLoc';
-    const recent = [];
+// 상차지/하차지 즐겨찾기 칩을 예전엔 따로 관리했다(pinnedLoadLocations/pinnedUnloadLocations,
+// 각각 최대 5개). 실제로는 "청양 애경"처럼 상차지로도 하차지로도 쓰이는 곳이 많아서 같은
+// 곳을 두 번 등록해야 하는 비효율이 있었고, 세로 공간도 두 줄을 차지했다. 하나의 목록으로
+// 합치고(pinnedLocations), 대신 "지금 포커스가 상차지/하차지 중 어디에 있는지"로 어느
+// 입력란에 채울지 정한다(activeLocationShortcutTarget).
+let activeLocationShortcutTarget = 'load';
+
+function setActiveLocationShortcutTarget(type) {
+    activeLocationShortcutTarget = type === 'unload' ? 'unload' : 'load';
+}
+
+// 기존 pinnedLoadLocations/pinnedUnloadLocations를 쓰던 계정을 한 번만 pinnedLocations로
+// 합쳐준다. 이미 pinnedLocations가 있으면(마이그레이션 끝났거나 원래 신규 계정) 손대지 않는다.
+function normalizeLegacyPinnedLocations() {
+    const settings = getUserSettings();
+    if (Array.isArray(settings.pinnedLocations)) return;
+
+    const merged = [];
+    [...(settings.pinnedLoadLocations || []), ...(settings.pinnedUnloadLocations || [])].forEach(loc => {
+        const trimmed = String(loc || '').trim();
+        if (trimmed && !merged.includes(trimmed)) merged.push(trimmed);
+    });
+    settings.pinnedLocations = merged.slice(0, PINNED_LOCATION_LIMIT);
+    delete settings.pinnedLoadLocations;
+    delete settings.pinnedUnloadLocations;
+    setUserSettings(settings);
+}
+
+const PINNED_LOCATION_LIMIT = 10;
+const LOCATION_SHORTCUT_DISPLAY_LIMIT = 12;
+
+// "자주 + 최근" 랭킹: 상차지/하차지 구분 없이 이 계정이 실제로 입력한 모든 장소를 세어서,
+// 등장 횟수가 많은 순 → 동률이면 최근에 쓴 순으로 정렬한다. 순수 최신순으로만 하면 어쩌다
+// 한 번 간 곳이 단골 노선을 밀어낼 수 있어서(실제 피드백으로 지적됨) 빈도를 먼저 본다.
+function getFrequentAndRecentLocations() {
+    const stats = new Map(); // location -> { count, lastIndex(작을수록 최근) }
+    let cursor = 0;
     const addLocation = value => {
         const location = String(value || '').trim();
-        if (location && !recent.includes(location)) recent.push(location);
+        if (!location) return;
+        const entry = stats.get(location) || { count: 0, lastIndex: Infinity };
+        entry.count += 1;
+        entry.lastIndex = Math.min(entry.lastIndex, cursor);
+        stats.set(location, entry);
+        cursor += 1;
     };
+    const addFromDetail = item => { addLocation(item.loadLoc); addLocation(item.unloadLoc); };
 
-    [...currentTempCallDetails].reverse().forEach(item => addLocation(item[field]));
+    [...currentTempCallDetails].reverse().forEach(addFromDetail);
     Object.keys(workData).sort().reverse().forEach(dateKey => {
-        const details = workData[dateKey]?.callDetails || [];
-        [...details].reverse().forEach(item => addLocation(item[field]));
+        [...(workData[dateKey]?.callDetails || [])].reverse().forEach(addFromDetail);
     });
-    return recent;
+
+    return [...stats.entries()]
+        .sort((a, b) => (b[1].count - a[1].count) || (a[1].lastIndex - b[1].lastIndex))
+        .map(([location]) => location);
 }
 
 function renderLocationShortcuts() {
-    renderLocationShortcutGroup('load');
-    renderLocationShortcutGroup('unload');
-}
-
-function renderLocationShortcutGroup(type) {
     const settings = getUserSettings();
-    const settingKey = type === 'load' ? 'pinnedLoadLocations' : 'pinnedUnloadLocations';
-    const containerId = type === 'load' ? 'callLoadLocShortcuts' : 'callUnloadLocShortcuts';
-    const pinned = Array.isArray(settings[settingKey]) ? settings[settingKey].filter(Boolean) : [];
-    const locations = [...pinned, ...getRecentLocations(type).filter(location => !pinned.includes(location))].slice(0, 5);
-    const container = document.getElementById(containerId);
+    const pinned = Array.isArray(settings.pinnedLocations) ? settings.pinnedLocations.filter(Boolean) : [];
+    const locations = [...pinned, ...getFrequentAndRecentLocations().filter(location => !pinned.includes(location))]
+        .slice(0, LOCATION_SHORTCUT_DISPLAY_LIMIT);
+    const container = document.getElementById('callLocShortcuts');
     if (!container) return;
 
     container.innerHTML = '';
@@ -4233,7 +4273,7 @@ function renderLocationShortcutGroup(type) {
         selectButton.type = 'button';
         selectButton.className = 'location-chip-select';
         selectButton.textContent = location;
-        selectButton.addEventListener('click', () => selectLocationShortcut(type, location));
+        selectButton.addEventListener('click', () => selectLocationShortcut(location));
 
         const pinButton = document.createElement('button');
         pinButton.type = 'button';
@@ -4241,37 +4281,39 @@ function renderLocationShortcutGroup(type) {
         pinButton.textContent = pinned.includes(location) ? '★' : '☆';
         pinButton.title = pinned.includes(location) ? '고정 해제' : '장소 고정';
         pinButton.setAttribute('aria-label', `${location} ${pinButton.title}`);
-        pinButton.addEventListener('click', () => togglePinnedLocation(type, location));
+        pinButton.addEventListener('click', () => togglePinnedLocation(location));
 
         chip.append(selectButton, pinButton);
         container.appendChild(chip);
     });
 }
 
-function selectLocationShortcut(type, location) {
-    const input = document.getElementById(type === 'load' ? 'callLoadLoc' : 'callUnloadLoc');
+// 지금 포커스가 있던(또는 마지막으로 있었던) 입력란에 채운다 — 즐겨찾기 칩 자체는 상차지용/
+// 하차지용 구분이 없는 하나의 목록이라, "어느 칩이냐"가 아니라 "지금 어느 입력란을 채우려는
+// 참이냐"로 대상을 정한다.
+function selectLocationShortcut(location) {
+    const input = document.getElementById(activeLocationShortcutTarget === 'unload' ? 'callUnloadLoc' : 'callLoadLoc');
     if (input) input.value = location;
 }
 
-function togglePinnedLocation(type, location) {
+function togglePinnedLocation(location) {
     const settings = getUserSettings();
-    const settingKey = type === 'load' ? 'pinnedLoadLocations' : 'pinnedUnloadLocations';
-    const pinned = Array.isArray(settings[settingKey]) ? [...settings[settingKey]] : [];
+    const pinned = Array.isArray(settings.pinnedLocations) ? [...settings.pinnedLocations] : [];
     const index = pinned.indexOf(location);
 
     if (index >= 0) {
         pinned.splice(index, 1);
     } else {
-        if (pinned.length >= 5) {
-            showToastMessage('고정 장소는 최대 5개까지 등록할 수 있습니다.');
+        if (pinned.length >= PINNED_LOCATION_LIMIT) {
+            showToastMessage(`고정 장소는 최대 ${PINNED_LOCATION_LIMIT}개까지 등록할 수 있습니다.`);
             return;
         }
         pinned.push(location);
     }
 
-    settings[settingKey] = pinned;
+    settings.pinnedLocations = pinned;
     setUserSettings(settings);
-    renderLocationShortcutGroup(type);
+    renderLocationShortcuts();
 }
 
 // 같은 차량이 배열에 중복으로 들어있는 걸 정리한다. 메인 차량은 항상 최대 1대만 있어야
@@ -5990,6 +6032,7 @@ function commitSettings() {
     settings.fixedOn = document.getElementById('fixedToggle').checked;
     settings.unitPrice = document.getElementById('unitPrice').value;
     settings.fixedClient = document.getElementById('fixedClientSelect') ? document.getElementById('fixedClientSelect').value : '';
+    settings.fixedRouteOn = document.getElementById('fixedRouteToggle') ? document.getElementById('fixedRouteToggle').checked : false;
     settings.palletOn = document.getElementById('palletToggle').checked;
     settings.palletPrice = document.getElementById('palletPrice').value;
     settings.runCountToggle = document.getElementById('runCountToggle') ? document.getElementById('runCountToggle').checked : false;
@@ -6012,6 +6055,7 @@ function commitSettings() {
         settings.subFixedOn = document.getElementById('subFixedToggle').checked;
         settings.subUnitPrice = document.getElementById('subUnitPrice').value;
         settings.subFixedClient = document.getElementById('subFixedClientSelect') ? document.getElementById('subFixedClientSelect').value : '';
+        settings.subFixedRouteOn = document.getElementById('subFixedRouteToggle') ? document.getElementById('subFixedRouteToggle').checked : false;
         settings.subPalletOn = document.getElementById('subPalletToggle').checked;
         settings.subPalletPrice = document.getElementById('subPalletPrice').value;
         
@@ -6072,6 +6116,9 @@ function loadSettings() {
             document.getElementById('fixedClientSelect').value = savedSettings.fixedClient || '';
             document.getElementById('fixedClientSelect').parentElement?._dropdownSync?.();
         }
+        if (document.getElementById('fixedRouteToggle')) document.getElementById('fixedRouteToggle').checked = !!savedSettings.fixedRouteOn;
+        renderFixedRoutePresetList('main');
+        toggleFixedRoutePresetSettings('main');
         document.getElementById('palletToggle').checked = !!savedSettings.palletOn;
         document.getElementById('palletPrice').value = savedSettings.palletPrice || '';
         if (document.getElementById('runCountToggle')) document.getElementById('runCountToggle').checked = !!savedSettings.runCountToggle;
@@ -6100,6 +6147,9 @@ function loadSettings() {
                 document.getElementById('subFixedClientSelect').value = savedSettings.subFixedClient || '';
                 document.getElementById('subFixedClientSelect').parentElement?._dropdownSync?.();
             }
+            if (document.getElementById('subFixedRouteToggle')) document.getElementById('subFixedRouteToggle').checked = !!savedSettings.subFixedRouteOn;
+            renderFixedRoutePresetList('sub');
+            toggleFixedRoutePresetSettings('sub');
             document.getElementById('subPalletToggle').checked = !!savedSettings.subPalletOn;
             document.getElementById('subPalletPrice').value = savedSettings.subPalletPrice || '';
 
@@ -6446,6 +6496,38 @@ function getEmployerLinkNotificationItem() {
         title: '사장님과 연결이 필요해요',
         message: '아직 소속 사장님과 연결되지 않았어요. 초대 코드를 입력하면 차량 정보와 운행 기록이 자동으로 연결돼요.',
         actionLabel: '지금 연결하기'
+    };
+}
+
+// 저녁까지 오늘자 운행일지를 하나도 안 적었으면 알림 패널에 안내한다. 종이 수첩은 항상
+// 옆에 있어서 깜빡할 일이 없는데, 앱은 열어보지 않으면 그냥 잊어버리기 쉽다는 실제 피드백을
+// 반영한 것이다. 저녁 시간대(18시 이후)에만 뜨고, 오늘 하루 안에 실제로 뭔가 적으면(콜상세
+// 등록, 고정노선 횟수, 휴무 표시 중 하나라도) 바로 사라진다 — 스와이프로 지워도 그건 "오늘"
+// 키에만 적용되니 내일은 다시 정상적으로 뜬다.
+const TODAY_LOG_REMINDER_HOUR = 18;
+
+function getTodayLogReminderNotificationItem() {
+    const now = new Date();
+    if (now.getHours() < TODAY_LOG_REMINDER_HOUR) return null;
+
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayRecord = readWorkDataStorage('workData')[todayKey];
+    const hasEntry = !!todayRecord && (
+        !!todayRecord.isOff
+        || (Array.isArray(todayRecord.callDetails) && todayRecord.callDetails.length > 0)
+        || (parseInt(todayRecord.fixedCount, 10) || 0) > 0
+    );
+    if (hasEntry) return null;
+
+    const key = `today_log_reminder_${todayKey}`;
+    if (getDismissedNotificationKeys().has(key)) return null;
+
+    return {
+        type: 'todayLogReminder',
+        key,
+        title: '오늘 운행 아직 안 적으셨어요',
+        message: '잊기 전에 오늘 하루 운행 기록을 남겨 주세요.',
+        actionLabel: '오늘 일지 쓰기'
     };
 }
 
@@ -7118,16 +7200,19 @@ function syncFixedCountQuickButtons() {
     });
 }
 
+// 예전엔 항상 정확히 5개로 고정(부족하면 1,2,3...으로 채움)이었는데, 이제 "+ 버튼 추가"로
+// 늘릴 수 있으니 5개로 강제하지 않는다 — 입력된 개수를 그대로 쓰되 RUN_COUNT_PRESET_MAX를
+// 넘지 않게만 자르고, 완전히 빈 값(최초 진입 등)일 때만 기존 기본값 1~5로 채운다.
+const RUN_COUNT_PRESET_MAX = 10;
+
 function normalizeRunCountPresets(value) {
     const source = Array.isArray(value) ? value : String(value || '').split(/[\s,]+/);
     const values = [];
     source.forEach(item => {
         const count = parseInt(item, 10);
-        if (count > 0 && !values.includes(count) && values.length < 5) values.push(count);
+        if (count > 0 && !values.includes(count) && values.length < RUN_COUNT_PRESET_MAX) values.push(count);
     });
-    for (let fallback = 1; values.length < 5; fallback++) {
-        if (!values.includes(fallback)) values.push(fallback);
-    }
+    if (!values.length) return [1, 2, 3, 4, 5];
     return values;
 }
 
@@ -7146,13 +7231,71 @@ function getRunCountPresetChipValues(scope = 'main') {
     });
 }
 
+// 이제 입력칸 자체를 이 함수가 직접 그린다(예전엔 정적 5개 <input>에 값만 채웠음) — 개수가
+// 가변적이라 매번 다시 그리는 게 "몇 개가 있어야 하는지"를 따로 추적하는 것보다 단순하다.
 function setRunCountPresetChipValues(scope = 'main', value) {
     const containerId = scope === 'sub' ? 'subRunCountPresetChips' : 'runCountPresetChips';
-    const inputs = document.querySelectorAll(`#${containerId} .run-count-preset-chip`);
+    const container = document.getElementById(containerId);
+    if (!container) return;
     const presets = normalizeRunCountPresets(value);
-    inputs.forEach((input, index) => {
-        input.value = presets[index];
+
+    container.innerHTML = '';
+    presets.forEach((count, index) => {
+        const wrap = document.createElement('span');
+        wrap.className = 'run-count-preset-chip-wrap';
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'run-count-preset-chip';
+        input.setAttribute('inputmode', 'numeric');
+        input.min = '1';
+        input.value = count;
+        input.setAttribute('aria-label', `${index + 1}번째 횟수 버튼`);
+        input.addEventListener('input', () => saveSettings());
+        input.addEventListener('blur', () => {
+            if (scope === 'sub') normalizeSubRunCountPresetInput(); else normalizeRunCountPresetInput();
+            saveSettings();
+        });
+        wrap.appendChild(input);
+
+        // 버튼이 딱 1개 남았을 땐 지울 수 없게 한다(횟수 버튼 자체가 없어지면 안 되므로).
+        if (presets.length > 1) {
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'run-count-preset-chip-remove';
+            removeBtn.textContent = '×';
+            removeBtn.title = '이 버튼 삭제';
+            removeBtn.setAttribute('aria-label', `${count}회 버튼 삭제`);
+            removeBtn.addEventListener('click', () => removeRunCountPresetChip(scope, index));
+            wrap.appendChild(removeBtn);
+        }
+
+        container.appendChild(wrap);
     });
+
+    const addBtn = document.getElementById(scope === 'sub' ? 'subRunCountPresetAddBtn' : 'runCountPresetAddBtn');
+    if (addBtn) addBtn.disabled = presets.length >= RUN_COUNT_PRESET_MAX;
+}
+
+// "+ 버튼 추가" — 마지막 값 다음(안 겹치면)이나 안 쓰인 가장 작은 양수를 새 버튼으로 붙인다.
+function addRunCountPresetChip(scope = 'main') {
+    const current = getRunCountPresetChipValues(scope);
+    if (current.length >= RUN_COUNT_PRESET_MAX) {
+        showToastMessage(`횟수 버튼은 최대 ${RUN_COUNT_PRESET_MAX}개까지 추가할 수 있습니다.`);
+        return;
+    }
+    let next = (current[current.length - 1] || 0) + 1;
+    while (current.includes(next)) next++;
+    setRunCountPresetChipValues(scope, [...current, next]);
+    saveSettings();
+}
+
+function removeRunCountPresetChip(scope, index) {
+    const current = getRunCountPresetChipValues(scope);
+    if (current.length <= 1) return;
+    current.splice(index, 1);
+    setRunCountPresetChipValues(scope, current);
+    saveSettings();
 }
 
 function normalizeRunCountPresetInput() {
@@ -7184,6 +7327,155 @@ function renderFixedCountQuickButtons(settings, isMain) {
     });
 }
 
+// ========== 고정노선 "상하차지 사용" — 자주 다니는 노선 등록 & 원탭 기록 ==========
+// 고정노선(기존)은 그날 총 운행 "횟수"만 기록했다. 매일 같은 구간(부산→대구 등)만 도는
+// 기사에게는 그 횟수가 "몇 번 눌렀는지"만 남고 "어느 노선이었는지"는 안 남아서, 상하차지가
+// 필요한 세부 기록이나 통계에는 못 썼다. 이 기능은 그 갭을 메운다 — 앱 설정에서 자주 다니는
+// 노선을 미리 등록해 두면, 일일운행에서 원탭으로 "이 노선 1회"를 기록할 수 있고, 노선별
+// 횟수(fixedRouteCounts)와 전체 총 횟수(fixedCount, 기존 계산 로직 그대로 재사용)가 함께
+// 올라간다. 총 횟수 입력칸 자체는 그대로 남겨둬서, 노선 없이 그냥 숫자만 쓰던 기존 방식도
+// 계속 쓸 수 있다.
+
+function toggleFixedRoutePresetSettings(scope) {
+    const toggle = document.getElementById(scope === 'sub' ? 'subFixedRouteToggle' : 'fixedRouteToggle');
+    const setting = document.getElementById(scope === 'sub' ? 'subFixedRoutePresetSettings' : 'fixedRoutePresetSettings');
+    setSettingsGroupExpanded(setting, !!toggle?.checked, 'flex');
+}
+
+function getFixedRoutePresets(settings, scope) {
+    const key = scope === 'sub' ? 'subFixedRoutePresets' : 'fixedRoutePresets';
+    return Array.isArray(settings[key]) ? settings[key] : [];
+}
+
+// 앱 설정 화면의 "자주 다니는 노선 등록" 목록을 다시 그린다.
+function renderFixedRoutePresetList(scope) {
+    const container = document.getElementById(scope === 'sub' ? 'subFixedRoutePresetList' : 'fixedRoutePresetList');
+    if (!container) return;
+    const presets = getFixedRoutePresets(getUserSettings(), scope);
+
+    if (!presets.length) {
+        container.innerHTML = '<div class="fixed-route-preset-empty">등록된 노선이 없습니다.</div>';
+        return;
+    }
+    container.innerHTML = '';
+    presets.forEach(route => {
+        const row = document.createElement('div');
+        row.className = 'fixed-route-preset-row';
+        const label = document.createElement('span');
+        label.textContent = `${route.loadLoc} → ${route.unloadLoc}`;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '×';
+        removeBtn.title = '노선 삭제';
+        removeBtn.setAttribute('aria-label', `${route.loadLoc} → ${route.unloadLoc} 삭제`);
+        removeBtn.addEventListener('click', () => removeFixedRoutePreset(scope, route.id));
+        row.append(label, removeBtn);
+        container.appendChild(row);
+    });
+}
+
+function addFixedRoutePreset(scope) {
+    const loadInput = document.getElementById(scope === 'sub' ? 'subFixedRoutePresetLoadInput' : 'fixedRoutePresetLoadInput');
+    const unloadInput = document.getElementById(scope === 'sub' ? 'subFixedRoutePresetUnloadInput' : 'fixedRoutePresetUnloadInput');
+    const loadLoc = loadInput?.value.trim() || '';
+    const unloadLoc = unloadInput?.value.trim() || '';
+    if (!loadLoc || !unloadLoc) {
+        showToastMessage('상차지와 하차지를 모두 입력해 주세요.');
+        return;
+    }
+
+    const settings = getUserSettings();
+    const key = scope === 'sub' ? 'subFixedRoutePresets' : 'fixedRoutePresets';
+    const presets = Array.isArray(settings[key]) ? [...settings[key]] : [];
+    if (presets.length >= 10) {
+        showToastMessage('노선은 최대 10개까지 등록할 수 있습니다.');
+        return;
+    }
+    presets.push({ id: generateLocalId('route'), loadLoc, unloadLoc });
+    settings[key] = presets;
+    setUserSettings(settings);
+
+    if (loadInput) loadInput.value = '';
+    if (unloadInput) unloadInput.value = '';
+    renderFixedRoutePresetList(scope);
+}
+
+function removeFixedRoutePreset(scope, routeId) {
+    const settings = getUserSettings();
+    const key = scope === 'sub' ? 'subFixedRoutePresets' : 'fixedRoutePresets';
+    settings[key] = (Array.isArray(settings[key]) ? settings[key] : []).filter(route => route.id !== routeId);
+    setUserSettings(settings);
+    renderFixedRoutePresetList(scope);
+}
+
+// 일일운행 입력 화면의 노선 원탭 칩을 그린다. 각 칩은 "상차지 → 하차지 (오늘 횟수)"를
+// 보여주고, 누르면 그 노선 1회가 추가된다. 1회 이상 기록된 노선에는 되돌리기(−) 버튼도 같이
+// 보인다.
+function renderFixedRouteQuickButtons(settings, isMain) {
+    const container = document.getElementById('fixedRouteQuickButtons');
+    if (!container) return;
+    const enabled = isMain ? !!settings.fixedRouteOn : !!settings.subFixedRouteOn;
+    const presets = getFixedRoutePresets(settings, isMain ? 'main' : 'sub');
+    container.style.display = (enabled && presets.length) ? 'flex' : 'none';
+    container.innerHTML = '';
+    if (!enabled || !presets.length) return;
+
+    presets.forEach(route => {
+        const count = currentTempFixedRouteCounts[route.id] || 0;
+        const chip = document.createElement('span');
+        chip.className = 'fixed-route-chip';
+
+        const selectButton = document.createElement('button');
+        selectButton.type = 'button';
+        selectButton.className = 'fixed-route-chip-select';
+        selectButton.innerHTML = `${escapeDetailText(route.loadLoc)} → ${escapeDetailText(route.unloadLoc)}${count > 0 ? ` <span class="fixed-route-chip-count">${count}회</span>` : ''}`;
+        selectButton.addEventListener('click', () => addFixedRouteRun(route.id, isMain));
+        chip.appendChild(selectButton);
+
+        if (count > 0) {
+            const minusButton = document.createElement('button');
+            minusButton.type = 'button';
+            minusButton.className = 'fixed-route-chip-minus';
+            minusButton.textContent = '−';
+            minusButton.title = '한 번 취소';
+            minusButton.setAttribute('aria-label', `${route.loadLoc} → ${route.unloadLoc} 1회 취소`);
+            minusButton.addEventListener('click', () => removeFixedRouteRun(route.id, isMain));
+            chip.appendChild(minusButton);
+        }
+
+        container.appendChild(chip);
+    });
+}
+
+// 노선 칩 원탭 — 그 노선 카운트를 1 늘리고, 기존 "총 횟수" 입력칸에도 그대로 더한다(모든
+// 매출/세금계산서 계산이 이미 fixedCount 하나만 보고 있으므로, 이렇게 해야 기존 계산 로직을
+// 하나도 안 건드리고 노선별 기록만 얹을 수 있다).
+function addFixedRouteRun(routeId, isMain) {
+    currentTempFixedRouteCounts[routeId] = (currentTempFixedRouteCounts[routeId] || 0) + 1;
+    const countInput = document.getElementById('modalFixedCountInput');
+    if (countInput) countInput.value = (parseInt(countInput.value, 10) || 0) + 1;
+
+    const settings = getUserSettings();
+    renderFixedRouteQuickButtons(settings, isMain);
+    syncFixedCountQuickButtons();
+    autoSaveWorkRecord();
+}
+
+function removeFixedRouteRun(routeId, isMain) {
+    const current = currentTempFixedRouteCounts[routeId] || 0;
+    if (current <= 0) return;
+    currentTempFixedRouteCounts[routeId] = current - 1;
+    if (currentTempFixedRouteCounts[routeId] <= 0) delete currentTempFixedRouteCounts[routeId];
+
+    const countInput = document.getElementById('modalFixedCountInput');
+    if (countInput) countInput.value = Math.max(0, (parseInt(countInput.value, 10) || 0) - 1);
+
+    const settings = getUserSettings();
+    renderFixedRouteQuickButtons(settings, isMain);
+    syncFixedCountQuickButtons();
+    autoSaveWorkRecord();
+}
+
 function openModal(dateKey, month, day) {
     selectedDateKey = dateKey;
     appState.selectedDateKey = dateKey; // appState 객체 동기화 추가
@@ -7208,6 +7500,7 @@ function openModal(dateKey, month, day) {
     currentTempCallDetails = [];
     currentTempFuelItems = [];
     currentTempMiscItems = [];
+    currentTempFixedRouteCounts = {};
 
     if (record) {
         setOffState(!!record.isOff);
@@ -7226,12 +7519,16 @@ function openModal(dateKey, month, day) {
         if (record.callDetails && record.callDetails.length > 0) {
             currentTempCallDetails = JSON.parse(JSON.stringify(record.callDetails));
         }
+        if (record.fixedRouteCounts && typeof record.fixedRouteCounts === 'object') {
+            currentTempFixedRouteCounts = JSON.parse(JSON.stringify(record.fixedRouteCounts));
+        }
     } else {
         setOffState(false);
         document.getElementById('modalFixedCountInput').value = '';
         document.getElementById('modalPalletCount').value = '';
     }
 
+    renderFixedRouteQuickButtons(savedSettings, isMain);
     syncFixedCountQuickButtons();
 
     renderMaintSummaryInMainModal();
@@ -7569,6 +7866,44 @@ function selectCallReceipt(value) {
         button.classList.toggle('active', !isAlreadyActive && button.textContent.trim() === value);
     });
 }
+// 세부입력 "직전 항목과 동일하게 채우기"용 — 오늘 이미 넣어둔 게 있으면 그중 마지막 것,
+// 없으면 가장 최근 날짜의 마지막 콜상세를 돌려준다. getFrequentAndRecentLocations()와 같은
+// 데이터 소스(currentTempCallDetails → workData 역순)를 쓰되, 여긴 "가장 최근 1건 전체"만
+// 필요하므로 훨씬 단순하다.
+function getMostRecentCallDetail() {
+    if (currentTempCallDetails.length) return currentTempCallDetails[currentTempCallDetails.length - 1];
+    const dates = Object.keys(workData).sort().reverse();
+    for (const dateKey of dates) {
+        const details = workData[dateKey]?.callDetails || [];
+        if (details.length) return details[details.length - 1];
+    }
+    return null;
+}
+
+// "손으로 몇 글자만 적으면 되는 수첩"과의 입력 속도 격차를 줄이기 위한 원탭 기능 — 매번
+// 거래처/상차지/하차지를 처음부터 타이핑하지 않고, 같은 노선을 반복 운행하는 경우 직전
+// 항목을 그대로 채운 뒤 운송료 등 달라지는 값만 고치면 되게 한다. 시간/거리/영수증/결제
+// 상태처럼 "이번 건에만 해당하는" 필드는 일부러 복사하지 않는다.
+function copyPreviousCallDetail() {
+    const prev = getMostRecentCallDetail();
+    if (!prev) {
+        showToastMessage('복사할 이전 입력 내역이 없습니다.');
+        return;
+    }
+    document.getElementById('callLoadLoc').value = prev.loadLoc || '';
+    document.getElementById('callUnloadLoc').value = prev.unloadLoc || '';
+    document.getElementById('callClient').value = prev.client || '';
+    if (prev.fare) document.getElementById('callDetailFare').value = parseCurrencyValue(prev.fare).toLocaleString();
+    if (document.getElementById('callCargoTonnage') && prev.cargoTonnage) {
+        document.getElementById('callCargoTonnage').value = prev.cargoTonnage;
+    }
+    clearCallDetailRequiredError();
+    calculateCallDetailComm();
+    applyClientPaymentTerms();
+    updateCallDetailVatPreview();
+    showToastMessage('직전 항목 내용을 채웠습니다. 달라진 부분만 고쳐 주세요.');
+}
+
 function openCallDetailModal(index = -1) {
     if (isOffSelected) setOffState(false);
     
@@ -7577,7 +7912,13 @@ function openCallDetailModal(index = -1) {
     populateClientDataList();
     populateLocationDataLists();
     renderPinnedClientShortcuts();
+    activeLocationShortcutTarget = 'load';
     renderLocationShortcuts();
+
+    // "직전 항목과 동일하게" 버튼은 새로 추가할 때만 의미가 있다(수정 중엔 이미 값이 다
+    // 채워져 있음) — 그리고 복사할 대상이 아예 없으면(첫 입력) 굳이 보여줄 필요가 없다.
+    const copyPrevBtn = document.getElementById('callDetailCopyPrevBtn');
+    if (copyPrevBtn) copyPrevBtn.hidden = index !== -1 || !getMostRecentCallDetail();
 
     const titleEl = document.getElementById('callDetailModalTitle');
     if (titleEl && selectedDateKey) {
@@ -7970,7 +8311,12 @@ function autoSaveWorkRecord() {
                 maintItems,
                 fuelItems,
                 miscItems,
-                callDetails
+                callDetails,
+                // 고정노선 "상하차지 사용"으로 노선별 원탭 기록을 쓰는 경우에만 값이 채워진다.
+                // autoSaveWorkRecord()가 항상 workData[date]를 통째로 다시 만들기 때문에, 여기서
+                // 같이 안 넣으면 다른 입력(콜상세 등)을 저장할 때마다 노선별 기록이 조용히
+                // 사라진다 — 실제로 그렇게 유실되는 걸 막기 위해 처음부터 여기 넣어둔다.
+                fixedRouteCounts: currentTempFixedRouteCounts
             };
         }
 
@@ -8736,6 +9082,7 @@ function editCar(idx) {
 // 앱 초기화 구문
 normalizeLegacyData();
 normalizeLegacyClientIds();
+normalizeLegacyPinnedLocations();
 try {
     syncNormalizedEntityStore();
 } catch (error) {
@@ -9287,7 +9634,8 @@ async function updateOverdueNotification(announce = false) {
     const overdueItems = getVisibleOverdueNotifications();
     const backupItem = await getBackupNotificationItem();
     const employerLinkItem = getEmployerLinkNotificationItem();
-    const totalCount = overdueItems.length + (backupItem ? 1 : 0) + (employerLinkItem ? 1 : 0);
+    const todayLogReminderItem = getTodayLogReminderNotificationItem();
+    const totalCount = overdueItems.length + (backupItem ? 1 : 0) + (employerLinkItem ? 1 : 0) + (todayLogReminderItem ? 1 : 0);
 
     const badge = document.getElementById('overdueNotificationBadge');
     const notificationButton = document.getElementById('notificationBtn');
@@ -9310,7 +9658,7 @@ async function updateOverdueNotification(announce = false) {
     // (그러면 로그를 전환할 때마다 같은 연체 알림 토스트가 다시 뜨게 된다). 백업/기사연동
     // 알림 유무도 시그니처에 포함해서, 연체 미수금은 그대로인데 이 둘만 새로 생긴/사라진
     // 경우에도 토스트가 다시 안내되게 한다.
-    const signatureWithBackup = `${signature}|backup:${backupItem ? backupItem.key : '0'}|employerLink:${employerLinkItem ? employerLinkItem.key : '0'}`;
+    const signatureWithBackup = `${signature}|backup:${backupItem ? backupItem.key : '0'}|employerLink:${employerLinkItem ? employerLinkItem.key : '0'}|todayLog:${todayLogReminderItem ? todayLogReminderItem.key : '0'}`;
     const alertKey = `${todayKey}|${signatureWithBackup}`;
     if (localStorage.getItem('lastOverdueReceivableAlert') === alertKey) return;
 
@@ -9333,8 +9681,9 @@ async function renderNotificationPanel() {
         .sort((a, b) => a.paymentDueDate.localeCompare(b.paymentDueDate));
     const backupItem = await getBackupNotificationItem();
     const employerLinkItem = getEmployerLinkNotificationItem();
+    const todayLogReminderItem = getTodayLogReminderNotificationItem();
 
-    if (overdueItems.length === 0 && !backupItem && !employerLinkItem) {
+    if (overdueItems.length === 0 && !backupItem && !employerLinkItem && !todayLogReminderItem) {
         container.innerHTML = '<div class="notification-panel-empty">현재 확인이 필요한 알림이 없습니다.</div>';
         return;
     }
@@ -9342,6 +9691,23 @@ async function renderNotificationPanel() {
     // 서브 차량이 하나도 없는(메인만 쓰는) 계정에는 차량 구분 배지를 아예 노출하지 않는다.
     const hasSubCars = (getUserSettings().cars || []).some(car => car.type === 'sub');
     let html = '';
+
+    // 오늘자 미입력 안내도 다른 안내처럼 카드 전체가 클릭되는 형태로 보여준다 — 누르면 바로
+    // 오늘 날짜의 일일운행 입력 화면으로 이동한다(openTodayWorkModal 재사용).
+    if (todayLogReminderItem) {
+        html += `
+            <div class="notification-swipe-shell" data-notification-key="${escapeDetailText(todayLogReminderItem.key)}">
+                <div class="notification-delete-backdrop" aria-hidden="true"><span>삭제</span><span>삭제</span></div>
+                <button type="button" class="notification-panel-item" onclick="handleTodayLogReminderNotificationClick(event)">
+                    <div class="notification-panel-item-head">
+                        <strong style="color: var(--primary-color);">${escapeDetailText(todayLogReminderItem.title)}</strong>
+                        <span>${escapeDetailText(todayLogReminderItem.actionLabel)} &gt;</span>
+                    </div>
+                    <p class="notification-panel-item-message">${escapeDetailText(todayLogReminderItem.message)}</p>
+                </button>
+            </div>
+        `;
+    }
 
     // 기사연동 안내는 다른 기능(운행기록 조회 등)이 전부 이 연동을 전제로 하므로 맨 위,
     // 카드 전체가 클릭되는 형태로 보여준다 — 누르면 바로 연동 화면(개인정보의 소속 연결
@@ -9425,6 +9791,19 @@ function handleEmployerLinkNotificationClick(event) {
     }
     closeNotificationPanel();
     showDriverConnectionManagement('main');
+}
+
+// 알림 패널의 "오늘 운행 아직 안 적으셨어요" 카드 클릭 — 패널을 닫고 바로 오늘 날짜의
+// 일일운행 입력 화면으로 이동한다.
+function handleTodayLogReminderNotificationClick(event) {
+    const shell = event.currentTarget.closest('.notification-swipe-shell');
+    if (shell?.dataset.suppressClick === 'true') {
+        event.preventDefault();
+        shell.dataset.suppressClick = 'false';
+        return;
+    }
+    closeNotificationPanel();
+    openTodayWorkModal();
 }
 
 function dismissNotification(shell) {
