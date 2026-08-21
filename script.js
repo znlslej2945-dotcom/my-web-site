@@ -135,6 +135,29 @@ window.addEventListener('online', () => {
     });
 });
 
+// 개인정보/운행기록을 입력하면 로컬(localStorage)에는 즉시 동기로 저장되지만, 클라우드
+// 반영은 320~600ms 디바운스 타이머가 지난 뒤에야 실행된다. 문제는 이 타이머가 setTimeout
+// 기반이라, 사용자가 입력 직후 앱을 백그라운드로 보내거나(다른 앱 전환, 화면 끄기) 탭을
+// 완전히 닫으면 — 특히 모바일 브라우저는 백그라운드 탭의 타이머를 강하게 지연시키거나
+// 아예 실행을 멈춘다 — 그 타이머가 영영 실행되지 않아 로컬엔 저장된 값이 클라우드에는
+// 한 번도 반영되지 못하는 문제가 있었다(실제로 "완전히 종료하지 않으면 최종 저장이 안 된다"
+// 는 형태로 보고됨). 로컬 값 자체는 항상 안전하지만, 다른 기기에서 로그인하거나 이 기기의
+// 저장공간이 지워지면 그 사이 클라우드에 못 올라간 변경분이 사라진 것처럼 보인다.
+//
+// visibilitychange(탭이 백그라운드로 전환되는 시점)와 pagehide(실제 종료/이동 시점)에 남아있는
+// 모든 배경 저장을 즉시 flush해서, 타이머가 지연되기 전에 최대한 빨리 실제로 반영되게 한다.
+// beforeunload는 모바일에서 신뢰도가 낮아 pagehide를 함께 쓴다.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        flushAllBackgroundSaves().catch(error => {
+            console.error('화면 전환 시 대기 중인 저장 반영 실패:', error);
+        });
+    }
+});
+window.addEventListener('pagehide', () => {
+    flushAllBackgroundSaves().catch(() => {});
+});
+
 class RequestTimeoutError extends Error {
     constructor(message = '서버 응답 시간이 초과되었습니다.') {
         super(message);
@@ -2164,6 +2187,7 @@ async function applyEmployerAutoFilledInfo(ownerId, vehicleId) {
 
         const settings = getUserSettings();
         let changed = false;
+        const changedBizFields = {};
 
         if (biz) {
             const bizFieldMap = {
@@ -2175,7 +2199,7 @@ async function applyEmployerAutoFilledInfo(ownerId, vehicleId) {
                 bizEmail: biz.email
             };
             Object.entries(bizFieldMap).forEach(([key, value]) => {
-                if (value && settings[key] !== value) { settings[key] = value; changed = true; }
+                if (value && settings[key] !== value) { settings[key] = value; changed = true; changedBizFields[key] = value; }
             });
         }
 
@@ -2195,7 +2219,17 @@ async function applyEmployerAutoFilledInfo(ownerId, vehicleId) {
 
         if (changed) {
             setUserSettings(settings);
-            if (typeof loadSettings === 'function') loadSettings();
+            // 여기서 loadSettings()(개인정보 화면의 모든 입력란을 localStorage 스냅샷으로
+            // 통째로 되돌리는 함수)를 부르지 않는다 — 이 함수는 showPersonalInfo()에서 화면이
+            // 이미 열려 있는 동안 비동기(네트워크 조회 후)로 실행되므로, 그 사이 사용자가 이름/
+            // 전화번호/계좌 같은 다른 입력란에 뭔가 입력하고 있었다면 방금 타이핑한 내용이
+            // 화면에서 통째로 사라지는 문제가 있었다(실제로 보고됨 — "개인정보를 입력해도
+            // 계속 지워진다"). 이 함수가 실제로 바꾼 사업자정보 입력란만 직접 갱신하고, 지금
+            // 사용자가 포커스를 두고 있는 입력란은(그 필드 자체라도) 건드리지 않는다.
+            Object.entries(changedBizFields).forEach(([key, value]) => {
+                const el = document.getElementById(key);
+                if (el && document.activeElement !== el) el.value = value;
+            });
         }
     } catch (error) {
         console.error('차주 사업자정보/차량정보 자동입력 실패:', error);
@@ -9948,28 +9982,53 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
             const mode = getEffectiveDriverSettlementMode(car, settings);
             if (mode === 'company' || mode === 'employee') sources.push({ logId: car.number, car, data: getDriverCarWorkData(car, settings) });
         });
+        const getOrCreateGroup = (clientName, supplier) => {
+            const groupKey = `${clientName}__${supplier.key}`;
+            if (!grouped[groupKey]) {
+                grouped[groupKey] = {
+                    partyKey: groupKey, clientName, partyType: 'client',
+                    count: 0, supplyAmount: 0, taxAmount: 0,
+                    supplierKey: supplier.key, supplierBiz: supplier.biz, vehicleLabel: supplier.carLabel,
+                    vehicleNumbers: new Set()
+                };
+            }
+            return grouped[groupKey];
+        };
+
         sources.forEach(source => {
             const supplier = getVehicleSupplierIdentity(source.car, settings);
+            const isMainSource = source.logId === 'main';
+            // 고정노선 거래처 연동(§고정 거래처) — fixedClient/subFixedClient로 지정된 거래처는
+            // 콜상세 없이 fixedCount(고정노선 운행 건수)만으로 매출이 잡힌다. 예전에는 이 매출이
+            // callDetails만 훑는 이 함수에 아예 안 잡혀서, 고정노선만 쓰는 거래처는 세금계산서
+            // 목록에 영영 나타나지 않는 결함이 있었다(실제로 확인됨).
+            const fixedClientName = ((isMainSource ? settings.fixedClient : settings.subFixedClient) || '').trim();
+            const fixedUnitPrice = parseCurrencyValue(isMainSource ? settings.unitPrice : settings.subUnitPrice);
+
             Object.entries(source.data || {}).forEach(([dateKey, record]) => {
                 (record?.callDetails || []).forEach(detail => {
                     const workDate = detail.workDate || dateKey;
                     const clientName = (detail.client || '').trim();
                     const supplyAmount = parseCurrencyValue(detail.fare);
                     if (!workDate.startsWith(monthKey) || !clientName || (taxClients && !taxClients.has(clientName)) || supplyAmount <= 0) return;
-                    const groupKey = `${clientName}__${supplier.key}`;
-                    if (!grouped[groupKey]) {
-                        grouped[groupKey] = {
-                            partyKey: groupKey, clientName, partyType: 'client',
-                            count: 0, supplyAmount: 0, taxAmount: 0,
-                            supplierKey: supplier.key, supplierBiz: supplier.biz, vehicleLabel: supplier.carLabel,
-                            vehicleNumbers: new Set()
-                        };
-                    }
-                    grouped[groupKey].count += 1;
-                    grouped[groupKey].supplyAmount += supplyAmount;
-                    grouped[groupKey].taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
-                    if (supplier.carNumber) grouped[groupKey].vehicleNumbers.add(supplier.carNumber);
+                    const group = getOrCreateGroup(clientName, supplier);
+                    group.count += 1;
+                    group.supplyAmount += supplyAmount;
+                    group.taxAmount += detail.vatExempt ? 0 : Math.round(supplyAmount * .1);
+                    if (supplier.carNumber) group.vehicleNumbers.add(supplier.carNumber);
                 });
+
+                const fixedCount = parseInt(record?.fixedCount, 10) || 0;
+                if (fixedCount > 0 && fixedClientName && dateKey.startsWith(monthKey) && (!taxClients || taxClients.has(fixedClientName))) {
+                    const supplyAmount = fixedCount * fixedUnitPrice;
+                    if (supplyAmount > 0) {
+                        const group = getOrCreateGroup(fixedClientName, supplier);
+                        group.count += fixedCount;
+                        group.supplyAmount += supplyAmount;
+                        group.taxAmount += Math.round(supplyAmount * .1);
+                        if (supplier.carNumber) group.vehicleNumbers.add(supplier.carNumber);
+                    }
+                }
             });
         });
         return Object.values(grouped).map(group => ({
