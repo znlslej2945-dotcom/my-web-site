@@ -266,6 +266,15 @@ function getUserSettings() {
     return JSON.parse(localStorage.getItem('userSettings')) || {};
 }
 
+// 예전엔 "고정노선의 고정 거래처/단가/파렛트"가 앱설정에 메인/기사차량별로 따로 있었는데,
+// 이제 거래처 등록 화면에서 거래처 하나에 지정한다(§거래처 등록 개편, saveClient가 계정
+// 전체에서 항상 최대 1곳만 켜지도록 보장한다). 메인/기사차량 구분 없이 이 거래처 하나를
+// 그대로 쓴다 — 나중에 차량별로 따로 두고 싶어지면 client 쪽에 스코프 필드 하나만 추가하면
+// 되는 구조라 되돌리기 쉽다.
+function getFixedRouteClient(settings) {
+    return (settings.clients || []).find(client => client.fixedRouteLinked) || null;
+}
+
 function getActiveLogSettings() {
     const settings = getUserSettings();
     if (activeLogId === 'main') return settings;
@@ -274,9 +283,6 @@ function getActiveLogSettings() {
         ...settings,
         inputMode: settings.subInputMode,
         fixedOn: settings.subFixedOn,
-        unitPrice: settings.subUnitPrice,
-        palletOn: settings.subPalletOn,
-        palletPrice: settings.subPalletPrice,
         callDetailOn: settings.subCallDetailOn,
         paymentOn: settings.subPaymentOn,
         timeOn: settings.subTimeOn,
@@ -1100,7 +1106,8 @@ function finishOnboardingWizard() {
     const settings = getUserSettings();
     settings.fixedOn = isFixed;
     settings.callDetailOn = isCall;
-    settings.palletOn = isFixed ? !!onboardingWizardState.palletOn : false;
+    // 파렛트 회수는 이제 거래처 등록 화면에서 거래처별로 설정한다(§거래처 등록 개편) —
+    // 온보딩 시점엔 아직 거래처를 안 만들었을 수 있어서 여기서 값을 저장할 곳이 없다.
     settings.paymentOn = !!onboardingWizardState.paymentOn;
     settings.timeOn = !!onboardingWizardState.timeOn;
     settings.cargoTonnageOn = !!onboardingWizardState.cargoTonnageOn;
@@ -3504,16 +3511,20 @@ function renderClientList() {
 
     clients.forEach((client, idx) => {
         let badges = '';
-        // 고정 거래처 표시 뱃지
+        // 즐겨찾기 표시 뱃지(예전 "고정 거래처" 스위치 — 이름/모양만 바뀜, 목록 맨 위 정렬은 그대로)
         if (client.isPinned) {
-            badges += `<span class="management-badge pinned">고정</span>`;
+            badges += `<span class="management-badge pinned">★ 즐겨찾기</span>`;
         }
         if (client.commEnabled) {
             const badgeText = client.commType === 'direct' ? `${client.commValue}원` : `${client.commValue}%`;
             badges += `<span class="management-badge commission">수수료 ${escapeDetailText(badgeText)}</span>`;
         }
-        if (client.taxInvoiceEnabled) {
-            badges += '<span class="management-badge tax-invoice">계산서</span>';
+        // 고정노선과 연동된 거래처(계정 전체에서 1곳뿐)를 목록에서도 바로 알아볼 수 있게 표시한다.
+        if (client.fixedRouteLinked) {
+            badges += '<span class="management-badge tax-invoice">고정노선 연동</span>';
+        }
+        if (client.palletOn) {
+            badges += '<span class="management-badge tax-invoice">파렛트</span>';
         }
 
         const div = document.createElement('div');
@@ -3541,28 +3552,48 @@ function renderClientList() {
     });
 }
 
-function toggleClientPinned() {
-    const isPinned = document.getElementById('clientPinnedToggle').checked;
-    const subSettings = document.getElementById('clientPinnedSubSettings');
-    // 고정 거래처 하위 항목(수수료 토글) 노출 여부
-    if (subSettings) {
-        setSettingsGroupExpanded(subSettings, isPinned);
-    }
-    // 고정 거래처가 OFF가 되면 종속되어있는 수수료 적용 항목도 강제로 리셋 및 OFF 처리
-    if (!isPinned) {
-        document.getElementById('clientCommToggle').checked = false;
-        toggleClientComm();
-    }
+// 예전엔 "고정 거래처" 스위치였는데, 실제로는 "이 거래처를 목록 맨 위에 즐겨찾기"하는
+// 기능이라(고정노선의 "고정 거래처"와는 완전히 다른 개념) 별 아이콘으로 이름·모양만
+// 바꿨다. 값 자체는 그대로 clientPinnedToggle(checkbox)에 저장된다 — 저장/불러오기 코드는
+// 안 건드리고 화면만 바뀐 것. 예전처럼 수수료 적용을 강제로 껐다 켰다 하지 않는다(수수료는
+// 이제 완전히 독립적으로 켤 수 있다).
+function toggleClientFavoriteStar() {
+    const checkbox = document.getElementById('clientPinnedToggle');
+    if (!checkbox) return;
+    checkbox.checked = !checkbox.checked;
+    updateClientFavoriteStarUI();
 }
 
-function toggleClientTaxInvoice() {
-    const enabled = document.getElementById('clientTaxInvoiceToggle')?.checked;
-    setSettingsGroupExpanded(document.getElementById('clientTaxInvoiceSubSettings'), !!enabled);
+function updateClientFavoriteStarUI() {
+    const checkbox = document.getElementById('clientPinnedToggle');
+    const star = document.getElementById('clientFavoriteStar');
+    if (!checkbox || !star) return;
+    star.textContent = checkbox.checked ? '★' : '☆';
+    star.classList.toggle('active', checkbox.checked);
+    star.setAttribute('aria-pressed', checkbox.checked ? 'true' : 'false');
 }
 
 function toggleClientComm() {
     const isChecked = document.getElementById('clientCommToggle').checked;
     setSettingsGroupExpanded(document.getElementById('clientCommSection'), isChecked);
+}
+
+// 고정노선과 연동 — 계정 전체에서 거래처 1곳만 켤 수 있다. 여기서 다른 거래처의 값까지
+// 건드리진 않는다(그건 저장 시점에 saveClient가 처리) — 이 화면(지금 편집 중인 거래처) 안의
+// 하위 입력칸(단가 + 파렛트 회수) 노출 여부만 담당한다. 파렛트 회수는 고정노선과 연동일
+// 때만 의미가 있는 자식 항목이라, 부모가 꺼지면 파렛트도 같이 꺼진다.
+function toggleClientFixedRoute() {
+    const isChecked = document.getElementById('clientFixedRouteToggle').checked;
+    setSettingsGroupExpanded(document.getElementById('clientFixedRouteSubSettings'), isChecked);
+    if (!isChecked) {
+        document.getElementById('clientPalletToggle').checked = false;
+        toggleClientPallet();
+    }
+}
+
+function toggleClientPallet() {
+    const isChecked = document.getElementById('clientPalletToggle').checked;
+    setSettingsGroupExpanded(document.getElementById('clientPalletSubSettings'), isChecked);
 }
 
 function formatCommValue(input) {
@@ -3574,18 +3605,18 @@ function formatCommValue(input) {
 function setClientCommType(type) {
     const typeEl = document.getElementById('clientCommType');
     if (typeEl) typeEl.value = type;
-    
+
     const btnPercent = document.getElementById('btnCommTypePercent');
     const btnDirect = document.getElementById('btnCommTypeDirect');
-    const commLabel = document.getElementById('commLabel');
     const commInput = document.getElementById('clientCommValue');
 
-    if (!btnPercent || !btnDirect || !commLabel || !commInput) return;
+    // commLabel(별도 라벨 줄)은 UI를 줄이면서 없앴다 — 지금 뭘 입력하는 건지는 input의
+    // placeholder 하나로 충분히 전달된다.
+    if (!btnPercent || !btnDirect || !commInput) return;
 
     if (type === 'percent') {
         btnPercent.classList.add('active-work');
         btnDirect.classList.remove('active-work');
-        commLabel.textContent = '거래처 수수료율 (%)';
         commInput.placeholder = '비율(%) 입력';
         let val = commInput.value.replace(/[^0-9.]/g, '');
         if (parseFloat(val) > 100) val = '100';
@@ -3593,7 +3624,6 @@ function setClientCommType(type) {
     } else {
         btnDirect.classList.add('active-work');
         btnPercent.classList.remove('active-work');
-        commLabel.textContent = '거래처 수수료 (원)';
         commInput.placeholder = '금액(원) 입력';
         formatCurrencyInput(commInput);
     }
@@ -4154,7 +4184,6 @@ function deleteClient(idx) {
             setUserSettings(settings);
             showToastMessage('삭제되었습니다.');
             renderClientList();
-            populateFixedClientSelects();
             buildCalendar();
 
             // 로컬에서만 지우고 끝내면, 재로그인/하이드레이션 시 서버 clients 테이블에 남아있는
@@ -4181,29 +4210,6 @@ function populateClientDataList() {
             dataList.appendChild(option);
         });
     }
-}
-
-// "고정 노선" 설정의 "고정 거래처 연동" 드롭다운(메인/기사차량 공용)을 등록된 거래처 목록으로
-// 채운다. 거래처를 추가/삭제/이름변경할 때마다(saveClient), 그리고 설정 화면을 열 때마다
-// (loadSettings) 다시 호출해서 최신 목록을 유지한다.
-function populateFixedClientSelects() {
-    const settings = getUserSettings();
-    const clients = settings.clients || [];
-    ['fixedClientSelect', 'subFixedClientSelect'].forEach(selectId => {
-        const select = document.getElementById(selectId);
-        if (!select) return;
-        const currentVal = select.value;
-        select.innerHTML = '<option value="">미지정</option>';
-        clients.forEach(c => {
-            if (!c.companyName) return;
-            const opt = document.createElement('option');
-            opt.value = c.companyName;
-            opt.textContent = c.companyName;
-            select.appendChild(opt);
-        });
-        select.value = currentVal || '';
-        select.parentElement?._dropdownSync?.();
-    });
 }
 
 function populateLocationDataLists() {
@@ -5995,11 +6001,6 @@ function setSettingsGroupExpanded(element, expanded, displayMode = 'block') {
     }, 420);
 }
 
-function togglePalletSubSettings() {
-    const checked = document.getElementById('palletToggle').checked;
-    setSettingsGroupExpanded(document.getElementById('palletSubSettings'), checked, 'flex');
-}
-
 function setInputMode(mode, target) {
     if (target === 'main') {
         const btnCount = document.getElementById('btnInputModeCount');
@@ -6028,10 +6029,6 @@ function setInputMode(mode, target) {
     }
 }
 
-function toggleSubPalletSubSettings() {
-    const checked = document.getElementById('subPalletToggle').checked;
-    setSettingsGroupExpanded(document.getElementById('subPalletSubSettings'), checked, 'flex');
-}
 
 function normalizeSubRunCountPresetInput() {
     setRunCountPresetChipValues('sub', getRunCountPresetChipValues('sub'));
@@ -6079,11 +6076,9 @@ function commitSettings() {
     }
     
     settings.fixedOn = document.getElementById('fixedToggle').checked;
-    settings.unitPrice = document.getElementById('unitPrice').value;
-    settings.fixedClient = document.getElementById('fixedClientSelect') ? document.getElementById('fixedClientSelect').value : '';
+    // 고정 거래처/단가/파렛트는 거래처 등록 화면으로 옮겨서 여기서는 더 이상 저장하지 않는다
+    // (§거래처 등록 개편 — getFixedRouteClient()가 대신 클라이언트 목록에서 찾아온다).
     settings.fixedRouteOn = document.getElementById('fixedRouteToggle') ? document.getElementById('fixedRouteToggle').checked : false;
-    settings.palletOn = document.getElementById('palletToggle').checked;
-    settings.palletPrice = document.getElementById('palletPrice').value;
     settings.runCountToggle = document.getElementById('runCountToggle') ? document.getElementById('runCountToggle').checked : false;
     settings.runCountPresets = getRunCountPresetChipValues('main');
     
@@ -6102,12 +6097,8 @@ function commitSettings() {
         }
 
         settings.subFixedOn = document.getElementById('subFixedToggle').checked;
-        settings.subUnitPrice = document.getElementById('subUnitPrice').value;
-        settings.subFixedClient = document.getElementById('subFixedClientSelect') ? document.getElementById('subFixedClientSelect').value : '';
         settings.subFixedRouteOn = document.getElementById('subFixedRouteToggle') ? document.getElementById('subFixedRouteToggle').checked : false;
-        settings.subPalletOn = document.getElementById('subPalletToggle').checked;
-        settings.subPalletPrice = document.getElementById('subPalletPrice').value;
-        
+
         // 기사차량 조건 항목 저장
         settings.subCallDetailOn = document.getElementById('subCallDetailToggle').checked;
         settings.subPaymentOn = document.getElementById('subPaymentToggle') ? document.getElementById('subPaymentToggle').checked : false;
@@ -6159,17 +6150,10 @@ function loadSettings() {
         }
         
         document.getElementById('fixedToggle').checked = !!savedSettings.fixedOn;
-        document.getElementById('unitPrice').value = savedSettings.unitPrice || '';
-        populateFixedClientSelects();
-        if (document.getElementById('fixedClientSelect')) {
-            document.getElementById('fixedClientSelect').value = savedSettings.fixedClient || '';
-            document.getElementById('fixedClientSelect').parentElement?._dropdownSync?.();
-        }
+        // 고정 거래처/단가/파렛트 입력칸은 거래처 등록 화면으로 옮겨서 여기선 더 이상 없다.
         if (document.getElementById('fixedRouteToggle')) document.getElementById('fixedRouteToggle').checked = !!savedSettings.fixedRouteOn;
         renderFixedRoutePresetList('main');
         toggleFixedRoutePresetSettings('main');
-        document.getElementById('palletToggle').checked = !!savedSettings.palletOn;
-        document.getElementById('palletPrice').value = savedSettings.palletPrice || '';
         if (document.getElementById('runCountToggle')) document.getElementById('runCountToggle').checked = !!savedSettings.runCountToggle;
         setRunCountPresetChipValues('main', savedSettings.runCountPresets);
 
@@ -6191,16 +6175,9 @@ function loadSettings() {
             }
             
             document.getElementById('subFixedToggle').checked = !!savedSettings.subFixedOn;
-            document.getElementById('subUnitPrice').value = savedSettings.subUnitPrice || '';
-            if (document.getElementById('subFixedClientSelect')) {
-                document.getElementById('subFixedClientSelect').value = savedSettings.subFixedClient || '';
-                document.getElementById('subFixedClientSelect').parentElement?._dropdownSync?.();
-            }
             if (document.getElementById('subFixedRouteToggle')) document.getElementById('subFixedRouteToggle').checked = !!savedSettings.subFixedRouteOn;
             renderFixedRoutePresetList('sub');
             toggleFixedRoutePresetSettings('sub');
-            document.getElementById('subPalletToggle').checked = !!savedSettings.subPalletOn;
-            document.getElementById('subPalletPrice').value = savedSettings.subPalletPrice || '';
 
             document.getElementById('subCallDetailToggle').checked = savedSettings.hasOwnProperty('subCallDetailOn') ? !!savedSettings.subCallDetailOn : true;
             if(document.getElementById('subPaymentToggle')) document.getElementById('subPaymentToggle').checked = !!savedSettings.subPaymentOn;
@@ -6212,7 +6189,6 @@ function loadSettings() {
             setRunCountPresetChipValues('sub', savedSettings.subRunCountPresets);
             
             toggleSubFixedSettings();
-            toggleSubPalletSubSettings();
             toggleSubRunCountPresetSettings();
             updateToggleDependencies('sub');
         }
@@ -6231,7 +6207,6 @@ function loadSettings() {
         if(document.getElementById('accountHolder')) document.getElementById('accountHolder').value = savedSettings.accountHolder || '';
 
         toggleFixedSubSettings();
-        togglePalletSubSettings();
         toggleRunCountPresetSettings();
         updateToggleDependencies('main');
     }
@@ -6869,12 +6844,15 @@ function buildCalendar() {
     const savedSettings = getUserSettings();
     const isMain = activeLogId === 'main';
     const activeFixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
-    const activePalletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
-    
+    // 고정 거래처/단가/파렛트는 이제 앱설정이 아니라 거래처 등록 화면에서 지정한다(계정
+    // 전체에서 "고정노선과 연동" 표시된 거래처 1곳) — 메인/기사차량 구분이 없어졌다.
+    const fixedRouteClient = getFixedRouteClient(savedSettings);
+    const activePalletOn = !!fixedRouteClient?.palletOn;
+
     const displayMode = isMain ? (savedSettings.inputMode || 'count') : (savedSettings.subInputMode || 'count');
 
-    const fixedUnitPrice = parseCurrencyValue(isMain ? savedSettings.unitPrice : savedSettings.subUnitPrice);
-    const palletUnitPrice = parseCurrencyValue(isMain ? savedSettings.palletPrice : savedSettings.subPalletPrice);
+    const fixedUnitPrice = parseCurrencyValue(fixedRouteClient?.fixedUnitPrice);
+    const palletUnitPrice = parseCurrencyValue(fixedRouteClient?.palletPrice);
 
     for (let i = 0; i < calendarCells.length; i++) {
         const cell = calendarCells[i];
@@ -6938,12 +6916,12 @@ function buildCalendar() {
                     // 고정 거래처가 지정돼 있으면 "기본 운송료"가 아니라 그 거래처 매출로
                     // 집계한다(고정노선 거래처 연동) — dayFare(당일 총액)는 동일하게 유지되고,
                     // 어느 버킷(기본요금 vs 거래처별)으로 잡히는지만 달라진다.
-                    const fixedClientName = isMain ? savedSettings.fixedClient : savedSettings.subFixedClient;
+                    const fixedClientName = fixedRouteClient?.companyName || '';
                     if (fixedClientName) {
                         monthFareByClient[fixedClientName] = (monthFareByClient[fixedClientName] || 0) + fAmount;
                         // 콜상세 거래처와 동일하게, 고정 거래처도 수수료가 켜져 있으면 그대로
                         // 적용한다 — 고정노선이라고 수수료 계산에서 예외를 둘 이유가 없다.
-                        const fixedClientObj = savedSettings.clients?.find(c => c.companyName === fixedClientName);
+                        const fixedClientObj = fixedRouteClient;
                         if (fixedClientObj?.commEnabled) {
                             let fixedComm = 0;
                             if (fixedClientObj.commType === 'percent' || !fixedClientObj.commType) {
@@ -7187,10 +7165,10 @@ function updateSummary(totalCount, fareTotal, palletTotal, maintTotal, fuelTotal
 
     const savedSettings = getUserSettings();
     const palletRow = document.getElementById('summaryPalletRow');
-    
+
     const isMain = activeLogId === 'main';
     const activeFixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
-    const activePalletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
+    const activePalletOn = !!getFixedRouteClient(savedSettings)?.palletOn;
 
     if (activeFixedOn && activePalletOn && palletTotal > 0) {
         palletRow.style.display = 'flex';
@@ -7533,7 +7511,7 @@ function openModal(dateKey, month, day) {
     const savedSettings = getUserSettings();
     const isMain = activeLogId === 'main';
     const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
-    const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
+    const palletOn = !!getFixedRouteClient(savedSettings)?.palletOn;
     const callDetailOn = isMain
         ? (savedSettings.hasOwnProperty('callDetailOn') ? !!savedSettings.callDetailOn : true)
         : (savedSettings.hasOwnProperty('subCallDetailOn') ? !!savedSettings.subCallDetailOn : true);
@@ -8330,7 +8308,7 @@ function autoSaveWorkRecord() {
         const savedSettings = getUserSettings();
         const isMain = activeLogId === 'main';
         const fixedOn = isMain ? savedSettings.fixedOn : savedSettings.subFixedOn;
-        const palletOn = isMain ? savedSettings.palletOn : savedSettings.subPalletOn;
+        const palletOn = !!getFixedRouteClient(savedSettings)?.palletOn;
 
         let fixedCount = 0;
         let palletCount = 0;
@@ -8474,9 +8452,10 @@ function buildReportPage(isForExport = false) {
     if (document.getElementById('rptAccountHolder')) document.getElementById('rptAccountHolder').textContent = rptAccountHolder;
 
     const isMain = activeLogId === 'main';
-    const fixedUnitPrice = parseCurrencyValue(isMain ? savedSettings.unitPrice : savedSettings.subUnitPrice);
-    const palletUnitPrice = parseCurrencyValue(isMain ? savedSettings.palletPrice : savedSettings.subPalletPrice);
-    const showPallet = !!((isMain ? savedSettings.fixedOn : savedSettings.subFixedOn) && (isMain ? savedSettings.palletOn : savedSettings.subPalletOn));
+    const fixedRouteClient = getFixedRouteClient(savedSettings);
+    const fixedUnitPrice = parseCurrencyValue(fixedRouteClient?.fixedUnitPrice);
+    const palletUnitPrice = parseCurrencyValue(fixedRouteClient?.palletPrice);
+    const showPallet = !!((isMain ? savedSettings.fixedOn : savedSettings.subFixedOn) && fixedRouteClient?.palletOn);
 
     let workList = [];
     let totalMonthWork = 0;
@@ -8514,11 +8493,11 @@ function buildReportPage(isForExport = false) {
                     let fAmt = record.fixedCount * fixedUnitPrice;
                     dayFare += fAmt;
                     // 고정 거래처가 지정돼 있으면 그 거래처 매출로 집계한다(고정노선 거래처 연동).
-                    const fixedClientName = isMain ? savedSettings.fixedClient : savedSettings.subFixedClient;
+                    const fixedClientName = fixedRouteClient?.companyName || '';
                     if (fixedClientName) {
                         monthFareByClient[fixedClientName] = (monthFareByClient[fixedClientName] || 0) + fAmt;
                         // 콜상세 거래처와 동일하게, 고정 거래처도 수수료가 켜져 있으면 그대로 적용한다.
-                        const fixedClientObj = savedSettings.clients?.find(c => c.companyName === fixedClientName);
+                        const fixedClientObj = fixedRouteClient;
                         if (fixedClientObj?.commEnabled) {
                             let fixedComm = 0;
                             if (fixedClientObj.commType === 'percent' || !fixedClientObj.commType) {
@@ -10484,12 +10463,13 @@ function getMonthlyFareRevenue(monthKey) {
     let tripCount = 0;
     const byVehicle = [];
 
+    const fixedRouteClientForTotals = getFixedRouteClient(settings);
     sources.forEach(source => {
         const isMain = source.logId === 'main';
         const activeFixedOn = isMain ? settings.fixedOn : settings.subFixedOn;
-        const activePalletOn = isMain ? settings.palletOn : settings.subPalletOn;
-        const fixedUnitPrice = parseCurrencyValue(isMain ? settings.unitPrice : settings.subUnitPrice);
-        const palletUnitPrice = parseCurrencyValue(isMain ? settings.palletPrice : settings.subPalletPrice);
+        const activePalletOn = !!fixedRouteClientForTotals?.palletOn;
+        const fixedUnitPrice = parseCurrencyValue(fixedRouteClientForTotals?.fixedUnitPrice);
+        const palletUnitPrice = parseCurrencyValue(fixedRouteClientForTotals?.palletPrice);
 
         let vehicleFare = 0;
         let vehicleCount = 0;
@@ -10543,14 +10523,9 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
         // (여러 차량 합산분) 금액이 안 맞아 보이는 문제가 있었다(실제로 보고됨: 사용자가 차량별
         // 분리 발행을 원함).
         const grouped = {};
-        // 소속기사(employed_driver) 본인 화면에는 "차주가 세금계산서 대상으로 지정한 거래처만"
-        // 걸러내는 taxInvoiceEnabled 기준을 적용하지 않는다 — 그건 차주의 거래처 관리 데이터라
-        // 기사 계정에는 애초에 없다(§17/§20: 기사 본인은 실제로 운송한 거래처를 항상 볼 수
-        // 있어야 함). 차주 본인 화면(owner_driver)에서는 기존 동작 그대로 유지한다.
-        const isEmployedDriverView = settings.accountType === 'employed_driver';
-        const taxClients = isEmployedDriverView
-            ? null
-            : new Set((settings.clients || []).filter(client => client.taxInvoiceEnabled).map(client => client.companyName));
+        // 예전엔 "세금계산서 사용" 토글이 켜진 거래처만 이 목록에 걸러서 보여줬는데, 그 토글
+        // 자체를 없앴다(§거래처 등록 개편) — 이제 실제로 매출이 잡힌 거래처는 전부 목록에
+        // 뜨고, 사업자번호 등 필수 정보가 비어 있으면 발급 시점에 그때 안내한다(changeTaxInvoiceStatus).
         const sources = [{ logId: 'main', car: null, data: readWorkDataStorage('workData') }];
         cars.filter(car => car.type === 'sub').forEach(car => {
             const mode = getEffectiveDriverSettlementMode(car, settings);
@@ -10569,22 +10544,21 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
             return grouped[groupKey];
         };
 
+        const fixedRouteClientForInvoice = getFixedRouteClient(settings);
+        const fixedClientName = fixedRouteClientForInvoice?.companyName || '';
+        const fixedUnitPrice = parseCurrencyValue(fixedRouteClientForInvoice?.fixedUnitPrice);
+
         sources.forEach(source => {
             const supplier = getVehicleSupplierIdentity(source.car, settings);
-            const isMainSource = source.logId === 'main';
-            // 고정노선 거래처 연동(§고정 거래처) — fixedClient/subFixedClient로 지정된 거래처는
-            // 콜상세 없이 fixedCount(고정노선 운행 건수)만으로 매출이 잡힌다. 예전에는 이 매출이
-            // callDetails만 훑는 이 함수에 아예 안 잡혀서, 고정노선만 쓰는 거래처는 세금계산서
-            // 목록에 영영 나타나지 않는 결함이 있었다(실제로 확인됨).
-            const fixedClientName = ((isMainSource ? settings.fixedClient : settings.subFixedClient) || '').trim();
-            const fixedUnitPrice = parseCurrencyValue(isMainSource ? settings.unitPrice : settings.subUnitPrice);
-
+            // 고정노선 거래처 연동 — 이제 거래처 등록 화면에서 지정한 거래처 1곳(계정 전체
+            // 공용) 기준이다. 콜상세 없이 fixedCount(고정노선 운행 건수)만으로 매출이 잡히는
+            // 것도 예전과 동일하게 여기서 함께 집계한다.
             Object.entries(source.data || {}).forEach(([dateKey, record]) => {
                 (record?.callDetails || []).forEach(detail => {
                     const workDate = detail.workDate || dateKey;
                     const clientName = (detail.client || '').trim();
                     const supplyAmount = parseCurrencyValue(detail.fare);
-                    if (!workDate.startsWith(monthKey) || !clientName || (taxClients && !taxClients.has(clientName)) || supplyAmount <= 0) return;
+                    if (!workDate.startsWith(monthKey) || !clientName || supplyAmount <= 0) return;
                     const group = getOrCreateGroup(clientName, supplier, source.logId);
                     group.count += 1;
                     group.supplyAmount += supplyAmount;
@@ -10593,7 +10567,7 @@ function getTaxInvoiceSourceGroups(monthKey, flow = currentTaxInvoiceFlow) {
                 });
 
                 const fixedCount = parseInt(record?.fixedCount, 10) || 0;
-                if (fixedCount > 0 && fixedClientName && dateKey.startsWith(monthKey) && (!taxClients || taxClients.has(fixedClientName))) {
+                if (fixedCount > 0 && fixedClientName && dateKey.startsWith(monthKey)) {
                     const supplyAmount = fixedCount * fixedUnitPrice;
                     if (supplyAmount > 0) {
                         const group = getOrCreateGroup(fixedClientName, supplier, source.logId);
@@ -10943,7 +10917,7 @@ function changeTaxInvoiceStatus(encodedPartyKey, status) {
         }
         if (!item.clientBizNumber) {
             openTaxInvoiceDraft(encodedPartyKey);
-            showToastMessage(`${item.partyType === 'driver' ? '기사' : '거래처'} 사업자등록번호를 먼저 입력해 주세요.`);
+            showToastMessage('사업자등록번호란이 입력이 안 되어 있어요. 먼저 입력해 주세요.');
             return;
         }
     }
@@ -11200,22 +11174,29 @@ function openClientModal(index = -1) {
         document.getElementById('clientModalTitle').textContent = '거래처 수정';
         document.getElementById('clientCompanyName').value = client.companyName || '';
         document.getElementById('clientManagerName').value = client.managerName || '';
+        document.getElementById('clientTaxRepresentative').value = client.taxRepresentative || client.managerName || '';
         document.getElementById('clientBizNumber').value = client.bizNumber || '';
         document.getElementById('clientPhone').value = client.phone || '';
-        document.getElementById('clientTaxInvoiceToggle').checked = !!client.taxInvoiceEnabled;
-        document.getElementById('clientTaxRepresentative').value = client.taxRepresentative || client.managerName || '';
-        document.getElementById('clientTaxEmail').value = client.taxEmail || '';
-        document.getElementById('clientTaxAddress').value = client.taxAddress || '';
         document.getElementById('clientTaxBizType').value = client.taxBizType || '';
         document.getElementById('clientTaxBizItem').value = client.taxBizItem || '';
-        toggleClientTaxInvoice();
+        document.getElementById('clientTaxAddress').value = client.taxAddress || '';
+        document.getElementById('clientTaxEmail').value = client.taxEmail || '';
+
         document.getElementById('clientPinnedToggle').checked = !!client.isPinned;
-        toggleClientPinned();
+        updateClientFavoriteStarUI();
 
         document.getElementById('clientCommToggle').checked = !!client.commEnabled;
         setClientCommType(client.commType || 'percent');
         document.getElementById('clientCommValue').value = client.commValue || '';
         toggleClientComm();
+
+        document.getElementById('clientFixedRouteToggle').checked = !!client.fixedRouteLinked;
+        document.getElementById('clientFixedUnitPrice').value = client.fixedUnitPrice || '';
+        toggleClientFixedRoute();
+
+        document.getElementById('clientPalletToggle').checked = !!client.palletOn;
+        document.getElementById('clientPalletPrice').value = client.palletPrice || '';
+        toggleClientPallet();
 
         const savedPaymentTerm = client.paymentTerm || 'next_month_end';
         document.getElementById('clientPaymentTerm').value = savedPaymentTerm === 'second_month_end' ? 'second_month_day' : savedPaymentTerm;
@@ -11224,25 +11205,32 @@ function openClientModal(index = -1) {
         document.getElementById('clientModalTitle').textContent = '거래처 등록';
         document.getElementById('clientCompanyName').value = '';
         document.getElementById('clientManagerName').value = '';
+        document.getElementById('clientTaxRepresentative').value = '';
         document.getElementById('clientBizNumber').value = '';
         document.getElementById('clientPhone').value = '';
-        document.getElementById('clientTaxInvoiceToggle').checked = false;
-        document.getElementById('clientTaxRepresentative').value = '';
-        document.getElementById('clientTaxEmail').value = '';
-        document.getElementById('clientTaxAddress').value = '';
         document.getElementById('clientTaxBizType').value = '';
         document.getElementById('clientTaxBizItem').value = '';
-        toggleClientTaxInvoice();
+        document.getElementById('clientTaxAddress').value = '';
+        document.getElementById('clientTaxEmail').value = '';
+
         document.getElementById('clientPinnedToggle').checked = false;
-        toggleClientPinned();
+        updateClientFavoriteStarUI();
 
         document.getElementById('clientCommToggle').checked = false;
         setClientCommType('percent');
         document.getElementById('clientCommValue').value = '';
+        toggleClientComm();
+
+        document.getElementById('clientFixedRouteToggle').checked = false;
+        document.getElementById('clientFixedUnitPrice').value = '';
+        toggleClientFixedRoute();
+
+        document.getElementById('clientPalletToggle').checked = false;
+        document.getElementById('clientPalletPrice').value = '';
+        toggleClientPallet();
 
         document.getElementById('clientPaymentTerm').value = 'next_month_end';
         document.getElementById('clientPaymentTermValue').value = '';
-        toggleClientComm();
     }
 
     document.getElementById('clientPaymentTerm').parentElement?._dropdownSync?.();
@@ -11257,16 +11245,20 @@ function saveClient() {
     const managerName = document.getElementById('clientManagerName').value.trim();
     const bizNumber = document.getElementById('clientBizNumber').value.trim();
     const phone = document.getElementById('clientPhone').value.trim();
-    const taxInvoiceEnabled = document.getElementById('clientTaxInvoiceToggle').checked;
     const taxRepresentative = document.getElementById('clientTaxRepresentative').value.trim();
     const taxEmail = document.getElementById('clientTaxEmail').value.trim();
     const taxAddress = document.getElementById('clientTaxAddress').value.trim();
     const taxBizType = document.getElementById('clientTaxBizType').value.trim();
     const taxBizItem = document.getElementById('clientTaxBizItem').value.trim();
     const isPinned = document.getElementById('clientPinnedToggle').checked;
-    const commEnabled = isPinned ? document.getElementById('clientCommToggle').checked : false;
+    // 수수료는 이제 즐겨찾기와 무관하게 항상 켤 수 있다(예전엔 즐겨찾기 켰을 때만 가능했음).
+    const commEnabled = document.getElementById('clientCommToggle').checked;
     const commType = document.getElementById('clientCommType').value;
     const commValue = document.getElementById('clientCommValue').value.trim();
+    const fixedRouteLinked = document.getElementById('clientFixedRouteToggle').checked;
+    const fixedUnitPrice = document.getElementById('clientFixedUnitPrice').value.trim();
+    const palletOn = document.getElementById('clientPalletToggle').checked;
+    const palletPrice = document.getElementById('clientPalletPrice').value.trim();
     const paymentTerm = document.getElementById('clientPaymentTerm').value;
     const paymentTermValue = document.getElementById('clientPaymentTermValue').value.trim();
 
@@ -11276,15 +11268,21 @@ function saveClient() {
         return;
     }
 
-    if (taxInvoiceEnabled && !bizNumber) {
-        markFieldError('clientBizNumber');
-        document.getElementById('clientBizNumber').focus();
-        return;
-    }
-
     if (commEnabled && !commValue) {
         markFieldError('clientCommValue');
         document.getElementById('clientCommValue').focus();
+        return;
+    }
+
+    if (fixedRouteLinked && !fixedUnitPrice) {
+        markFieldError('clientFixedUnitPrice');
+        document.getElementById('clientFixedUnitPrice').focus();
+        return;
+    }
+
+    if (palletOn && !palletPrice) {
+        markFieldError('clientPalletPrice');
+        document.getElementById('clientPalletPrice').focus();
         return;
     }
 
@@ -11316,7 +11314,6 @@ function saveClient() {
         managerName,
         bizNumber,
         phone,
-        taxInvoiceEnabled,
         taxRepresentative,
         taxEmail,
         taxAddress,
@@ -11326,6 +11323,10 @@ function saveClient() {
         commEnabled,
         commType,
         commValue,
+        fixedRouteLinked,
+        fixedUnitPrice,
+        palletOn,
+        palletPrice,
         paymentTerm,
         paymentTermValue
     };
@@ -11338,10 +11339,18 @@ function saveClient() {
         showToastMessage('등록했습니다.');
     }
 
+    // 고정노선 연동은 계정 전체에서 거래처 1곳만 가능하다 — 지금 저장한 거래처를 켰다면
+    // 나머지 거래처는 전부 자동으로 끈다(하루치 고정노선 운행횟수가 숫자 하나뿐이라, 두
+    // 거래처가 동시에 연동되면 어느 쪽 몫인지 구분할 방법이 없기 때문).
+    if (fixedRouteLinked) {
+        settings.clients.forEach(client => {
+            if (client.id !== clientData.id) client.fixedRouteLinked = false;
+        });
+    }
+
     setUserSettings(settings);
     closeClientModal();
     renderClientList();
-    populateFixedClientSelects();
     buildCalendar();
 
     if (clientModalOpenedFromCallDetail) {

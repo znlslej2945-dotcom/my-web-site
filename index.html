@@ -1286,16 +1286,9 @@
                     </label>
                 </div>
                 <div id="fixedSubSettings" class="sub-setting-group tree-line-group" style="display: none;">
-                    <div class="setting-item">
-                        <label for="fixedClientSelect">고정 거래처 연동</label>
-                        <select id="fixedClientSelect" class="input-box" data-app-dropdown onchange="saveSettings();" style="width: 140px; margin-top: 0;">
-                            <option value="">미지정</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label for="unitPrice">고정 기본 단가 (원)</label>
-                        <input type="text" id="unitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
-                    </div>
+                    <!-- 고정 거래처 연동/고정 기본 단가/파렛트 회수는 거래처 등록 화면으로
+                         옮겼다(§거래처 등록 개편) — 거래처마다 단가가 다를 수 있어서, 계정 전체
+                         공용 값 하나만 두던 예전 구조보다 거래처별로 지정하는 게 더 정확하다. -->
                     <div class="setting-item">
                         <label for="fixedRouteToggle">상하차지 사용</label>
                         <label class="switch">
@@ -1332,16 +1325,6 @@
                              예전엔 5개로 고정이었지만, 이제 "+ 추가"로 더 늘릴 수 있다. -->
                         <div id="runCountPresetChips" class="run-count-preset-chips" aria-label="고정노선 횟수 버튼 설정"></div>
                         <button type="button" id="runCountPresetAddBtn" class="run-count-preset-add-btn" onclick="addRunCountPresetChip('main');">+ 버튼 추가</button>
-                    </div>
-                    <div class="setting-item">
-                        <label for="palletToggle">파렛트 회수 사용</label>
-                        <label class="switch">
-                            <input type="checkbox" id="palletToggle" onchange="togglePalletSubSettings(); saveSettingsSmoothly();">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div id="palletSubSettings" class="price-setting" style="display: none; justify-content: flex-end;">
-                        <input type="text" id="palletPrice" class="input-box" inputmode="numeric" placeholder="단가 0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
                     </div>
                 </div>
 
@@ -1433,16 +1416,8 @@
                 </div>
                 
                 <div id="subFixedSubSettings" class="sub-setting-group tree-line-group" style="display: none;">
-                    <div class="setting-item">
-                        <label for="subFixedClientSelect">고정 거래처 연동</label>
-                        <select id="subFixedClientSelect" class="input-box" data-app-dropdown onchange="saveSettings();" style="width: 140px; margin-top: 0;">
-                            <option value="">미지정</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label for="subUnitPrice">고정 기본 단가 (원)</label>
-                        <input type="text" id="subUnitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
-                    </div>
+                    <!-- 고정 거래처 연동/고정 기본 단가/파렛트 회수는 거래처 등록 화면으로
+                         옮겼다(§거래처 등록 개편, 메인 차량과 공용). -->
                     <div class="setting-item">
                         <label for="subFixedRouteToggle">상하차지 사용</label>
                         <label class="switch">
@@ -1474,16 +1449,6 @@
                         </div>
                         <div id="subRunCountPresetChips" class="run-count-preset-chips" aria-label="기사차량 고정노선 횟수 버튼 설정"></div>
                         <button type="button" id="subRunCountPresetAddBtn" class="run-count-preset-add-btn" onclick="addRunCountPresetChip('sub');">+ 버튼 추가</button>
-                    </div>
-                    <div class="setting-item">
-                        <label for="subPalletToggle">파렛트 회수 사용</label>
-                        <label class="switch">
-                            <input type="checkbox" id="subPalletToggle" onchange="toggleSubPalletSubSettings(); saveSettingsSmoothly();">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div id="subPalletSubSettings" class="price-setting" style="display: none; justify-content: flex-end;">
-                        <input type="text" id="subPalletPrice" class="input-box" inputmode="numeric" placeholder="단가 0" oninput="formatCurrencyInput(this); saveSettings();" style="width: 120px; margin-top: 0;">
                     </div>
                 </div>
             </div>
@@ -2187,78 +2152,43 @@
     <!-- 거래처 등록 모달 -->
     <div id="clientModal" class="modal-overlay hidden">
         <div class="modal-content">
-            <div class="modal-title" id="clientModalTitle" style="color: var(--primary-color);">거래처 등록</div>
-            
+            <div class="client-modal-header">
+                <div class="modal-title" id="clientModalTitle" style="color: var(--primary-color);">거래처 등록</div>
+                <!-- 예전 "고정 거래처"(즐겨찾기, isPinned)는 그대로 있고 이름/모양만 바뀐다.
+                     실제 값은 여전히 clientPinnedToggle(checked)에 저장된다 — 화면만 별 아이콘으로
+                     바뀌고 저장/불러오기 로직은 그대로다. -->
+                <button type="button" id="clientFavoriteStar" class="client-favorite-star" onclick="toggleClientFavoriteStar()" aria-pressed="false" aria-label="즐겨찾기">☆</button>
+            </div>
+            <input type="checkbox" id="clientPinnedToggle" class="visually-hidden-input" tabindex="-1" aria-hidden="true">
+
             <div class="form-group">
                 <label>업체명 (거래처명)</label>
                 <input type="text" id="clientCompanyName" class="input-box" placeholder="업체명 입력" oninput="clearFieldError(this)">
             </div>
-            <div class="form-group">
-                <label>이름 (담당자)</label>
-                <input type="text" id="clientManagerName" class="input-box" placeholder="담당자 이름 입력">
-            </div>
-            <div class="form-group">
-                <label>사업자 번호</label>
-                <input type="text" id="clientBizNumber" class="input-box" placeholder="사업자 번호 입력" oninput="clearFieldError(this)">
+            <div class="personal-inline-fields">
+                <div class="form-group"><label>이름 (담당자)</label><input type="text" id="clientManagerName" class="input-box" placeholder="담당자 이름 입력"></div>
+                <div class="form-group"><label for="clientTaxRepresentative">대표자</label><input id="clientTaxRepresentative" class="input-box" placeholder="대표자명"></div>
             </div>
             <div class="form-group">
                 <label>연락처</label>
                 <input type="tel" id="clientPhone" class="input-box" placeholder="연락처 입력" oninput="formatPhoneNumber(this)">
             </div>
-
-            <section class="client-tax-settings">
-                <div class="setting-item">
-                    <div class="client-tax-toggle-copy"><strong>세금계산서 사용</strong><span>이 거래처를 월별 작성 목록에 표시합니다.</span></div>
-                    <label class="switch">
-                        <input type="checkbox" id="clientTaxInvoiceToggle" onchange="toggleClientTaxInvoice()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div id="clientTaxInvoiceSubSettings" class="sub-setting-group" style="display:none;">
-                    <div class="personal-inline-fields">
-                        <div class="form-group"><label for="clientTaxRepresentative">대표자</label><input id="clientTaxRepresentative" class="input-box" placeholder="대표자명"></div>
-                        <div class="form-group"><label for="clientTaxEmail">수신 이메일</label><input type="email" id="clientTaxEmail" class="input-box" placeholder="이메일"></div>
-                    </div>
-                    <div class="form-group"><label for="clientTaxAddress">사업장 주소</label><input id="clientTaxAddress" class="input-box" placeholder="사업장 주소"></div>
-                    <div class="personal-inline-fields">
-                        <div class="form-group"><label for="clientTaxBizType">업태</label><input id="clientTaxBizType" class="input-box" placeholder="예: 운수업"></div>
-                        <div class="form-group"><label for="clientTaxBizItem">종목</label><input id="clientTaxBizItem" class="input-box" placeholder="예: 화물운송"></div>
-                    </div>
-                    <p>사업자번호는 위의 기본 정보에 입력한 번호를 사용합니다.</p>
-                </div>
-            </section>
-            
-            <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
-            
-            <div class="setting-item">
-                <label for="clientPinnedToggle">고정 거래처</label>
-                <label class="switch">
-                    <input type="checkbox" id="clientPinnedToggle" onchange="toggleClientPinned()">
-                    <span class="slider"></span>
-                </label>
+            <div class="form-group">
+                <label>사업자 번호</label>
+                <input type="text" id="clientBizNumber" class="input-box" placeholder="사업자 번호 입력" oninput="clearFieldError(this)">
             </div>
-            
-            <div id="clientPinnedSubSettings" class="sub-setting-group tree-line-group client-pinned-settings" style="display: none;">
-                <div class="setting-item client-commission-toggle">
-                    <label for="clientCommToggle">거래처 수수료 적용</label>
-                    <label class="switch">
-                        <input type="checkbox" id="clientCommToggle" onchange="toggleClientComm()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                
-                <div id="clientCommSection" class="commission-settings-panel" style="display: none;">
-                    <div class="btn-group-toggle commission-type-toggle">
-                        <button type="button" id="btnCommTypePercent" class="toggle-btn active-work" onclick="setClientCommType('percent')">퍼센트 (%)</button>
-                        <button type="button" id="btnCommTypeDirect" class="toggle-btn" onclick="setClientCommType('direct')">직접입력 (원)</button>
-                    </div>
-                    <div class="commission-value-row">
-                        <label id="commLabel" for="clientCommValue">거래처 수수료율 (%)</label>
-                        <input type="text" id="clientCommValue" class="input-box" inputmode="numeric" placeholder="비율(%) 입력" oninput="formatClientCommValue(this); clearFieldError(this);">
-                    </div>
-                </div>
+            <div class="personal-inline-fields">
+                <div class="form-group"><label for="clientTaxBizType">업태</label><input id="clientTaxBizType" class="input-box" placeholder="예: 운수업"></div>
+                <div class="form-group"><label for="clientTaxBizItem">종목</label><input id="clientTaxBizItem" class="input-box" placeholder="예: 화물운송"></div>
             </div>
-            <input type="hidden" id="clientCommType" value="percent">
+            <div class="form-group">
+                <label for="clientTaxAddress">사업장 주소</label>
+                <input id="clientTaxAddress" class="input-box" placeholder="사업장 주소">
+            </div>
+            <div class="form-group">
+                <label for="clientTaxEmail">이메일</label>
+                <input type="email" id="clientTaxEmail" class="input-box" placeholder="이메일">
+            </div>
 
             <hr style="margin: 18px 0 12px; border: none; border-top: 1px solid var(--border-color);">
 
@@ -2280,8 +2210,59 @@
 
             <p id="clientPaymentTermGuide" class="payment-term-guide"></p>
 
+            <hr style="margin: 12px 0; border: none; border-top: 1px solid var(--border-color);">
+
+            <!-- 수수료 적용 — 예전엔 "고정 거래처"(즐겨찾기) 켰을 때만 켤 수 있었는데, 그거랑
+                 상관없이 항상 켤 수 있게 바뀌었다. 퍼센트/금액 선택과 값 입력을 한 줄로
+                 붙여서 예전보다 훨씬 작게 만들었다(별도 라벨 줄 없이 입력칸 placeholder로 대체). -->
+            <div class="setting-item client-commission-toggle">
+                <label for="clientCommToggle">수수료 적용</label>
+                <label class="switch">
+                    <input type="checkbox" id="clientCommToggle" onchange="toggleClientComm()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div id="clientCommSection" class="commission-settings-panel" style="display: none;">
+                <div class="commission-inline-row">
+                    <button type="button" id="btnCommTypePercent" class="toggle-btn active-work" onclick="setClientCommType('percent')">퍼센트 (%)</button>
+                    <button type="button" id="btnCommTypeDirect" class="toggle-btn" onclick="setClientCommType('direct')">금액 (원)</button>
+                    <input type="text" id="clientCommValue" class="input-box" inputmode="numeric" placeholder="비율(%) 입력" oninput="formatClientCommValue(this); clearFieldError(this);">
+                </div>
+            </div>
+            <input type="hidden" id="clientCommType" value="percent">
+
+            <!-- 고정노선과 연동 — 앱설정에 있던 "고정 거래처 연동"이 여기로 옮겨왔다. 계정
+                 전체에서 한 거래처만 켤 수 있고(saveClient가 다른 거래처는 자동으로 끔),
+                 단가도 여기서 함께 입력한다. 파렛트 회수는 고정노선과 연동일 때만 의미가
+                 있는 하위 항목이라(앱설정에서도 원래 그랬다) 이 안에 자식으로 넣는다 — 꺼지면
+                 파렛트도 같이 꺼진다(toggleClientFixedRoute). -->
+            <div class="setting-item">
+                <label for="clientFixedRouteToggle">고정노선과 연동</label>
+                <label class="switch">
+                    <input type="checkbox" id="clientFixedRouteToggle" onchange="toggleClientFixedRoute()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div id="clientFixedRouteSubSettings" class="sub-setting-group tree-line-group" style="display: none;">
+                <div class="form-group">
+                    <label for="clientFixedUnitPrice">고정 기본 단가 (원)</label>
+                    <input type="text" id="clientFixedUnitPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this);">
+                </div>
+                <div class="setting-item">
+                    <label for="clientPalletToggle">파렛트 회수</label>
+                    <label class="switch">
+                        <input type="checkbox" id="clientPalletToggle" onchange="toggleClientPallet()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="clientPalletSubSettings" class="form-group" style="display: none;">
+                    <label for="clientPalletPrice">파렛트 단가 (원)</label>
+                    <input type="text" id="clientPalletPrice" class="input-box" inputmode="numeric" placeholder="0" oninput="formatCurrencyInput(this);">
+                </div>
+            </div>
+
             <input type="hidden" id="clientEditIndex" value="-1">
-            
+
             <div class="modal-btns">
                 <button class="modal-btn cancel" onclick="cancelClientModal()">취소</button>
                 <button class="modal-btn confirm" onclick="runSaveAction(this, 'client', saveClient)">저장</button>
