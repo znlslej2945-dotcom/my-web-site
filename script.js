@@ -735,6 +735,23 @@ function openForgotPwModal() {
 // 보낼 수 없으므로, 별도 선택 없이 기본값(차주)으로 시작하고 필요하면 나중에 마이페이지에서
 // 정식 가입/역할을 다시 정할 수 있게 한다.
 function startGuestMode() {
+    // 로그인했던 계정에서 로그아웃한 뒤 비회원으로 시작하면 그 계정의 로컬 캐시(차량/거래처/
+    // 운행기록/개인정보 등)가 그대로 남아있는 버그가 있었다 — clearAccountScopedLocalCacheIfAccountChanged()가
+    // "계정이 바뀌는 시점"을 실제 로그인(하이드레이션) 기준으로만 판단해서, 로그인 없이
+    // 게스트로 전환하는 이 경로는 아예 거치지 않기 때문이다(실제로 재현해서 확인: A계정
+    // 로그인 → 로그아웃 → 비회원 시작 → A계정 정보가 그대로 남아있음). 이 기기에 실제
+    // 계정으로 하이드레이션됐던 흔적(lastHydratedSupabaseUserId)이 있을 때만 지운다 —
+    // 없으면(원래부터 게스트 전용 기기, 또는 이미 게스트 상태에서 이 버튼을 다시 누른 경우)
+    // 기존 게스트 데이터를 잘못 날리지 않는다. 지운 뒤에는 이 마커도 함께 지워야 한다 —
+    // clearAccountScopedLocalCache() 자신은 이 키를 안 건드리는데(하이드레이션 경로가 직접
+    // 관리하는 값이라), 여기서 안 지우면 "게스트가 자기 데이터를 입력해 둔 뒤 실수로 이
+    // 버튼을 한 번 더 누르는" 경우에도 매번 다시 다 날아가는 2차 버그가 생긴다(실제로
+    // 재현해서 확인).
+    if (localStorage.getItem('lastHydratedSupabaseUserId') && typeof clearAccountScopedLocalCache === 'function') {
+        clearAccountScopedLocalCache();
+        localStorage.removeItem('lastHydratedSupabaseUserId');
+    }
+
     const settings = getUserSettings();
     settings.accountType = settings.accountType || 'owner_driver';
     settings.driverType = settings.driverType || settings.accountType;
@@ -2246,9 +2263,15 @@ async function applyEmployerAutoFilledInfo(ownerId, vehicleId) {
         const changedBizFields = {};
 
         if (biz) {
+            // biz.representative(대표자명)는 resolveVehicleBusinessInfoFromSupabase가 이미
+            // 계산해서 넘겨주는데(차주의 bizRepresentative, 없으면 차주 개인 성명으로 폴백),
+            // 이 매핑에 빠져 있어서 조용히 버려지고 있었다 — 그 결과 차주가 대표자명을
+            // 입력해도 연동된 기사 계정에는 나머지 사업자정보(상호/사업자번호/주소 등)만
+            // 자동입력되고 대표자명만 계속 비어있는 버그였다(실제로 재현해서 확인).
             const bizFieldMap = {
                 bizName: biz.name,
                 bizNumber: biz.bizNumber,
+                bizRepresentative: biz.representative,
                 bizAddress: biz.address,
                 bizType: biz.bizType,
                 bizItem: biz.bizItem,
@@ -9233,10 +9256,15 @@ window.addEventListener('load', () => {
                     // 비회원 사용자에게만 안내하도록, 로그인 화면으로 보낼 때는 이 안내를
                     // 건너뛴다.
                     showLocalLoginPage();
-                } else if (settings.guestMode) {
-                    showMain(true);
-                    updateOverdueNotification(true);
                 } else {
+                    // guestMode든 실제 로그인 계정이든 여기선 똑같이 메인 화면으로 보낸다.
+                    // 예전엔 guestMode만 showMain(true)을 호출하고 로그인 계정 분기는
+                    // updateOverdueNotification(true)만 불러서, 알림벨(#notificationBtn)이
+                    // index.html에 style="display: none;"으로 시작하는데 showMain()이 그걸
+                    // 'flex'로 되돌려주는 유일한 경로라 — 로그인 상태로 새로고침할 때마다
+                    // 알림벨이 계속 숨어있다가 다른 화면을 한 번 갔다 와야만(그때 다른 경로로
+                    // showMain이 불려서) 나타나는 버그가 있었다(실제로 재현해서 확인).
+                    showMain(true);
                     updateOverdueNotification(true);
                 }
             }, fadeMs);
