@@ -224,6 +224,19 @@ async function syncSettingsToSupabase(settings) {
     const user = await getSupabaseUser();
     if (!user) return; // 로그인 전이면 동기화하지 않는다.
 
+    // 아래 profiles/vehicles/clients 각 항목은 여전히 개별 try/catch로 서로를 막지 않는다(차량
+    // 하나가 실패해도 나머지 차량/거래처/프로필은 계속 시도돼야 한다). 문제는 그 개별 catch가
+    // console.error만 찍고 다시 던지지 않으면, 이 함수 자체는 예외 없이 끝나서
+    // queueBackgroundSave가 "성공"으로 간주해 실패 토스트도 안 띄우고 재시도도 안 건다는 점이다
+    // — 운행기록에서 실제로 재현되어 고쳐진 것과 완전히 같은 패턴이다("차량이 아직
+    // Supabase에 등록되기 전에 저장된 운행기록이 영영 사라지는 버그"). 실제로 이 버그 때문에
+    // 차량/거래처/앱설정 중 일부가 서버에 한 번도 안 올라간 채 조용히 "성공"으로 남고, 그
+    // 항목은 이 기기(자신의 로컬 캐시로 항상 보임)에서는 멀쩡해 보이지만 새 기기로
+    // 로그인하면 서버에 실제로 없어서 통째로 비어 보이는 문제가 있었다. 그래서 실패한 항목을
+    // failures에 모아뒀다가 마지막에 한 번에 던져, 이 저장 자체가 "실패"로 집계되고
+    // 재시도되게 한다.
+    const failures = [];
+
     try {
         const profilePayload = {
             id: user.id,
@@ -247,9 +260,11 @@ async function syncSettingsToSupabase(settings) {
         // 덮이면 다음 로그인부터 계속 빈 값을 읽어와 다시 null로 저장하는 자기강화형 버그였다.
         if (settings.accountType) profilePayload.account_type = settings.accountType;
 
-        await (await getSupabaseClient()).from('profiles').upsert(profilePayload);
+        const { error } = await (await getSupabaseClient()).from('profiles').upsert(profilePayload);
+        if (error) throw error;
     } catch (error) {
-        console.error('profiles 동기화 실패(settings jsonb 컬럼이 아직 없을 수 있음):', error);
+        console.error('profiles 동기화 실패:', error);
+        failures.push(`profile: ${error?.message || error}`);
     }
 
     const client = await getSupabaseClient();
@@ -269,6 +284,7 @@ async function syncSettingsToSupabase(settings) {
             }
         } catch (error) {
             console.error('vehicles 동기화 실패:', logId, error);
+            failures.push(`vehicle(${logId}): ${error?.message || error}`);
         }
     }
 
@@ -288,10 +304,15 @@ async function syncSettingsToSupabase(settings) {
             }
         } catch (error) {
             console.error('clients 동기화 실패:', c.companyName, error);
+            failures.push(`client(${c.companyName}): ${error?.message || error}`);
         }
     }
 
     patchSupabaseIdsIntoLocalSettings(cars, clients);
+
+    if (failures.length) {
+        throw new Error(`일부 설정이 서버에 저장되지 못했습니다: ${failures.join('; ')}`);
+    }
 }
 
 // 특정 차량의 "실제 사용해야 할" 사업자정보를 서버 기준으로 판단한다. 차주의 개인정보
@@ -504,6 +525,13 @@ async function initSettingsFromSupabase(userId) {
     };
 
     localStorage.setItem('userSettings', JSON.stringify(assembled));
+
+    // 여기서 서버에서 막 읽어온 값을 loadSettings()가 참조하는 로컬 'theme' 키에도 반영해
+    // 화면에 실제로 적용되게 한다.
+    if (assembled.theme === 'dark' || assembled.theme === 'light') {
+        localStorage.setItem('theme', assembled.theme);
+    }
+
     return assembled;
 }
 
@@ -688,8 +716,25 @@ function scheduleSupabaseWorkDataSync(logId) {
 async function syncWorkDataToSupabase(logId, data) {
     const user = await getSupabaseUser();
     if (!user) return;
-    const vehicleId = resolveVehicleIdForLogId(logId);
-    if (!vehicleId) return; // 이 차량이 아직 Supabase에 만들어지지 않음 — 다음 저장 때 다시 시도된다.
+
+    // 차량이 아직 Supabase에 안 만들어졌으면(막 추가한 차량이라 그 차량 자체의 배경 저장
+    // 디바운스가 아직 안 끝난 경우 등) 최대 2.5초 정도 짧게 몇 번 다시 확인한다. 예전엔
+    // 여기서 곧바로 조용히 return하고 "다음 저장 때 다시 시도된다"고 주석에 적어뒀는데,
+    // 실제로는 그렇지 않다 — queueBackgroundSave는 이 함수가 예외 없이 정상 종료하면
+    // "성공"으로 간주해 스냅샷/재시도 로직을 전혀 안 건드리므로, 같은 날짜를 다시 편집하지
+    // 않는 한 그 날짜의 운행기록은 서버에 영영 한 번도 안 올라간 채로 조용히 사라진다 —
+    // 화면엔 저장 성공한 것처럼 스피너만 사라지고 "저장실패" 표시도 안 뜬다(실제로 재현해서
+    // 확인: 새 계정에서 차량 추가 직후 곧바로 그날 운행기록을 입력하면, 다른 기기에서
+    // 재로그인해도 차량/거래처는 보이는데 그 운행기록만 영영 안 보임). 짧게 기다려도 안
+    // 되면 그때는 예외를 던져서 queueBackgroundSave의 실패 토스트/재시도 경로를 타게 한다.
+    let vehicleId = resolveVehicleIdForLogId(logId);
+    for (let attempt = 0; !vehicleId && attempt < 5; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        vehicleId = resolveVehicleIdForLogId(logId);
+    }
+    if (!vehicleId) {
+        throw new Error('차량 정보가 아직 서버에 등록되지 않았습니다. 잠시 후 다시 시도해 주세요.');
+    }
 
     // 실패한 날짜는 스냅샷에 "동기화 완료"로 표시하지 않는다 — 그래야 오프라인 등으로 이번
     // 저장이 실패해도, 다음 번 저장(다른 날짜를 고치는 저장이라도) 때 diff 비교에서 다시

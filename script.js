@@ -5928,6 +5928,14 @@ function toggleTheme() {
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
+
+    // 다크/라이트 모드는 예전엔 이 로컬 'theme' 키에만 저장돼서 Supabase에 전혀 올라가지
+    // 않았다 — 그래서 새 기기로 로그인하면 항상 기본값(라이트)으로 보이는 문제가 있었다.
+    // userSettings에도 함께 저장해 다른 앱설정과 똑같이 profiles.settings(jsonb)로
+    // 동기화되게 한다(setUserSettings가 scheduleSupabaseSettingsSync를 자동으로 건다).
+    const settings = getUserSettings();
+    settings.theme = newTheme;
+    setUserSettings(settings);
 }
 
 function setTheme(theme) {
