@@ -876,9 +876,12 @@ async function executeSignupAction() {
     // Supabase 데이터 로드 + (기존 로컬 데이터가 있다면) 1회 마이그레이션. 반드시 "신규 유저
     // 여부" 판별보다 먼저 실행해야 새 기기에서 가입하는 기존 로컬 데이터 보유자를 신규 유저로
     // 오인해 온보딩 마법사를 불필요하게 다시 띄우지 않는다.
+    // allowLocalMigration: true — 방금 이 기기에서 회원가입했으므로, 그 전까지 비회원(게스트)
+    // 상태로 입력해 둔 로컬 데이터는 확실히 이 사람 본인 것이다(로그인과 달리, 남의 계정에
+    // 잘못 덧씌워질 위험이 없다).
     if (authUser && typeof hydrateFromSupabaseAndMigrate === 'function') {
         try {
-            await hydrateFromSupabaseAndMigrate();
+            await hydrateFromSupabaseAndMigrate({ allowLocalMigration: true });
         } catch (error) {
             console.error('Supabase 데이터 동기화 실패(로컬 데이터로 계속 진행합니다):', error);
         }
@@ -6380,10 +6383,22 @@ function clearAccountScopedLocalCache() {
 
 // hydrateFromSupabaseAndMigrate()가 로그인 직후 호출한다. "이 기기가 마지막으로 하이드레이션한
 // 계정"과 지금 로그인한 계정이 다르면 위 초기화를 실행하고, 같으면 아무 것도 하지 않는다.
-function clearAccountScopedLocalCacheIfAccountChanged(currentUserId) {
+//
+// allowMigrationContext가 false(일반 로그인/세션 복원)일 때는 lastUserId가 아예 없는
+// 경우(=이 기기가 비회원/게스트 상태로만 쓰였고 한 번도 하이드레이션된 적이 없음)에도 지운다.
+// 예전엔 "lastUserId && lastUserId !== currentUserId"만 봐서, lastUserId가 없으면(게스트
+// 전용 기기) 아무것도 안 지우고 넘어갔다 — 그 결과 게스트 상태로 이 기기에 입력해 둔 데이터가
+// 남아있다가, 뒤이은 로그인 시점에 migrateLocalDataToSupabase()로 그대로 실제 계정에
+// 덧씌워지는 사고가 있었다(실제로 재현해서 확인: 비회원으로 정보 입력 → 백업 저장 → 다른
+// 계정으로 로그인 → 그 계정에 게스트 데이터가 섞여 들어감). allowMigrationContext가 true인
+// 회원가입/백업복원 상황에서는 반대로 이 정리를 건너뛰어야 게스트 데이터가 마이그레이션
+// 대상으로 살아남는다 — 그래서 lastUserId가 없는 경우엔 지우지 않는(기존과 동일한) 분기를 탄다.
+function clearAccountScopedLocalCacheIfAccountChanged(currentUserId, allowMigrationContext = false) {
     if (!currentUserId) return;
     const lastUserId = localStorage.getItem('lastHydratedSupabaseUserId');
-    if (lastUserId && lastUserId !== currentUserId) {
+    const accountDiffers = lastUserId && lastUserId !== currentUserId;
+    const guestDeviceLoggingIn = !allowMigrationContext && !lastUserId;
+    if (accountDiffers || guestDeviceLoggingIn) {
         clearAccountScopedLocalCache();
     }
     localStorage.setItem('lastHydratedSupabaseUserId', currentUserId);
