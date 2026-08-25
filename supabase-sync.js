@@ -732,12 +732,19 @@ async function upsertDailyLogRecordToSupabase(client, userId, vehicleId, workDat
         clientIdByName = new Map((settings.clients || []).filter(c => c.supabaseId).map(c => [c.companyName, c.supabaseId]));
     }
 
-    await Promise.all([
+    // supabase-js의 delete()/insert()는 실패해도 reject하지 않고 { data, error }로 resolve만
+    // 한다 — Promise.all()로 결과만 기다리고 각 error를 확인하지 않으면, 넷 중 하나가
+    // 실패해도(RLS, 네트워크 순단 등) 이 함수는 예외 없이 끝나서 호출부(queueBackgroundSave)가
+    // "성공"으로 간주해 재시도도 실패 토스트도 없이 그 하루치 기록이 서버에 부분적으로만(또는
+    // 전혀) 반영되지 않은 채 조용히 넘어간다. 결과를 받아 error가 하나라도 있으면 던진다.
+    const deleteResults = await Promise.all([
         client.from('transport_details').delete().eq('daily_log_id', dailyLogId),
         client.from('maintenance_records').delete().eq('daily_log_id', dailyLogId),
         client.from('fuel_records').delete().eq('daily_log_id', dailyLogId),
         client.from('misc_expense_records').delete().eq('daily_log_id', dailyLogId)
     ]);
+    const deleteError = deleteResults.find(r => r?.error)?.error;
+    if (deleteError) throw deleteError;
 
     const jobs = [];
     if (Array.isArray(callDetails) && callDetails.length) {
@@ -776,7 +783,12 @@ async function upsertDailyLogRecordToSupabase(client, userId, vehicleId, workDat
             cost_amount: parseEntityNumber(item?.fare), raw: item
         }))));
     }
-    await Promise.all(jobs);
+    // 위 delete와 같은 이유로, insert 결과도 error를 확인해서 하나라도 실패하면 던진다 —
+    // 안 그러면 예를 들어 콜 상세(transport_details)는 올라갔는데 정비 내역만 실패해도
+    // 아무 표시 없이 "저장 완료"로 넘어간다.
+    const jobResults = await Promise.all(jobs);
+    const jobError = jobResults.find(r => r?.error)?.error;
+    if (jobError) throw jobError;
 }
 
 const __supabaseWorkDataSyncedSnapshot = {}; // logId -> { [date]: JSON문자열 } — 마지막으로 서버에 반영한 상태(이번 세션 한정 캐시)

@@ -10130,12 +10130,24 @@ function renderReceivablesManagement(tab) {
                         <span class="receivable-summary-count">${group.count}건</span>
                     </div>
                     <div class="receivable-card-actions">
-                        <button type="button" class="receivable-detail-btn" onclick="openReceivableDetail('${encodeURIComponent(group.client)}', '${group.monthKey}')">미수금 상세</button>
+                        <button type="button" class="receivable-detail-btn" data-client="${escapeDetailText(group.client)}" data-month-key="${escapeDetailText(group.monthKey)}">미수금 상세</button>
                         <button type="button" class="receivable-complete-btn" onclick="markMonthlyReceivablesPaid('${escapeForInlineHandlerArg(group.client)}', '${group.monthKey}')">입금 완료 처리</button>
                     </div>
                 </div>
             `;
         }).join('');
+
+        // "미수금 상세" 버튼은 거래처명을 그대로 인라인 onclick 문자열 인자로 넣고 있었는데,
+        // encodeURIComponent()는 홑따옴표(')를 이스케이프하지 않는다(JS 표준 동작) — 거래처명에
+        // 홑따옴표가 들어있으면(예: 실수로 또는 의도적으로) onclick="..." 속성의 문자열 리터럴을
+        // 깨고 임의 스크립트를 실행시킬 수 있는 XSS였다. 인라인 핸들러 대신 data 속성(HTML
+        // 속성 이스케이프라 안전)에 원본값을 담아두고, 렌더링 후 addEventListener로 안전하게
+        // 읽어서 호출한다.
+        container.querySelectorAll('.receivable-detail-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                openReceivableDetail(btn.dataset.client, btn.dataset.monthKey);
+            });
+        });
 
         return;
     }
@@ -10180,8 +10192,7 @@ function renderReceivablesManagement(tab) {
     }).join('');
 }
 
-function openReceivableDetail(encodedClientName, monthKey) {
-    const clientName = decodeURIComponent(encodedClientName);
+function openReceivableDetail(clientName, monthKey) {
     currentReceivableDetail = { clientName, monthKey };
     hideAllPages();
     document.getElementById('receivableDetailPage').classList.remove('hidden');
