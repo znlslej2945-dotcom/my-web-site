@@ -224,6 +224,24 @@ async function syncSettingsToSupabase(settings) {
     const user = await getSupabaseUser();
     if (!user) return; // 로그인 전이면 동기화하지 않는다.
 
+    // 이 함수는 debounce/재시도 구조상 큐에 등록된 시점보다 한참 뒤에(getSupabaseUser()의
+    // 네트워크 왕복 시간만큼) 실제로 실행될 수 있다. 그 사이에 사용자가 로그아웃 후 다른
+    // 계정으로 재로그인해 버리면, 지금 막 resolve된 user는 "새로 로그인한 계정"인데 인자로
+    // 받은 settings는 여전히 "이전 계정의 로컬 캐시 스냅샷"인 상태로 이 함수가 실행될 수
+    // 있다 — 그 결과 이전 계정의 accountType(예: 차주)이 새 계정의 profiles 행에 그대로
+    // upsert되어, 로그아웃→로그인만 했을 뿐인데 소속 기사 계정이 차주로 뒤바뀌는 사고가
+    // 실제로 재현됐다(handleLogout에 flushAllBackgroundSaves를 추가해 이 경합의 주된 경로는
+    // 막았지만, 혹시 모를 다른 경로에 대비해 여기서도 마지막 확인을 한 번 더 한다).
+    // clearAccountScopedLocalCacheIfAccountChanged()가 하이드레이션 시작 시점에 동기적으로
+    // lastHydratedSupabaseUserId를 지금 로그인한 계정으로 갱신해 두므로, 이 값이 지금 resolve된
+    // user.id와 다르면 settings가 다른 계정 것일 가능성이 있다는 뜻이라 이번 저장은 건너뛴다
+    // (다음 저장 사이클에서 그 시점의 최신 settings로 다시 시도되므로 데이터 유실은 아니다).
+    const lastHydratedUserId = localStorage.getItem('lastHydratedSupabaseUserId');
+    if (lastHydratedUserId && lastHydratedUserId !== user.id) {
+        console.warn('[Supabase] 계정 전환 경합 감지 — 이전 계정 설정 저장을 건너뜁니다.');
+        return;
+    }
+
     // 아래 profiles/vehicles/clients 각 항목은 여전히 개별 try/catch로 서로를 막지 않는다(차량
     // 하나가 실패해도 나머지 차량/거래처/프로필은 계속 시도돼야 한다). 문제는 그 개별 catch가
     // console.error만 찍고 다시 던지지 않으면, 이 함수 자체는 예외 없이 끝나서
@@ -268,7 +286,16 @@ async function syncSettingsToSupabase(settings) {
     }
 
     const client = await getSupabaseClient();
-    const cars = Array.isArray(settings.cars) ? settings.cars : [];
+    // 소속 기사(employed_driver) 계정의 settings.cars는 실제 소유 차량이 아니라,
+    // applyEmployerAutoFilledInfo()가 차주가 연동해 준 차량 정보를 이 기사 본인 화면에
+    // 보여주기만 하려고 만든 "표시용 로컬 사본"이다(supabaseId가 원래부터 없다). 이 계정
+    // 전용 동기화 로직인 줄 모르고 여기서 그대로 서버에 올리면, 위쪽에서 supabaseId를
+    // 어떻게 다루든 상관없이 "차주 차량과 번호는 같은데 소유자(user_id)는 기사 본인인"
+    // 가짜 vehicles 행이 매번 새로 생긴다 — 실제로 소속 기사 계정이 로그인만 해도 차주의
+    // 차량과 같은 번호의 유령 차량이 기사 명의로 계속 생기는 사고로 재현됐다. 소속 기사는
+    // 애초에 자기 소유 차량 개념이 없으므로(차량은 항상 차주 소유, 기사는 driver_links로만
+    // 연결됨) 이 계정 유형은 통째로 건너뛴다.
+    const cars = (settings.accountType === 'employed_driver') ? [] : (Array.isArray(settings.cars) ? settings.cars : []);
     for (let index = 0; index < cars.length; index++) {
         const car = cars[index];
         const logId = car.type === 'sub' ? (car.number || `sub_${index}`) : 'main';
@@ -278,9 +305,31 @@ async function syncSettingsToSupabase(settings) {
                 const { error } = await client.from('vehicles').update(row).eq('id', car.supabaseId);
                 if (error) throw error;
             } else {
-                const { data, error } = await client.from('vehicles').insert(row).select('id').single();
-                if (error) throw error;
-                car.supabaseId = data.id;
+                // 계정 전환 경합 등 어떤 경로로든 supabaseId를 잃어버린 채 여기 도달하면,
+                // 무작정 insert할 경우 서버에 같은 번호의 차량 행이 또 하나 생긴다 — 실제로
+                // 이 경로로 같은 차량 번호의 vehicles 행이 계속 쌓이는 사고가 반복 재현됐다
+                // (하루 새 같은 번호로 19건까지 쌓인 사례 확인). insert 전에 반드시 "이
+                // 계정에 같은 번호+같은 구분(main/sub)의 차량이 이미 있는지" 서버에서 한 번
+                // 더 확인해서, 있으면 그 행을 갱신해 흡수하고(중복 생성 방지), 정말 처음
+                // 만드는 차량일 때만 새로 insert한다.
+                const { data: existingRows, error: lookupError } = await client.from('vehicles')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('number', row.number)
+                    .eq('type', row.type)
+                    .order('id', { ascending: true })
+                    .limit(1);
+                if (lookupError) throw lookupError;
+                const existingId = existingRows && existingRows[0]?.id;
+                if (existingId) {
+                    const { error } = await client.from('vehicles').update(row).eq('id', existingId);
+                    if (error) throw error;
+                    car.supabaseId = existingId;
+                } else {
+                    const { data, error } = await client.from('vehicles').insert(row).select('id').single();
+                    if (error) throw error;
+                    car.supabaseId = data.id;
+                }
             }
         } catch (error) {
             console.error('vehicles 동기화 실패:', logId, error);
@@ -379,6 +428,23 @@ async function ensureVehicleSyncedToSupabase(car, index) {
         if (error) throw error;
         return car.supabaseId;
     }
+    // syncSettingsToSupabase()와 같은 이유로, insert 전에 이미 같은 번호+구분의 차량이
+    // 서버에 있는지 한 번 더 확인해서 중복 생성을 막는다.
+    const { data: existingRows, error: lookupError } = await client.from('vehicles')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('number', row.number)
+        .eq('type', row.type)
+        .order('id', { ascending: true })
+        .limit(1);
+    if (lookupError) throw lookupError;
+    const existingId = existingRows && existingRows[0]?.id;
+    if (existingId) {
+        const { error } = await client.from('vehicles').update(row).eq('id', existingId);
+        if (error) throw error;
+        car.supabaseId = existingId;
+        return existingId;
+    }
     const { data, error } = await client.from('vehicles').insert(row).select('id').single();
     if (error) throw error;
     car.supabaseId = data.id;
@@ -452,7 +518,17 @@ async function initSettingsFromSupabase(userId) {
     if (vehiclesError) console.error('vehicles 조회 실패:', vehiclesError);
     if (clientsError) console.error('clients 조회 실패:', clientsError);
 
-    const jsonbSettings = (profile && profile.settings && typeof profile.settings === 'object') ? profile.settings : {};
+    // 안전장치: profiles 조회 자체가 실패했다면(로그인 직후 순간적인 시계오차로 인한
+    // JWT 거부, 일시적 네트워크 문제 등) profile이 undefined가 되는데, 이걸 그대로 믿고
+    // 진행하면 jsonbSettings가 {}가 되어 profiles.settings(jsonb)에 들어있던 모든 설정값과
+    // 아래 named 필드(userName/bizName/bizNumber/...)가 로그인 순간 통째로 빈 값으로
+    // 로컬에 덮어써진다(실제로 재현해서 확인한 문제). vehicles/clients처럼 이 경우엔
+    // 서버 응답을 신뢰하지 않고 이 기기의 기존 로컬 설정을 그대로 유지한다.
+    const previousSettings = getUserSettings();
+    if (profileError) console.warn('[Supabase] profiles 조회가 실패해 로컬 설정을 그대로 유지합니다.');
+    const jsonbSettings = profileError
+        ? previousSettings
+        : (profile && profile.settings && typeof profile.settings === 'object') ? profile.settings : {};
 
     const cars = (vehicles || []).map(row => ({
         ...(row.raw && typeof row.raw === 'object' ? row.raw : {}),
@@ -473,7 +549,6 @@ async function initSettingsFromSupabase(userId) {
     // 못 올라간) 차량/거래처가 있으면 그대로 살려서 합쳐준다. 그렇지 않으면 마이그레이션
     // 일부 실패, 방금 추가했지만 아직 백그라운드 동기화가 못 끝난 항목 등이 하이드레이션 한
     // 번에 조용히 사라져버릴 수 있다(실제로 재현해서 확인한 문제).
-    const previousSettings = getUserSettings();
     const previousCars = Array.isArray(previousSettings.cars) ? previousSettings.cars : [];
     const previousClients = Array.isArray(previousSettings.clients) ? previousSettings.clients : [];
     const unsyncedLocalCars = previousCars.filter(c => c && !c.supabaseId);
@@ -509,16 +584,19 @@ async function initSettingsFromSupabase(userId) {
         // 그래야 진짜 신규 유저(둘 다 없음)만 ''가 되고, 기존 유저는 accountType이 실수로
         // 지워지지 않는다.
         accountType: profile?.account_type || jsonbSettings.accountType || previousSettings.accountType || '',
-        userName: profile?.name || '',
-        userPhone: profile?.phone || '',
-        bizName: profile?.business_name || '',
-        bizNumber: profile?.business_number || '',
-        bizAddress: profile?.business_address || '',
-        bizType: profile?.business_type || '',
-        bizItem: profile?.business_item || '',
-        bizEmail: profile?.business_email || '',
-        bankName: profile?.bank_name || '',
-        accountNumber: profile?.account_number || '',
+        // profiles 조회 자체가 실패한 경우엔 위 jsonbSettings가 이미 previousSettings이므로
+        // 아래 named 필드들도 profile 값이 없으면 previousSettings로 떨어져야, 조회 실패
+        // 한 번으로 사업자정보·연락처·계좌정보가 로컬에서 빈 값으로 덮어써지지 않는다.
+        userName: profile?.name || (profileError ? previousSettings.userName : '') || '',
+        userPhone: profile?.phone || (profileError ? previousSettings.userPhone : '') || '',
+        bizName: profile?.business_name || (profileError ? previousSettings.bizName : '') || '',
+        bizNumber: profile?.business_number || (profileError ? previousSettings.bizNumber : '') || '',
+        bizAddress: profile?.business_address || (profileError ? previousSettings.bizAddress : '') || '',
+        bizType: profile?.business_type || (profileError ? previousSettings.bizType : '') || '',
+        bizItem: profile?.business_item || (profileError ? previousSettings.bizItem : '') || '',
+        bizEmail: profile?.business_email || (profileError ? previousSettings.bizEmail : '') || '',
+        bankName: profile?.bank_name || (profileError ? previousSettings.bankName : '') || '',
+        accountNumber: profile?.account_number || (profileError ? previousSettings.accountNumber : '') || '',
         cars: dedupedCars,
         clients: dedupedClients,
         isLoggedIn: true
@@ -1102,7 +1180,9 @@ async function migrateLocalDataToSupabase(userId) {
     }
 
     // 차량 + 그 차량의 운행 기록 전체 — 거래처와 동일하게 supabaseId 유무에 따라 update/insert.
-    const vehicleSources = getNormalizedVehicleSources(settings); // 로컬 저장소 열거 로직 자체는 기존 헬퍼를 그대로 재사용(구조 변형이 아니라 순수 열거라 안전)
+    // 소속 기사 계정은 syncSettingsToSupabase()와 같은 이유로 건너뛴다 — settings.cars는
+    // applyEmployerAutoFilledInfo()가 만든 표시용 로컬 사본일 뿐 실제 소유 차량이 아니다.
+    const vehicleSources = (settings.accountType === 'employed_driver') ? [] : getNormalizedVehicleSources(settings); // 로컬 저장소 열거 로직 자체는 기존 헬퍼를 그대로 재사용(구조 변형이 아니라 순수 열거라 안전)
     const vehicleIdByLogId = new Map();
     const vehicleIdByNumber = new Map();
     for (let index = 0; index < vehicleSources.length; index++) {
@@ -1115,9 +1195,26 @@ async function migrateLocalDataToSupabase(userId) {
                 if (error) throw error;
                 vehicleId = car.supabaseId;
             } else {
-                const { data, error } = await client.from('vehicles').insert(row).select('id').single();
-                if (error) throw error;
-                vehicleId = data.id;
+                // syncSettingsToSupabase()와 같은 이유로, insert 전에 이미 같은 번호+구분의
+                // 차량이 서버에 있는지 한 번 더 확인해서 중복 생성을 막는다.
+                const { data: existingRows, error: lookupError } = await client.from('vehicles')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .eq('number', row.number)
+                    .eq('type', row.type)
+                    .order('id', { ascending: true })
+                    .limit(1);
+                if (lookupError) throw lookupError;
+                const existingId = existingRows && existingRows[0]?.id;
+                if (existingId) {
+                    const { error } = await client.from('vehicles').update(row).eq('id', existingId);
+                    if (error) throw error;
+                    vehicleId = existingId;
+                } else {
+                    const { data, error } = await client.from('vehicles').insert(row).select('id').single();
+                    if (error) throw error;
+                    vehicleId = data.id;
+                }
                 car.supabaseId = vehicleId;
             }
             vehicleIdByLogId.set(logId, vehicleId);
@@ -1199,6 +1296,17 @@ async function migrateLocalDataToSupabase(userId) {
 //   C에서 비회원으로 정보 입력 → 백업 저장 → B계정으로 로그인 → B계정의 거래처/차량에 C의
 //   정보가 섞여 들어가고 앱 설정이 C의 것으로 덮어써짐).
 async function hydrateFromSupabaseAndMigrate({ allowLocalMigration = false } = {}) {
+    // supabaseHydrationCompleted는 페이지가 로드된 뒤 딱 한 번만 false로 초기화되고(선언부
+    // 참고) 그 뒤로는 이 함수 finally에서만 true로 세워진다 — 이 앱은 SPA라 로그아웃 후
+    // 다른 계정으로 재로그인해도 페이지가 새로고침되지 않으므로, 두 번째 로그인부터는 이
+    // 함수가 시작되는 시점에도 이전 계정의 하이드레이션이 남긴 true가 그대로 남아있었다.
+    // scheduleSupabaseSettingsSync()의 가드(!supabaseHydrationCompleted)가 "아직 하이드레이션
+    // 중"을 감지하지 못해서, 이번 하이드레이션이 로컬 설정(다크모드 등 앱설정 포함)을 다
+    // 채우기 전에 스쳐가는 배경 저장이 끼어들면 그 불완전한 상태가 그대로 서버에 올라갈 수
+    // 있었다 — "로그인할 때마다 다크모드/앱설정이 풀렸다 적용됐다 랜덤하게 달라진다"는
+    // 증상으로 실제 재현·보고됨. 매 하이드레이션 시작 시점에 반드시 다시 false로 내려서,
+    // 이번 하이드레이션이 끝나기 전까지는 어떤 배경 저장도 끼어들지 못하게 막는다.
+    supabaseHydrationCompleted = false;
     const user = await getSupabaseUser();
     if (!user) { supabaseHydrationCompleted = true; return; }
 

@@ -3792,6 +3792,14 @@ body:not(.pdf-export-mode) .detail-report-table .detail-location-cell {
     gap: 8px;
 }
 
+/* .hidden은 이 파일에서 element마다 별도 규칙으로 선언해야 실제로 숨겨진다(전역
+   .hidden{display:none} 유틸리티가 없음) — 이 규칙이 없으면 JS가 classList에 'hidden'을
+   정상적으로 추가해도(position: fixed인 이 버튼 특성상 어디서든 눈에 띄게) 화면에 계속
+   떠 있게 된다. */
+.management-add-wrap.hidden {
+    display: none;
+}
+
 .management-add-fab {
     min-height: 44px;
     padding: 8px 13px;

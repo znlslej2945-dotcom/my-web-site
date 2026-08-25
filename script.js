@@ -885,6 +885,20 @@ async function executeSignupAction() {
         const email = phoneToFakeEmail(phone);
         const { data, error } = await supabaseSignUp(email, pw);
         if (error) { showToastMessage(getSupabaseAuthErrorMessage(error)); return; }
+        // Supabase는 이미 가입된(이메일 인증까지 끝난) 계정으로 signUp()을 다시 호출해도
+        // 보안상 이유로(가입 여부 노출 방지) error 없이 200으로 응답하는 경우가 있다 —
+        // 이때 반환되는 data.user는 기존 계정 그대로다. 이 경우를 신규 가입과 구분하지
+        // 않으면, 이미 소속 기사로 정상 가입/연동돼 있던 계정이 실수로(또는 화면을 헷갈려)
+        // 회원가입 폼에 같은 번호를 다시 입력하는 순간 곧바로 아래 ensureProfileRow가
+        // account_type을 지금 폼에서 고른 값(기본값 "차주")으로 덮어써 버려서, 실제로
+        // 연동돼 있던 소속 기사 계정이 통째로 차주로 바뀌는 사고가 났다(실제로 재현됨:
+        // 연동까지 끝난 기사 계정이 회원가입 폼을 한 번 더 거치자 차주로 전환되고 로컬
+        // 데이터도 초기화됨). Supabase가 공식적으로 안내하는 판별법대로, 신규 유저는
+        // identities 배열에 최소 1개가 들어있고 기존 유저는 빈 배열([])로 온다.
+        if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+            showToastMessage('이미 가입된 번호입니다. 로그인해 주세요.');
+            return;
+        }
         authUser = data?.user || null;
         if (authUser) await ensureProfileRow(authUser.id, currentSignupRole, name, phone);
         if (authUser && typeof markSupabaseAccountEverCreated === 'function') markSupabaseAccountEverCreated();
@@ -9277,7 +9291,15 @@ function handleLogin() {
 }
 
 function handleLogout() {
-    showConfirmModal('로그아웃하시겠습니까? 기기에 저장된 기록은 유지됩니다.', () => {
+    showConfirmModal('로그아웃하시겠습니까? 기기에 저장된 기록은 유지됩니다.', async () => {
+        // 방금 바꾼 설정(예: 차량 정산방식)이 debounce 대기 중일 때 곧바로 로그아웃하면,
+        // 아직 서버로 안 올라간 그 변경이 그대로 유실된다 — 다음 로그인 때
+        // initSettingsFromSupabase()가 예전 서버 값으로 덮어써서 "방금 바꾼 게 되돌아가
+        // 있다"는 현상으로 나타난다(실제로 재현 보고됨). exportData()와 동일하게, 로그아웃
+        // 처리 전에 대기 중인 백그라운드 저장을 먼저 끝까지 흘려보낸다.
+        if (typeof flushAllBackgroundSaves === 'function') {
+            try { await flushAllBackgroundSaves(); } catch (error) { console.error('로그아웃 전 저장 동기화 실패:', error); }
+        }
         const settings = getUserSettings();
         settings.isLoggedIn = false;
         setUserSettings(settings);
